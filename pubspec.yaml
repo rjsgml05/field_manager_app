@@ -1,0 +1,51 @@
+name: field_manager_app
+description: "A new Flutter project for field management."
+publish_to: 'none'
+version: 1.0.0+2
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  firebase_core: ^3.10.0
+  cloud_firestore: ^5.6.0
+  firebase_storage: ^12.4.0
+  firebase_auth: ^5.4.0
+  # -------------------------
+  google_maps_flutter: ^2.5.3
+  image_picker: ^1.0.7
+  geocoding: ^3.0.0
+  geolocator: ^13.0.1
+  shared_preferences: ^2.2.2
+  permission_handler: ^11.3.1
+  pdf: ^3.10.0
+  path_provider: ^2.1.0
+  share_plus: ^7.2.1
+  http: ^1.6.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
+  permission_handler: ^11.3.1
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/fonts/
+
+  fonts:
+    - family: NanumGothic
+      fonts:
+        - asset: assets/fonts/NanumGothic.ttf
+
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "assets/icon/app_icon.png"
