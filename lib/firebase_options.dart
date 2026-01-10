@@ -41,14 +41,13 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyDe_DmJBD4aFBOrUlLrJBB5Snoc1yPBljE',
-    appId: '1:1023081610040:web:0ff5070edd63eca65fdfcd',
-    messagingSenderId: '1023081610040',
-    projectId: 'fieldmanager-c94c2',
-    authDomain: 'fieldmanager-c94c2.firebaseapp.com',
-    storageBucket: 'fieldmanager-c94c2.firebasestorage.app',
-    measurementId: 'G-MW5011FHYE',
-  );
+  apiKey: 'AIzaSyDe_DmJBD4aFBOrUlLrJBB5Snoc1yPBljE', // fieldmanager 키
+  appId: '1:1023081610040:web:0ff5070edd63eca65fdfcd',
+  messagingSenderId: '1023081610040',
+  projectId: 'fieldmanager-c94c2', // 👈 여기가 핵심입니다!
+  authDomain: 'fieldmanager-c94c2.firebaseapp.com',
+  storageBucket: 'fieldmanager-c94c2.firebasestorage.app',
+);
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyBs9W7f3_MOkGXOzgw4OGEnNMy1yM8VSPw',

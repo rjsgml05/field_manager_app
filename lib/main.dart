@@ -331,7 +331,7 @@ class MapSampleState extends State<MapSample> {
   String _processingText = "";    // 상단에 띄울 문구
   Set<Marker> _cachedMarkers = {};
   // 여기에 이 변수가 있어야 아래 PDF 함수에서 오류가 나지 않습니다.
-  final String googleApiKey = "AIzaSyAiT2-6ofs_K8UdtEN6xWYVF98V1C8en-o"; 
+  final String googleApiKey = "AIzaSyDe_DmJBD4aFBOrUlLrJBB5Snoc1yPBljE"; 
 
   final Map<MarkerId, SiteData> _markerDataMap = {};
   // ... 나머지 기존 코드들 ...
