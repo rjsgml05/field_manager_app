@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <title>현장 뷰어</title>
+    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=4a2743b9e49b8da391510688eb04d69d "></script>
+    <style>
+        html, body { width: 100%; height: 100%; margin: 0; padding: 0; }
+        #map { width: 100%; height: 100%; }
+        /* 마커 이름표 디자인 */
+        .custom-label { background: white; border: 1.5px solid #1E88E5; padding: 4px 8px; font-size: 13px; font-weight: bold; border-radius: 5px; box-shadow: 2px 2px 4px rgba(0,0,0,0.3); color: #333; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <script>
+        var mapContainer = document.getElementById('map');
+        var mapOption = { center: new kakao.maps.LatLng(35.1795, 129.0756), level: 3 };
+        var map = new kakao.maps.Map(mapContainer, mapOption);
+
+        // 앱에서 넘겨준 파이어베이스 JSON 주소 꺼내기
+        var urlParams = new URLSearchParams(window.location.search);
+        var dataUrl = urlParams.get('data');
+
+        if(dataUrl) {
+            fetch(dataUrl)
+            .then(res => res.json())
+            .then(data => {
+                var bounds = new kakao.maps.LatLngBounds(); 
+                
+                data.forEach(m => {
+                    var position = new kakao.maps.LatLng(m.lat, m.lng);
+                    
+                    // 기본 핀 마커
+                    new kakao.maps.Marker({ position: position, map: map });
+
+                    // 이름표
+                    new kakao.maps.CustomOverlay({
+                        position: position,
+                        content: `<div class="custom-label">${m.title}</div>`,
+                        yAnchor: 2.3
+                    }).setMap(map);
+
+                    bounds.extend(position); 
+                });
+
+                if(data.length > 0) map.setBounds(bounds);
+            })
+            .catch(err => alert('데이터를 불러오는데 실패했습니다.'));
+        } else {
+            alert('전송받은 마커 데이터가 없습니다.');
+        }
+    </script>
+</body>
+</html>

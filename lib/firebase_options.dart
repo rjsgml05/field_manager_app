@@ -44,7 +44,7 @@ class DefaultFirebaseOptions {
   apiKey: 'AIzaSyDe_DmJBD4aFBOrUlLrJBB5Snoc1yPBljE', // fieldmanager 키
   appId: '1:1023081610040:web:0ff5070edd63eca65fdfcd',
   messagingSenderId: '1023081610040',
-  projectId: 'fieldmanager-c94c2', // 👈 여기가 핵심입니다!
+  projectId: 'fieldmanager-c94c2',  // 👈 여기가 'myfieldmap'이면 안 됨! 이걸로 변경
   authDomain: 'fieldmanager-c94c2.firebaseapp.com',
   storageBucket: 'fieldmanager-c94c2.firebasestorage.app',
 );

@@ -1,19 +1,27 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools" 
     package="com.example.field_manager_app">
 
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" /> 
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.ACCESS_MOCK_LOCATION" tools:ignore="MockLocation" />
 
     <application
-        android:label="field_manager_app"
-        android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+    android:label="field_manager_app"
+    android:name="${applicationName}"
+    android:icon="@mipmap/ic_launcher"
+    android:usesCleartextTraffic="true">
 
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyDe_DmJBD4aFBOrUlLrJBB5Snoc1yPBljE"/>
+            android:value="AIzaSyAiT2-6ofs_K8UdtEN6xWYVF98V1C8en-o"/>
 
         <activity
             android:name=".MainActivity"
@@ -32,5 +40,9 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-    </application>
+
+    </application> <queries>
+        <package android:name="com.nhn.android.nmap" />
+        <package android:name="net.daum.android.map" />
+    </queries>
 </manifest>
