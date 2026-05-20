@@ -499,6 +499,24 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
     }
   }
 
+  Future<void> _showCurrentLocationOnMap(double lat, double lng) async {
+    final controller = _webViewController;
+    if (controller == null) return;
+
+    final payload = jsonEncode({
+      'lat': lat,
+      'lng': lng,
+      'title': '현재 위치',
+      'moveCamera': false,
+    });
+
+    try {
+      await controller.runJavaScript('showCurrentLocation($payload);');
+    } catch (e) {
+      debugPrint('showCurrentLocation failed: $e');
+    }
+  }
+
   void _setStateAndRefreshMap(VoidCallback fn) {
     if (!mounted) return;
     setState(fn);
@@ -613,6 +631,7 @@ void dispose() {
       desiredAccuracy: LocationAccuracy.high,
     );
 
+    await _showCurrentLocationOnMap(position.latitude, position.longitude);
     await _moveTo(position.latitude, position.longitude, 3);
   } catch (e) {
     debugPrint("위치 이동 에러: $e");
@@ -1837,6 +1856,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                 heroTag: "gps", 
                 onPressed: () async { 
                   Position p = await Geolocator.getCurrentPosition(); 
+                  await _showCurrentLocationOnMap(p.latitude, p.longitude);
                   _moveTo(p.latitude, p.longitude, 3); 
                 }, 
                 child: const Icon(Icons.my_location)

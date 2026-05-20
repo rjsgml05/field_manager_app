@@ -214,11 +214,27 @@
       map.setLevel(Number(level));
     }
 
-    function showCurrentLocation(location) {
-      if (currentLocationMarker) currentLocationMarker.setMap(null);
-      if (currentLocationOverlay) currentLocationOverlay.setMap(null);
+    function showCurrentLocation(locationOrLat, lng) {
+      if (currentLocationMarker) {
+        currentLocationMarker.setMap(null);
+        currentLocationMarker = null;
+      }
+      if (currentLocationOverlay) {
+        currentLocationOverlay.setMap(null);
+        currentLocationOverlay = null;
+      }
 
-      var item = typeof location === 'string' ? JSON.parse(location) : location;
+      var item = locationOrLat;
+      if (typeof locationOrLat === 'string') {
+        item = JSON.parse(locationOrLat);
+      } else if (typeof locationOrLat === 'number' && typeof lng === 'number') {
+        item = {
+          lat: locationOrLat,
+          lng: lng,
+          title: '현재 위치',
+          moveCamera: false
+        };
+      }
       if (!item) return;
 
       var position = toLatLng(item);
