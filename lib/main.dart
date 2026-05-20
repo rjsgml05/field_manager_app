@@ -141,8 +141,8 @@ class TeamData {
   String teamPw;
   bool isVisible;
   List<MapGroup> groups;
-  Map<MarkerId, SiteData> markers;
-  Map<PolylineId, LineData> lines;
+  Map<String, SiteData> markers;
+  Map<String, LineData> lines;
   TeamData({required this.teamName, required this.teamPw, this.isVisible = true, required this.groups, required this.markers, required this.lines});
 }
 
@@ -371,9 +371,9 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   // 여기에 이 변수가 있어야 아래 PDF 함수에서 오류가 나지 않습니다.
   final String googleApiKey = "AIzaSyAiT2-6ofs_K8UdtEN6xWYVF98V1C8en-o"; 
 
-  final Map<MarkerId, SiteData> _markerDataMap = {};
+  final Map<String, SiteData> _markerDataMap = {};
   // ... 나머지 기존 코드들 ...
-  final Map<PolylineId, LineData> _lineDataMap = {};
+  final Map<String, LineData> _lineDataMap = {};
   final Map<String, BitmapDescriptor> _markerIconCache = {};
   final List<MapGroup> _userGroups = [];
   
@@ -535,7 +535,7 @@ Future<void> _updateMarkers() async {
 
   // 1. [내 팀 마커] 생성
   for (var entry in _markerDataMap.entries) {
-    MarkerId id = entry.key;
+    String id = entry.key;
     SiteData site = entry.value;
 
     final g = _userGroups.firstWhere(
@@ -575,7 +575,7 @@ Future<void> _updateMarkers() async {
   if (_isFreeLineMode) {
     setState(() => _tempFreeLinePoints.add(site.position));
   } else if (_isLineMode) {
-    setState(() => _tempLineMarkerIds.add(id.value));
+    setState(() => _tempLineMarkerIds.add(id));
   } else {
     _showMarkerDetails(id);
   }
@@ -603,7 +603,7 @@ Future<void> _updateMarkers() async {
       if (!team.isVisible) continue;
 
       for (var entry in team.markers.entries) {
-        MarkerId id = entry.key;
+        String id = entry.key;
         SiteData site = entry.value;
 
         final groupInfo = team.groups.firstWhere(
@@ -625,7 +625,7 @@ Future<void> _updateMarkers() async {
           }
 
           newMarkers.add(Marker(
-            markerId: MarkerId("${team.teamName}_${id.value}"), 
+            markerId: "${team.teamName}_${id}", 
             position: site.position,
             icon: labelIcon,
             anchor: const Offset(0.5, 1.0),
@@ -666,7 +666,7 @@ Future<void> _updateMarkers() async {
     setState(() => _tempFreeLinePoints.add(site.position));
   } else if (_isLineMode) {
     // (선택) 타 팀 마커도 연결 모드에 포함할 경우
-    setState(() => _tempLineMarkerIds.add("${team.teamName}_${id.value}"));
+    setState(() => _tempLineMarkerIds.add("${team.teamName}_${id}"));
   } else {
     // 일반 모드: 상세 정보창 띄우기
     _showMarkerDetails(id, fromOtherTeam: team);
@@ -726,8 +726,8 @@ Future<void> _loadData() async {
     if (mounted) {
       setState(() {
         if (gJ != null) _userGroups.addAll((jsonDecode(gJ) as List).map((g) => MapGroup.fromJson(g)));
-        if (mJ != null) { for (var item in jsonDecode(mJ)) { SiteData d = SiteData.fromJson(item); _markerDataMap[MarkerId(d.id)] = d; } }
-        if (lJ != null) { for (var item in jsonDecode(lJ)) { LineData d = LineData.fromJson(item); _lineDataMap[PolylineId(d.id)] = d; } }
+        if (mJ != null) { for (var item in jsonDecode(mJ)) { SiteData d = SiteData.fromJson(item); _markerDataMap[d.id] = d; } }
+        if (lJ != null) { for (var item in jsonDecode(lJ)) { LineData d = LineData.fromJson(item); _lineDataMap[d.id] = d; } }
       });
     }
 
@@ -746,7 +746,7 @@ Future<void> _loadData() async {
           if (data['markers'] != null) {
             for (var m in (data['markers'] as List)) {
               SiteData d = SiteData.fromJson(m);
-              _markerDataMap[MarkerId(d.id)] = d;
+              _markerDataMap[d.id] = d;
             }
           }
 
@@ -754,7 +754,7 @@ Future<void> _loadData() async {
           if (data['lines'] != null) {
             for (var l in (data['lines'] as List)) {
               LineData d = LineData.fromJson(l);
-              _lineDataMap[PolylineId(d.id)] = d;
+              _lineDataMap[d.id] = d;
             }
           }
         });
@@ -810,10 +810,10 @@ Future<void> _loadData() async {
                   ? (data['groups'] as List).map((g) => MapGroup.fromJson(g)).toList()
                   : [],
               markers: data['markers'] != null
-                  ? { for (var m in (data['markers'] as List)) MarkerId(m['id']): SiteData.fromJson(m) }
+                  ? { for (var m in (data['markers'] as List)) m['id'].toString(): SiteData.fromJson(m) }
                   : {},
               lines: data['lines'] != null
-                  ? { for (var l in (data['lines'] as List)) PolylineId(l['id']): LineData.fromJson(l) }
+                  ? { for (var l in (data['lines'] as List)) l['id'].toString(): LineData.fromJson(l) }
                   : {},
             );
           }
@@ -1435,7 +1435,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
           // 로컬 화면(UI) 즉시 반영
           setState(() {
             _lastSelectedGroupName = selG!.name;
-            _markerDataMap[MarkerId(id)] = newData;
+            _markerDataMap[id] = newData;
           });
           
           // 기존 _saveData()는 전체를 덮어씌우므로 제외하고, 비상용 로컬 폰 저장만 수행
@@ -1782,7 +1782,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
           if (!line.isVisible) continue; // 그 선이 꺼져 있으면 패스
 
           vPolylines.add(Polyline(
-            polylineId: PolylineId("${team.teamName}_${line.id}"), // ID 겹침 방지
+            polylineId: "${team.teamName}_${line.id}", // ID 겹침 방지
             points: line.points,
             color: Color(line.colorValue).withOpacity(0.5), // 타 팀 선은 약간 투명하게
             width: 8,
@@ -1803,7 +1803,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
     
     if (pointsToDraw.isNotEmpty) {
       vPolylines.add(Polyline(
-        polylineId: const PolylineId("temp_free_line"),
+        polylineId: "temp_free_line",
         points: pointsToDraw,
         color: Colors.redAccent, 
         width: 3,
@@ -2003,7 +2003,7 @@ if (_isLineMode)
     );
   }
   // --- [상세 보기: 관리자용 다운로드 버튼 추가 버전] ---
-void _showMarkerDetails(MarkerId mid, {TeamData? fromOtherTeam}) {
+void _showMarkerDetails(String mid, {TeamData? fromOtherTeam}) {
     final d = fromOtherTeam != null ? fromOtherTeam.markers[mid]! : _markerDataMap[mid]!;
     String? targetTeamName = fromOtherTeam?.teamName; 
 
@@ -2577,7 +2577,7 @@ void _showCreateMenu() {
                       } else if (isFreeDraw) {
                         pts = capturedFreePoints;
                       } else {
-                        pts = capturedMarkerIds.map((mid) => _markerDataMap[MarkerId(mid)]!.position).toList();
+                        pts = capturedMarkerIds.map((mid) => _markerDataMap[mid]!.position).toList();
                       }
 
                       LineData newLine = LineData(
@@ -2592,7 +2592,7 @@ void _showCreateMenu() {
                       if (widget.isAdmin && existingLine == null) {
                         for (String targetTeam in selectedTargetTeams) {
                           if (targetTeam == widget.teamName) {
-                            setState(() { _lineDataMap[PolylineId(id)] = newLine; });
+                            setState(() { _lineDataMap[id] = newLine; });
                             _saveData();
                           } else {
                             try {
@@ -2618,7 +2618,7 @@ void _showCreateMenu() {
                         });
                       } else {
                         setState(() {
-                          _lineDataMap[PolylineId(id)] = newLine;
+                          _lineDataMap[id] = newLine;
                           _isLineMode = false;
                           _isFreeLineMode = false;
                           _tempLineMarkerIds.clear();
@@ -2650,7 +2650,7 @@ void _showCreateMenu() {
   
   
     // --- [선 상세 정보 보기] ---
-  void _showLineDetails(PolylineId lid) {
+  void _showLineDetails(String lid) {
     final d = _lineDataMap[lid]!;
     showModalBottomSheet(
       context: context,
@@ -3769,7 +3769,7 @@ Future<BitmapDescriptor> _createNameLabelMarker(String label, Color color) async
                         Navigator.pop(c); 
                         
                         if (isMyLine) {
-                          setState(() => _lineDataMap.remove(PolylineId(line.id)));
+                          setState(() => _lineDataMap.remove(line.id));
                           _saveData();
                         } else if (teamName != null) {
                           try {
