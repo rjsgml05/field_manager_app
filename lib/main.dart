@@ -440,6 +440,36 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
     await _saveData();
     if (mounted) _updateMarkers();
   }
+
+  Future<void> _deleteAllLines() async {
+    if (_lineDataMap.isEmpty) return;
+
+    final lineCount = _lineDataMap.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Delete all lines"),
+        content: Text("Delete all $lineCount line(s)?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Delete", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _lineDataMap.clear();
+      _clearSelectedLines();
+    });
+    await _saveData();
+    if (mounted) _updateMarkers();
+  }
   String? _lastSelectedGroupName; // ✅ 마지막으로 선택한 그룹 이름 저장
 
 Future<String> _getKoreanAddress(double lat, double lng) async {
@@ -1874,6 +1904,11 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                     TextButton(
                       onPressed: _selectedLineIds.isEmpty ? null : _deleteSelectedLines,
                       child: const Text("선택 삭제"),
+                    ),
+                  if (_isLineDeleteMode)
+                    TextButton(
+                      onPressed: _lineDataMap.isEmpty ? null : _deleteAllLines,
+                      child: const Text("전체 삭제"),
                     ),
                   IconButton(
                     icon: Icon(_isLineDeleteMode ? Icons.close : Icons.checklist),
