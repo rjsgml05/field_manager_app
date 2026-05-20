@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:pdf/pdf.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:convert';
@@ -29,7 +26,7 @@ import 'package:media_scanner/media_scanner.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'dart:async';
 import 'package:url_launcher/link.dart';
-import 'models/lat_lng.dart' as app_lat_lng;
+import 'models/lat_lng.dart';
 
 
 
@@ -3070,166 +3067,13 @@ void _deleteGroupDialog(MapGroup group) {
     }
   }  
   Future<void> _exportDetailedPdf(MapGroup group) async {
-    final markers = _markerDataMap.values.where((m) => m.group.name == group.name).toList();
-    if (markers.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("마커가 없습니다.")));
-      return;
-    }
-
-    TextEditingController titleController = TextEditingController(text: "${group.name}_상세리포트");
-    String? action;
-
-    await showDialog(
-      context: context, 
-      builder: (ctx) => AlertDialog(
-        title: const Text("작업지시서 내보내기"), 
-        content: TextField(controller: titleController, decoration: const InputDecoration(labelText: "리포트 제목")), 
-        actions: [
-          ElevatedButton(onPressed: () { action = 'save'; Navigator.pop(ctx); }, child: const Text("저장")),
-          ElevatedButton(onPressed: () { action = 'share'; Navigator.pop(ctx); }, child: const Text("공유")),
-        ]
-      )
-    );
-
-    if (action == null || !mounted) return;
-
-    setState(() { _isGlobalProcessing = true; _processingText = "리포트 생성 중..."; });
-
-    try {
-      final pdf = pw.Document();
-      final fontData = await rootBundle.load("assets/fonts/NanumGothic.ttf");
-      final ttf = pw.Font.ttf(fontData);
-
-      int chunkSize = 5;
-      for (int i = 0; i < markers.length; i += chunkSize) {
-        int end = (i + chunkSize < markers.length) ? i + chunkSize : markers.length;
-        List<SiteData> batch = markers.sublist(i, end);
-        if (mounted) setState(() => _processingText = "처리 중... ($end / ${markers.length}개)");
-
-        Map<String, Uint8List?> downloadedMaps = {};
-        Map<String, List<pw.Widget>> downloadedPhotos = {};
-
-        await Future.wait(batch.map((m) async {
-          // A. 지도 (높이 150)
-          final staticMapUrl = "https://maps.googleapis.com/maps/api/staticmap?center=${m.lat},${m.lng}&zoom=17&size=600x200&markers=color:red%7C${m.lat},${m.lng}&key=$googleApiKey";
-          try {
-            final res = await http.get(Uri.parse(staticMapUrl)).timeout(const Duration(seconds: 10));
-            if (res.statusCode == 200) downloadedMaps[m.id] = res.bodyBytes;
-          } catch (e) {}
-
-          // B. 사진
-          List<pw.Widget> pWidgets = [];
-          for (var p in m.photos) {
-            try {
-              Uint8List? imgB;
-              if (p.filePath.startsWith('http')) {
-                final res = await http.get(Uri.parse(p.filePath)).timeout(const Duration(seconds: 10));
-                if (res.statusCode == 200) imgB = res.bodyBytes;
-              } else {
-                final file = File(p.filePath);
-                if (await file.exists()) imgB = await file.readAsBytes();
-              }
-              if (imgB != null) {
-                // 📸 [수정] 높이 400 -> 320으로 축소 (한 페이지에 맞추기 위함)
-                pWidgets.add(pw.Container(
-                  margin: const pw.EdgeInsets.only(bottom: 15),
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Image(pw.MemoryImage(imgB), height: 320, fit: pw.BoxFit.contain),
-                      pw.SizedBox(height: 5),
-                      pw.Text("📝 ${p.comment}", style: pw.TextStyle(font: ttf, fontSize: 16, fontWeight: pw.FontWeight.bold)),
-                      pw.Divider(color: PdfColors.grey300),
-                    ]
-                  )
-                ));
-              }
-            } catch (e) {}
-          }
-          downloadedPhotos[m.id] = pWidgets;
-        }));
-
-        for (var m in batch) {
-          final mapImg = downloadedMaps[m.id];
-          final photoWidgets = downloadedPhotos[m.id] ?? [];
-          
-          pdf.addPage(pw.MultiPage(
-            theme: pw.ThemeData.withFont(base: ttf),
-            build: (pw.Context context) => [
-              // ✅ [수정] 맨홀번호 위에 팀명/주소 먼저 표시
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text("팀명: ${widget.teamName}", style: pw.TextStyle(font: ttf, fontSize: 12, color: PdfColors.grey700)),
-                  pw.Text("주소: ${m.address}", style: pw.TextStyle(font: ttf, fontSize: 12, color: PdfColors.grey700)),
-                ]
-              ),
-              pw.SizedBox(height: 5),
-
-              // 헤더 (맨홀 번호)
-              pw.Header(level: 0, child: pw.Text(m.title, style: pw.TextStyle(font: ttf, fontSize: 24, fontWeight: pw.FontWeight.bold))),
-              pw.SizedBox(height: 10),
-              
-              // 🗺️ 지도 (높이 150)
-              if (mapImg != null)
-                pw.Container(
-                  height: 150, 
-                  width: double.infinity,
-                  decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey)),
-                  child: pw.Image(pw.MemoryImage(mapImg), fit: pw.BoxFit.cover)
-                ),
-              pw.SizedBox(height: 10),
-              
-              // 설명 박스
-              pw.Container(
-                width: double.infinity,
-                padding: const pw.EdgeInsets.all(10),
-                decoration: const pw.BoxDecoration(color: PdfColors.grey100),
-                child: pw.Text(m.description, style: pw.TextStyle(font: ttf, fontSize: 14)), // 폰트 약간 줄임(14) 균형 위해
-              ),
-              pw.SizedBox(height: 20),
-
-              // 📸 사진 리스트
-              if (photoWidgets.isNotEmpty) ...photoWidgets
-              else pw.Text("사진 없음", style: pw.TextStyle(font: ttf, fontSize: 14, color: PdfColors.grey)),
-            ]
-          ));
-        }
-      }
-
-      final bytes = await pdf.save();
-      String fileName = "${titleController.text}.pdf";
-
-      if (action == 'share') {
-        final dir = await getTemporaryDirectory();
-        final file = File("${dir.path}/$fileName");
-        await file.writeAsBytes(bytes);
-        await Share.shareXFiles([XFile(file.path)], subject: titleController.text);
-      } else {
-        try {
-          if (Platform.isAndroid && !(await Permission.manageExternalStorage.isGranted) && !(await Permission.storage.isGranted)) {
-             throw Exception("권한 없음");
-          }
-          Directory dDir = Directory('/storage/emulated/0/Download');
-          if (!await dDir.exists()) dDir = await getApplicationDocumentsDirectory();
-          final file = File("${dDir.path}/$fileName");
-          await file.writeAsBytes(bytes);
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("저장 완료: ${dDir.path}/$fileName")));
-        } catch (e) {
-          final dir = await getTemporaryDirectory();
-          final file = File("${dir.path}/$fileName");
-          await file.writeAsBytes(bytes);
-          await Share.shareXFiles([XFile(file.path)], subject: titleController.text);
-        }
-      }
-    } catch (e) {
-      debugPrint("PDF 실패: $e");
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF 생성 실패")));
-    } finally {
-      if (mounted) setState(() => _isGlobalProcessing = false);
+    debugPrint('PDF export is temporarily disabled during Kakao map migration.');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('PDF 기능은 지도 전환 작업 중 임시 비활성화되었습니다.')),
+      );
     }
   }
-
 
 Future<void> _syncToGoogleSheet(SiteData site) async {
     String webAppUrl = "https://script.google.com/macros/s/AKfycbw3f4BlSBAplVWVR2rbWKwNf7cEzRBdDRdmnK9D1dr9mg8vGSDeyvcBvvPEb4qv8r6hDg/exec";
@@ -3329,152 +3173,11 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
 
 // ✅ [앱/관리자용] 팀명/주소 상단 표시 + 사진 높이 최적화
   Future<void> _exportGroupPdfForAdmin(String teamName, MapGroup group) async {
-    if (kIsWeb) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("앱(App)에서 실행해주세요.")));
-      return;
-    }
-
-    TeamData? targetTeam = _allTeamsMap[teamName];
-    if (targetTeam == null) return;
-    List<SiteData> markers = targetTeam.markers.values.where((m) => m.group.name == group.name).toList();
-    if (markers.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("마커가 없습니다.")));
-      return;
-    }
-
-    TextEditingController titleController = TextEditingController(text: "${teamName}_${group.name}_리포트");
-
-    await showDialog(
-      context: context, 
-      builder: (ctx) => AlertDialog(
-        title: const Text("관리자 리포트 설정"), 
-        content: TextField(controller: titleController, decoration: const InputDecoration(labelText: "파일 제목")),
-        actions: [
-          ElevatedButton(onPressed: () { Navigator.pop(ctx); }, child: const Text("다운로드")),
-          TextButton(onPressed: () { titleController.clear(); Navigator.pop(ctx); }, child: const Text("취소")),
-        ]
-      )
-    );
-    if (titleController.text.isEmpty) return;
-
-    setState(() { _isGlobalProcessing = true; _processingText = "리포트 생성 중..."; });
-
-    try {
-      final pdf = pw.Document();
-      final fontData = await rootBundle.load("assets/fonts/NanumGothic.ttf");
-      final ttf = pw.Font.ttf(fontData);
-
-      int chunkSize = 5;
-      for (int i = 0; i < markers.length; i += chunkSize) {
-        int end = (i + chunkSize < markers.length) ? i + chunkSize : markers.length;
-        List<SiteData> batch = markers.sublist(i, end);
-        if (mounted) setState(() => _processingText = "처리 중... ($end / ${markers.length}개)");
-
-        Map<String, Uint8List?> downloadedMaps = {};
-        Map<String, List<pw.Widget>> downloadedPhotos = {};
-
-        await Future.wait(batch.map((m) async {
-          // A. 지도 (무조건 다운로드)
-          final staticMapUrl = "https://maps.googleapis.com/maps/api/staticmap?center=${m.lat},${m.lng}&zoom=17&size=600x200&markers=color:red%7C${m.lat},${m.lng}&key=$googleApiKey";
-          try {
-            final res = await http.get(Uri.parse(staticMapUrl)).timeout(const Duration(seconds: 10));
-            if (res.statusCode == 200) downloadedMaps[m.id] = res.bodyBytes;
-          } catch (e) {}
-
-          // B. 사진
-          List<pw.Widget> pWidgets = [];
-          for (var p in m.photos) {
-            try {
-              Uint8List? imgB;
-              if (p.filePath.startsWith('http')) {
-                final res = await http.get(Uri.parse(p.filePath)).timeout(const Duration(seconds: 10));
-                if (res.statusCode == 200) imgB = res.bodyBytes;
-              } else {
-                final file = File(p.filePath);
-                if (await file.exists()) imgB = await file.readAsBytes();
-              }
-              if (imgB != null) {
-                // 📸 [수정] 높이 320으로 축소
-                pWidgets.add(pw.Container(
-                  margin: const pw.EdgeInsets.only(bottom: 15),
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Image(pw.MemoryImage(imgB), height: 320, fit: pw.BoxFit.contain),
-                      pw.SizedBox(height: 5),
-                      pw.Text("📝 ${p.comment}", style: pw.TextStyle(font: ttf, fontSize: 16, fontWeight: pw.FontWeight.bold)),
-                      pw.Divider(color: PdfColors.grey300),
-                    ]
-                  )
-                ));
-              }
-            } catch (e) {}
-          }
-          downloadedPhotos[m.id] = pWidgets;
-        }));
-
-        for (var m in batch) {
-          final mapImg = downloadedMaps[m.id];
-          final photoWidgets = downloadedPhotos[m.id] ?? [];
-          
-          pdf.addPage(pw.MultiPage(
-            theme: pw.ThemeData.withFont(base: ttf),
-            build: (pw.Context context) => [
-              // ✅ [수정] 팀명/주소 상단 배치
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text("팀명: $teamName", style: pw.TextStyle(font: ttf, fontSize: 12, color: PdfColors.grey700)),
-                  pw.Text("주소: ${m.address}", style: pw.TextStyle(font: ttf, fontSize: 12, color: PdfColors.grey700)),
-                ]
-              ),
-              pw.SizedBox(height: 5),
-
-              // 헤더
-              pw.Header(level: 0, child: pw.Text(m.title, style: pw.TextStyle(font: ttf, fontSize: 24, fontWeight: pw.FontWeight.bold))),
-              pw.SizedBox(height: 10),
-              
-              // 🗺️ 지도
-              if (mapImg != null)
-                pw.Container(
-                  height: 150, 
-                  width: double.infinity,
-                  decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey)),
-                  child: pw.Image(pw.MemoryImage(mapImg), fit: pw.BoxFit.cover)
-                ),
-              pw.SizedBox(height: 10),
-              
-              // 설명 박스
-              pw.Container(
-                width: double.infinity,
-                padding: const pw.EdgeInsets.all(10),
-                decoration: const pw.BoxDecoration(color: PdfColors.grey100),
-                child: pw.Text(m.description, style: pw.TextStyle(font: ttf, fontSize: 14)),
-              ),
-              pw.SizedBox(height: 20),
-
-              // 📸 사진 리스트
-              if (photoWidgets.isNotEmpty) ...photoWidgets
-              else pw.Text("사진 없음", style: pw.TextStyle(font: ttf, fontSize: 14, color: PdfColors.grey)),
-            ]
-          ));
-        }
-      }
-
-      final bytes = await pdf.save();
-      String fileName = "${titleController.text}.pdf";
-      Directory dDir = Directory('/storage/emulated/0/Download');
-      if (!await dDir.exists()) dDir = await getApplicationDocumentsDirectory();
-      final file = File("${dDir.path}/$fileName");
-      await file.writeAsBytes(bytes);
-
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("저장 완료: ${dDir.path}/$fileName")));
-
-    } catch (e) {
-      debugPrint("PDF 실패: $e");
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF 생성 실패")));
-    } finally {
-      if (mounted) setState(() => _isGlobalProcessing = false);
+    debugPrint('Admin PDF export is temporarily disabled during Kakao map migration.');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('PDF 기능은 지도 전환 작업 중 임시 비활성화되었습니다.')),
+      );
     }
   }
  void _showEnlargedPhoto(String imagePath, String comment) {
