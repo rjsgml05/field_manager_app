@@ -1835,7 +1835,21 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
 
             ExpansionTile(
               leading: const Icon(Icons.timeline, color: Colors.purple),
-              title: const Text("선 목록 (Lines)", style: TextStyle(fontWeight: FontWeight.bold)),
+              title: Row(
+                children: [
+                  const Expanded(child: Text("선 목록 (Lines)", style: TextStyle(fontWeight: FontWeight.bold))),
+                  IconButton(
+                    icon: Icon(_isLineDeleteMode ? Icons.close : Icons.checklist),
+                    tooltip: _isLineDeleteMode ? "삭제 모드 종료" : "삭제 모드",
+                    onPressed: () {
+                      setState(() {
+                        _isLineDeleteMode = !_isLineDeleteMode;
+                        if (!_isLineDeleteMode) _clearSelectedLines();
+                      });
+                    },
+                  ),
+                ],
+              ),
               children: [
                 // 1. 선이 아예 없을 때
                 if (_lineDataMap.isEmpty && (!isAdmin || _allTeamsMap.values.every((t) => t.lines.isEmpty)))
@@ -3721,8 +3735,23 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
 
   // 2. 선 목록 아이템 생성 함수 (이제 밖으로 나왔으니 잘 보입니다)
   Widget _buildLineListTile(LineData line, {required bool isMyLine, String? teamName}) {
+    final isSelectedLine = _selectedLineIds.contains(line.id);
+
     return ListTile(
-      leading: Icon(Icons.horizontal_rule, color: Color(line.colorValue)),
+      leading: _isLineDeleteMode
+          ? Checkbox(
+              value: isSelectedLine,
+              onChanged: (checked) {
+                setState(() {
+                  if (checked == true) {
+                    _selectedLineIds.add(line.id);
+                  } else {
+                    _selectedLineIds.remove(line.id);
+                  }
+                });
+              },
+            )
+          : Icon(Icons.horizontal_rule, color: Color(line.colorValue)),
       title: Text(
         "${isMyLine ? '' : '[$teamName] '}${line.title}",
         style: TextStyle(color: line.isVisible ? Colors.black : Colors.grey, fontSize: 13),
@@ -3816,6 +3845,17 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
         ],
       ),
       onTap: () {
+        if (_isLineDeleteMode) {
+          setState(() {
+            if (isSelectedLine) {
+              _selectedLineIds.remove(line.id);
+            } else {
+              _selectedLineIds.add(line.id);
+            }
+          });
+          return;
+        }
+
         if (!line.isVisible) return;
         Navigator.pop(context);
         if (line.points.isNotEmpty) {
