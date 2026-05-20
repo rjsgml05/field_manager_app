@@ -84,6 +84,24 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+
+    .cluster-marker {
+      align-items: center;
+      border: 1px solid rgba(0, 0, 0, 0.34);
+      border-radius: 50%;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+      cursor: pointer;
+      display: flex;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      font-weight: 800;
+      height: 38px;
+      justify-content: center;
+      line-height: 1;
+      min-width: 38px;
+      padding: 0 4px;
+      user-select: none;
+    }
   </style>
 </head>
 <body>
@@ -98,6 +116,11 @@
     var lineOverlayMap = {};
     var currentLocationMarker = null;
     var currentLocationOverlay = null;
+    var markerData = [];
+    var lineData = [];
+    var LABEL_HIDE_LEVEL = 7;
+    var LINE_LABEL_HIDE_LEVEL = 8;
+    var CLUSTER_LEVEL = 8;
 
     function postToFlutter(channelName, payload) {
       var channel = window[channelName];
@@ -181,6 +204,179 @@
       return root;
     }
 
+    function makeClusterContent(cluster) {
+      var color = cluster.color || '#4CAF50';
+      var root = document.createElement('div');
+      root.className = 'cluster-marker';
+      root.style.backgroundColor = color;
+      root.style.color = textColorForBackground(color);
+      root.textContent = String(cluster.items.length);
+
+      root.addEventListener('click', function(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!map) return;
+
+        var level = Math.max(1, map.getLevel() - 2);
+        map.setCenter(new kakao.maps.LatLng(cluster.lat, cluster.lng));
+        map.setLevel(level);
+      });
+
+      return root;
+    }
+
+    function dominantColor(items) {
+      var counts = {};
+      var bestColor = String((items[0] && items[0].color) || '#4CAF50');
+      var bestCount = 0;
+
+      items.forEach(function(item) {
+        var color = String(item.color || '#4CAF50');
+        counts[color] = (counts[color] || 0) + 1;
+        if (counts[color] > bestCount) {
+          bestCount = counts[color];
+          bestColor = color;
+        }
+      });
+
+      return bestColor;
+    }
+
+    function clusterMarkers(items, level) {
+      if (level < CLUSTER_LEVEL) {
+        return items.map(function(item) {
+          return {
+            type: 'marker',
+            item: item
+          };
+        });
+      }
+
+      var cellSize = 0.01 * Math.pow(2, level - CLUSTER_LEVEL);
+      var buckets = {};
+
+      items.forEach(function(item) {
+        var lat = Number(item.lat ?? item.latitude);
+        var lng = Number(item.lng ?? item.longitude);
+        var key = Math.floor(lat / cellSize) + ':' + Math.floor(lng / cellSize);
+
+        if (!buckets[key]) buckets[key] = [];
+        buckets[key].push(item);
+      });
+
+      return Object.keys(buckets).map(function(key) {
+        var bucket = buckets[key];
+        if (bucket.length === 1) {
+          return {
+            type: 'marker',
+            item: bucket[0]
+          };
+        }
+
+        var latSum = 0;
+        var lngSum = 0;
+        bucket.forEach(function(item) {
+          latSum += Number(item.lat ?? item.latitude);
+          lngSum += Number(item.lng ?? item.longitude);
+        });
+
+        return {
+          type: 'cluster',
+          items: bucket,
+          lat: latSum / bucket.length,
+          lng: lngSum / bucket.length,
+          color: dominantColor(bucket)
+        };
+      });
+    }
+
+    function redrawMarkers() {
+      clearMapItems(markerMap);
+      clearMapItems(markerOverlayMap);
+      markerMap = {};
+      markerOverlayMap = {};
+
+      if (!map) return;
+
+      var level = map.getLevel();
+      var showMarkerLabels = level < LABEL_HIDE_LEVEL;
+
+      clusterMarkers(markerData, level).forEach(function(entry, index) {
+        if (entry.type === 'cluster') {
+          var clusterId = 'cluster_' + index;
+          markerMap[clusterId] = new kakao.maps.CustomOverlay({
+            map: map,
+            position: new kakao.maps.LatLng(entry.lat, entry.lng),
+            content: makeClusterContent(entry),
+            xAnchor: 0.5,
+            yAnchor: 0.5
+          });
+          return;
+        }
+
+        var item = entry.item;
+        var id = String(item.id ?? '');
+        var itemForRender = Object.assign({}, item);
+        if (!showMarkerLabels) {
+          itemForRender.title = '';
+          itemForRender.name = '';
+        }
+
+        markerMap[id] = new kakao.maps.CustomOverlay({
+          map: map,
+          position: toLatLng(item),
+          content: makeFlatMarkerContent(itemForRender, index + 1, id),
+          xAnchor: 0.5,
+          yAnchor: showMarkerLabels ? 0.42 : 0.5
+        });
+      });
+    }
+
+    function redrawLines() {
+      clearMapItems(lineMap);
+      clearMapItems(lineOverlayMap);
+      lineMap = {};
+      lineOverlayMap = {};
+
+      if (!map) return;
+
+      var level = map.getLevel();
+      var showLineLabels = level < LINE_LABEL_HIDE_LEVEL;
+
+      lineData.forEach(function(line) {
+        var id = String(line.id ?? '');
+        var points = normalizeItems(line.points).map(toLatLng);
+        if (points.length < 2) return;
+
+        var polyline = new kakao.maps.Polyline({
+          map: map,
+          path: points,
+          strokeWeight: Number(line.width ?? 5),
+          strokeColor: String(line.color ?? '#1976D2'),
+          strokeOpacity: Number(line.opacity ?? 0.9),
+          strokeStyle: String(line.style ?? 'solid')
+        });
+
+        lineMap[id] = polyline;
+
+        if (!showLineLabels) return;
+
+        var labelPosition = points[Math.floor(points.length / 2)];
+        var overlay = new kakao.maps.CustomOverlay({
+          map: map,
+          position: labelPosition,
+          content: makeLabel(line.title ?? line.name ?? id, 'line-label', line.color),
+          yAnchor: 1.35
+        });
+        lineOverlayMap[id] = overlay;
+      });
+    }
+
+    function refreshZoomDependentLayers() {
+      redrawMarkers();
+      redrawLines();
+    }
+
     function initMap() {
       var container = document.getElementById('map');
       map = new kakao.maps.Map(container, {
@@ -196,30 +392,16 @@
         });
       });
 
+      kakao.maps.event.addListener(map, 'zoom_changed', refreshZoomDependentLayers);
+
       postToFlutter('FlutterChannel', {
         type: 'mapReady'
       });
     }
 
     function renderMarkers(markers) {
-      clearMapItems(markerMap);
-      clearMapItems(markerOverlayMap);
-      markerMap = {};
-      markerOverlayMap = {};
-
-      normalizeItems(markers).forEach(function(item, index) {
-        var id = String(item.id ?? '');
-        var position = toLatLng(item);
-        var marker = new kakao.maps.CustomOverlay({
-          map: map,
-          position: position,
-          content: makeFlatMarkerContent(item, index + 1, id),
-          xAnchor: 0.5,
-          yAnchor: 0.42
-        });
-
-        markerMap[id] = marker;
-      });
+      markerData = normalizeItems(markers);
+      redrawMarkers();
     }
 
     function renderDrawMarkers(markers) {
@@ -237,36 +419,8 @@
     }
 
     function renderLines(lines) {
-      clearMapItems(lineMap);
-      clearMapItems(lineOverlayMap);
-      lineMap = {};
-      lineOverlayMap = {};
-
-      normalizeItems(lines).forEach(function(line) {
-        var id = String(line.id ?? '');
-        var points = normalizeItems(line.points).map(toLatLng);
-        if (points.length < 2) return;
-
-        var polyline = new kakao.maps.Polyline({
-          map: map,
-          path: points,
-          strokeWeight: Number(line.width ?? 5),
-          strokeColor: String(line.color ?? '#1976D2'),
-          strokeOpacity: Number(line.opacity ?? 0.9),
-          strokeStyle: String(line.style ?? 'solid')
-        });
-
-        lineMap[id] = polyline;
-
-        var labelPosition = points[Math.floor(points.length / 2)];
-        var overlay = new kakao.maps.CustomOverlay({
-          map: map,
-          position: labelPosition,
-          content: makeLabel(line.title ?? line.name ?? id, 'line-label', line.color),
-          yAnchor: 1.35
-        });
-        lineOverlayMap[id] = overlay;
-      });
+      lineData = normalizeItems(lines);
+      redrawLines();
     }
 
     function moveTo(lat, lng, level) {
