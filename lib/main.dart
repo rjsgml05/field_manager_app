@@ -365,9 +365,6 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   String _processingText = "";    
   // ✅ [추가] 마지막으로 UI(버튼 등)를 터치한 시간을 기록하는 변수
   int _lastUIInteractionTime = 0;
-  // 여기에 이 변수가 있어야 아래 PDF 함수에서 오류가 나지 않습니다.
-  final String googleApiKey = "AIzaSyAiT2-6ofs_K8UdtEN6xWYVF98V1C8en-o"; 
-
   final Map<String, SiteData> _markerDataMap = {};
   // ... 나머지 기존 코드들 ...
   final Map<String, LineData> _lineDataMap = {};
