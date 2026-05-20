@@ -364,8 +364,6 @@ class MapSample extends StatefulWidget {
 class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   bool _isGlobalProcessing = false;
   String _processingText = "";    
-  Set<Marker> _cachedMarkers = {};
-  
   // ✅ [추가] 마지막으로 UI(버튼 등)를 터치한 시간을 기록하는 변수
   int _lastUIInteractionTime = 0;
   // 여기에 이 변수가 있어야 아래 PDF 함수에서 오류가 나지 않습니다.
@@ -475,6 +473,9 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
         'FlutterChannel',
         onMessageReceived: (JavaScriptMessage message) {
           debugPrint("FlutterChannel: ${message.message}");
+          if (message.message.contains('mapReady')) {
+            _updateMarkers();
+          }
         },
       )
       ..loadFlutterAsset('assets/kakao_map.html');
@@ -531,166 +532,129 @@ void dispose() {
 
 
 Future<void> _updateMarkers() async {
-  Set<Marker> newMarkers = {};
+  await _renderMarkersOnKakaoMap();
+  await _renderLinesOnKakaoMap();
+}
 
-  // 1. [내 팀 마커] 생성
+String _colorToHex(Color color) {
+  return '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+}
+
+Map<String, dynamic> _siteToMarkerJson(String id, SiteData site, MapGroup group) {
+  return {
+    'id': id,
+    'lat': site.lat,
+    'lng': site.lng,
+    'title': site.title,
+    'color': _colorToHex(site.isChecked ? Colors.blue : group.color),
+    'groupName': group.name,
+  };
+}
+
+Map<String, dynamic> _lineToJson(String id, LineData line) {
+  return {
+    'id': id,
+    'title': line.title,
+    'color': _colorToHex(Color(line.colorValue)),
+    'points': line.points.map((p) => {'lat': p.latitude, 'lng': p.longitude}).toList(),
+  };
+}
+
+List<Map<String, dynamic>> _buildMarkerJsonList() {
+  final markers = <Map<String, dynamic>>[];
+
   for (var entry in _markerDataMap.entries) {
-    String id = entry.key;
-    SiteData site = entry.value;
-
-    final g = _userGroups.firstWhere(
-        (group) => group.name == site.group.name, 
-        orElse: () => site.group
+    final id = entry.key;
+    final site = entry.value;
+    final group = _userGroups.firstWhere(
+      (g) => g.name == site.group.name,
+      orElse: () => site.group,
     );
-    
-    if (g.isVisible) {
-      // ✅ [렉 방지 핵심 로직]
-      // "이름_색상"으로 된 꼬리표(Key)를 만듭니다.
-      String cacheKey = "${site.title}_${g.color.value}_${site.isChecked}_${kIsWeb}";
-          BitmapDescriptor labelIcon;
 
-          if (_markerIconCache.containsKey(cacheKey)) {
-            labelIcon = _markerIconCache[cacheKey]!;
-          } else {
-            // 체크(On) 상태면 파란색, 아니면 원래 그룹 색상으로 지도에 그립니다.
-            Color markerColor = site.isChecked ? Colors.blue : g.color;
-            labelIcon = await _createNameLabelMarker(site.title, markerColor);
-            _markerIconCache[cacheKey] = labelIcon;
-          }
-
-      newMarkers.add(Marker(
-        markerId: id, 
-        position: site.position,
-        icon: labelIcon, 
-        anchor: const Offset(0.5, 1.0),
-        draggable: _isMoveMode,
-        onTap: () {
-  // ✅ [수정] 모달 열린 상태면 마커 탭도 완전 차단
-  if (_isModalOpen || _isHoveringUI || !_isMapControlActive) return;
-  // ✅ [추가] 혹시 모달 없이도 모드가 꺼져있으면 선 추가 금지 (이중 방어)
-  if (!_isFreeLineMode && !_isLineMode && !_isTappingMode) {
-    _showMarkerDetails(id);
-    return;
-  }
-  if (_isFreeLineMode) {
-    setState(() => _tempFreeLinePoints.add(site.position));
-  } else if (_isLineMode) {
-    setState(() => _tempLineMarkerIds.add(id));
-  } else {
-    _showMarkerDetails(id);
-  }
-},
-        onDragEnd: _isMoveMode ? (newPos) async {
-          // (드래그 종료 로직은 기존과 동일)
-          String newAddr = await _getKoreanAddress(newPos.latitude, newPos.longitude);
-          setState(() { 
-            site.lat = newPos.latitude;
-            site.lng = newPos.longitude; 
-            site.address = newAddr; 
-          });
-          await _saveData(); 
-          _syncToGoogleSheet(site);
-          _updateMarkers(); 
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("위치 이동 완료"), duration: Duration(milliseconds: 800)));
-        } : null,
-      ));
+    if (group.isVisible) {
+      markers.add(_siteToMarkerJson(id, site, group));
     }
   }
 
-  // 2. [관리자용 타 팀 마커] 생성
   if (widget.isAdmin) {
     for (var team in _allTeamsMap.values) {
       if (!team.isVisible) continue;
 
       for (var entry in team.markers.entries) {
-        String id = entry.key;
-        SiteData site = entry.value;
-
-        final groupInfo = team.groups.firstWhere(
-            (g) => g.name == site.group.name, 
-            orElse: () => site.group
+        final id = entry.key;
+        final site = entry.value;
+        final group = team.groups.firstWhere(
+          (g) => g.name == site.group.name,
+          orElse: () => site.group,
         );
-        
-        if (groupInfo.isVisible) {
-          // ✅ [관리자 쪽도 똑같이 적용]
-          String cacheKey = "${site.title}_${groupInfo.color.value}_${site.isChecked}_${kIsWeb}";
-          BitmapDescriptor labelIcon;
 
-          if (_markerIconCache.containsKey(cacheKey)) {
-            labelIcon = _markerIconCache[cacheKey]!;
-          } else {
-            Color markerColor = site.isChecked ? Colors.blue : groupInfo.color;
-            labelIcon = await _createNameLabelMarker(site.title, markerColor);
-            _markerIconCache[cacheKey] = labelIcon;
-          }
-
-          newMarkers.add(Marker(
-            markerId: "${team.teamName}_${id}", 
-            position: site.position,
-            icon: labelIcon,
-            anchor: const Offset(0.5, 1.0),
-            alpha: 0.9,
-            draggable: _isMoveMode, 
-            onDragEnd: _isMoveMode ? (newPos) async {
-               // (관리자 드래그 로직 기존 동일 - 생략하거나 기존 코드 유지)
-               // ... 기존 로직 ...
-               String newAddr = await _getKoreanAddress(newPos.latitude, newPos.longitude);
-               setState(() { site.position = newPos; site.address = newAddr; });
-               try {
-                  var docRef = FirebaseFirestore.instance.collection('teams').doc(team.teamName);
-                  await FirebaseFirestore.instance.runTransaction((transaction) async {
-                    DocumentSnapshot snapshot = await transaction.get(docRef);
-                    if (!snapshot.exists) throw Exception("팀 데이터 없음");
-                    var data = snapshot.data() as Map<String, dynamic>;
-                    List<dynamic> currentMarkers = List.from(data['markers'] ?? []);
-                    int idx = currentMarkers.indexWhere((m) => m['id'] == site.id);
-                    if (idx != -1) {
-                      var targetMarker = currentMarkers[idx];
-                      targetMarker['lat'] = newPos.latitude;
-                      targetMarker['lng'] = newPos.longitude;
-                      targetMarker['address'] = newAddr;
-                      currentMarkers[idx] = targetMarker; 
-                      transaction.update(docRef, {'markers': currentMarkers});
-                    }
-                  });
-                  _syncToGoogleSheetAdmin(site, team.teamName);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("관리자 권한으로 이동 완료"), duration: Duration(milliseconds: 800)));
-               } catch (e) { debugPrint("저장 실패: $e"); }
-            } : null,
-            onTap: () {
-  // 🛡️ [핵심 방어막] 창이 열려있거나 UI 조작 중일 땐 마커 터치 절대 무시!! (선 튀는 원인 제거)
-  if (_isModalOpen || _isHoveringUI || !_isMapControlActive) return;
-
-  if (_isFreeLineMode) {
-    // 💡 지도에 직접 긋기 모드: 마커 선택을 무시하고 마커 좌표에 선을 이음
-    setState(() => _tempFreeLinePoints.add(site.position));
-  } else if (_isLineMode) {
-    // (선택) 타 팀 마커도 연결 모드에 포함할 경우
-    setState(() => _tempLineMarkerIds.add("${team.teamName}_${id}"));
-  } else {
-    // 일반 모드: 상세 정보창 띄우기
-    _showMarkerDetails(id, fromOtherTeam: team);
-  }
-},
-          ));
+        if (group.isVisible) {
+          markers.add(_siteToMarkerJson('${team.teamName}_$id', site, group));
         }
       }
     }
   }
-  
-  if (mounted) {
-    setState(() {
-      _cachedMarkers = newMarkers;
-    });
-  }
-}  int _getMaxMarkersForZoom(double zoom) {
-    if (zoom >= 17) return 1000;
-    if (zoom >= 15) return 500;
-    if (zoom >= 13) return 300;
-    if (zoom >= 11) return 150;
-    return 50;
+
+  return markers;
+}
+
+List<Map<String, dynamic>> _buildLineJsonList() {
+  final lines = <Map<String, dynamic>>[];
+
+  for (var entry in _lineDataMap.entries) {
+    final line = entry.value;
+    if (line.isVisible) {
+      lines.add(_lineToJson(entry.key, line));
+    }
   }
 
+  if (widget.isAdmin) {
+    for (var team in _allTeamsMap.values) {
+      if (!team.isVisible) continue;
+
+      for (var entry in team.lines.entries) {
+        final line = entry.value;
+        if (line.isVisible) {
+          lines.add(_lineToJson('${team.teamName}_${line.id}', line));
+        }
+      }
+    }
+  }
+
+  final pointsToDraw = _isModalOpen ? _frozenFreeLinePoints : _tempFreeLinePoints;
+  if (pointsToDraw.isNotEmpty) {
+    lines.add({
+      'id': 'temp_free_line',
+      'title': '',
+      'color': _colorToHex(Colors.redAccent),
+      'points': pointsToDraw.map((p) => {'lat': p.latitude, 'lng': p.longitude}).toList(),
+    });
+  }
+
+  return lines;
+}
+
+Future<void> _renderMarkersOnKakaoMap() async {
+  final controller = _webViewController;
+  if (controller == null) return;
+
+  try {
+    await controller.runJavaScript('renderMarkers(${jsonEncode(_buildMarkerJsonList())});');
+  } catch (e) {
+    debugPrint('renderMarkers failed: $e');
+  }
+}
+
+Future<void> _renderLinesOnKakaoMap() async {
+  final controller = _webViewController;
+  if (controller == null) return;
+
+  try {
+    await controller.runJavaScript('renderLines(${jsonEncode(_buildLineJsonList())});');
+  } catch (e) {
+    debugPrint('renderLines failed: $e');
+  }
+}
   Future<void> _saveData() async {
     // 1. [로컬 저장] 기존처럼 내 폰에도 백업 (비상용)
     final prefs = await SharedPreferences.getInstance();
@@ -1750,68 +1714,6 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
   
   @override
   Widget build(BuildContext context) {
-    // 1. 마커 및 선 데이터 취합 (기존 로직 유지)
-    Set<Marker> allMarkers = _cachedMarkers;
-    
-    Set<Polyline> vPolylines = {};
-
-    // 1. [내 선] 추가 (On/Off 스위치가 켜진 것만)
-    vPolylines.addAll(_lineDataMap.entries
-        .where((e) => e.value.isVisible) // 켜진 것만 통과!
-        .map((e) => Polyline(
-          polylineId: e.key, 
-          points: e.value.points, 
-          color: Color(e.value.colorValue).withOpacity(0.9), 
-          width: 8, 
-          onTap: () {
-            // ✅ 작업 모드 중일 때는 선 터치 무시
-            if (_isFreeLineMode || _isLineMode || _isTappingMode) return;
-            _showLineDetails(e.key);
-          }, 
-          // ✅ 핵심 해결책: 작업 모드 중일 땐 터치 이벤트를 지도 바닥으로 통과시킴
-          consumeTapEvents: !_isFreeLineMode && !_isLineMode && !_isTappingMode
-        )));
-
-    // 2. [관리자용] 다른 팀 선들도 추가 (관리자만 보임)
-    if (widget.isAdmin) {
-      for (var team in _allTeamsMap.values) {
-        if (!team.isVisible) continue; // 팀 자체가 숨겨져 있으면 패스
-        
-        for (var lineEntry in team.lines.entries) {
-          LineData line = lineEntry.value;
-          if (!line.isVisible) continue; // 그 선이 꺼져 있으면 패스
-
-          vPolylines.add(Polyline(
-            polylineId: "${team.teamName}_${line.id}", // ID 겹침 방지
-            points: line.points,
-            color: Color(line.colorValue).withOpacity(0.5), // 타 팀 선은 약간 투명하게
-            width: 8,
-            onTap: () {
-               // ✅ 작업 모드 중일 때는 선 터치 무시
-               if (_isFreeLineMode || _isLineMode || _isTappingMode) return;
-               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("[${team.teamName}] ${line.title}")));
-            },
-            // ✅ 여기도 동일하게 터치 통과 로직 적용
-            consumeTapEvents: !_isFreeLineMode && !_isLineMode && !_isTappingMode
-          ));
-        }
-      }
-    }
-
-    // 3. [작업 중] 지금 긋고 있는 빨간 점선 추가 (자유 그리기 모드)
-    List<LatLng> pointsToDraw = _isModalOpen ? _frozenFreeLinePoints : _tempFreeLinePoints;
-    
-    if (pointsToDraw.isNotEmpty) {
-      vPolylines.add(Polyline(
-        polylineId: "temp_free_line",
-        points: pointsToDraw,
-        color: Colors.redAccent, 
-        width: 3,
-        patterns: [PatternItem.dash(10), PatternItem.gap(10)],
-        zIndex: 100,
-      ));
-    }
-
     // 2. 화면 구성 시작
     return Scaffold(
       resizeToAvoidBottomInset: false,
