@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -28,6 +29,7 @@ import 'package:media_scanner/media_scanner.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'dart:async';
 import 'package:url_launcher/link.dart';
+import 'models/lat_lng.dart' as app_lat_lng;
 
 
 
@@ -384,6 +386,7 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   final ImagePicker _picker = ImagePicker();
   final List<String> _tempLineMarkerIds = [];
   GoogleMapController? _mapController;
+  WebViewController? _webViewController;
   bool _isTappingMode = false, _isMoveMode = false, _isLineMode = false;
   bool _isMapControlActive = true;
   bool _isFreeLineMode = false;
@@ -456,10 +459,35 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
 
   String get _sKey => "${widget.teamName}_${widget.teamPw}";
 
+  void _initializeKakaoWebView() {
+    _webViewController = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..addJavaScriptChannel(
+        'MarkerChannel',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint("MarkerChannel: ${message.message}");
+        },
+      )
+      ..addJavaScriptChannel(
+        'MapTapChannel',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint("MapTapChannel: ${message.message}");
+        },
+      )
+      ..addJavaScriptChannel(
+        'FlutterChannel',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint("FlutterChannel: ${message.message}");
+        },
+      )
+      ..loadFlutterAsset('assets/kakao_map.html');
+  }
+
   @override
   void initState() { 
     super.initState(); 
     WidgetsBinding.instance.addObserver(this); // ◀ 이 줄 추가
+    _initializeKakaoWebView();
     _loadData().then((_) => _updateMarkers());
   }
 
@@ -1835,41 +1863,9 @@ body: Stack(
         // 1. [가장 뒤] 지도 레이어
         IgnorePointer(
           ignoring: !_isMapControlActive || _isModalOpen, 
-          child: GoogleMap(
-            initialCameraPosition: const CameraPosition(
-              target: LatLng(35.1795, 129.0756), // 기본 시작 좌표
-              zoom: 13.0, 
-            ),
-            
-            // ✅ 1. 삭제되었던 마커와 선 그리기 코드 복구!
-            markers: allMarkers, 
-            polylines: vPolylines, 
-            
-            // ✅ 2. 삭제되었던 지도 컨트롤러 연결 코드 복구! (이동 기능 해결)
-            onMapCreated: (c) {
-              _mapController = c;
-              _moveToCurrentLocation();
-            },
-
-            zoomGesturesEnabled: !_isModalOpen,
-            scrollGesturesEnabled: !_isModalOpen,
-            rotateGesturesEnabled: !_isModalOpen,
-            tiltGesturesEnabled: !_isModalOpen,
-            myLocationEnabled: true, 
-
-            // ✅ 3. 복잡한 딜레이를 없애고 직관적으로 탭 처리 (터치 관통은 아래 2번에서 막음)
-            onTap: _isModalOpen ? null : (p) {
-               if (_isModalOpen || !_isMapControlActive) return;
-               
-               if (_isTappingMode) {
-                 _showInputSheet(newPoint: p);
-               } else if (_isFreeLineMode) {
-                 setState(() { _tempFreeLinePoints.add(p); });
-               }
-            },
-            onCameraMove: (pos) => _currentZoom = pos.zoom,
-            onCameraIdle: () => _scheduleMarkerUpdate(),
-          ),
+          child: _webViewController == null
+              ? const SizedBox.shrink()
+              : WebViewWidget(controller: _webViewController!),
         ),
 
     if (_isModalOpen || !_isMapControlActive)
