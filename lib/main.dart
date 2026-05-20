@@ -470,6 +470,40 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
     await _saveData();
     if (mounted) _updateMarkers();
   }
+
+  Future<bool> _upsertLineInTeamDoc(String teamName, LineData line, {required bool addIfMissing}) async {
+    final docRef = FirebaseFirestore.instance.collection('teams').doc(teamName);
+    final snap = await docRef.get();
+    if (!snap.exists) return false;
+
+    final data = snap.data()!;
+    final lines = List<dynamic>.from(data['lines'] ?? []);
+    final idx = lines.indexWhere((l) => l is Map && l['id'] == line.id);
+
+    if (idx != -1) {
+      lines[idx] = line.toJson();
+    } else if (addIfMissing) {
+      lines.add(line.toJson());
+    } else {
+      return false;
+    }
+
+    await docRef.update({'lines': lines});
+    return true;
+  }
+
+  Future<void> _updateDistributedLine(LineData line) async {
+    for (final teamName in _allTeamsMap.keys) {
+      if (teamName == widget.teamName) continue;
+      try {
+        final updated = await _upsertLineInTeamDoc(teamName, line, addIfMissing: false);
+        if (updated) _allTeamsMap[teamName]?.lines[line.id] = line;
+      } catch (e) {
+        debugPrint("line update failed ($teamName): $e");
+      }
+    }
+    if (mounted) setState(() {});
+  }
   String? _lastSelectedGroupName; // ✅ 마지막으로 선택한 그룹 이름 저장
 
 Future<String> _getKoreanAddress(double lat, double lng) async {
@@ -2609,7 +2643,7 @@ void _showCreateMenu() {
     );
   }
 
-  void _showLineInputSheet({LineData? existingLine, bool isFreeDraw = false}) async {
+  void _showLineInputSheet({LineData? existingLine, bool isFreeDraw = false, String? targetTeamName}) async {
     final List<LatLng> capturedFreePoints = List.from(_tempFreeLinePoints);
     final List<String> capturedMarkerIds = List.from(_tempLineMarkerIds);
 
@@ -2734,7 +2768,7 @@ void _showCreateMenu() {
                         points: pts,
                         markerIds: existingLine?.markerIds ?? (isFreeDraw ? [] : List.from(_tempLineMarkerIds)),
                         colorValue: selectedColor.value,
-                        isVisible: true,
+                        isVisible: existingLine?.isVisible ?? true,
                       );
                       Navigator.pop(ctx); 
 
@@ -2749,10 +2783,7 @@ void _showCreateMenu() {
                               var docRef = FirebaseFirestore.instance.collection('teams').doc(targetTeam);
                               var snap = await docRef.get();
                               if (snap.exists) {
-                                var data = snap.data()!;
-                                List<dynamic> lines = List.from(data['lines'] ?? []);
-                                lines.add(newLine.toJson()); 
-                                await docRef.update({'lines': lines});
+                                await _upsertLineInTeamDoc(targetTeam, newLine, addIfMissing: true);
                               }
                             } catch (e) {
                               debugPrint("타 팀 저장 실패 ($targetTeam): $e");
@@ -2766,6 +2797,16 @@ void _showCreateMenu() {
                           _tempLineMarkerIds.clear();
                           _tempFreeLinePoints.clear();
                         });
+                      } else if (existingLine != null && targetTeamName != null) {
+                        await _upsertLineInTeamDoc(targetTeamName, newLine, addIfMissing: false);
+                        setState(() {
+                          _allTeamsMap[targetTeamName]?.lines[id] = newLine;
+                          _isLineMode = false;
+                          _isFreeLineMode = false;
+                          _tempLineMarkerIds.clear();
+                          _tempFreeLinePoints.clear();
+                        });
+                        _updateMarkers();
                       } else {
                         setState(() {
                           _lineDataMap[id] = newLine;
@@ -2775,7 +2816,10 @@ void _showCreateMenu() {
                           _tempFreeLinePoints.clear();
                         });
                         _updateMarkers();
-                        _saveData();
+                        await _saveData();
+                        if (isAdmin && existingLine != null) {
+                          await _updateDistributedLine(newLine);
+                        }
                       }
                     },
                     style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 45), backgroundColor: Colors.green),
@@ -3866,7 +3910,7 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
             icon: const Icon(Icons.settings, size: 20, color: Colors.grey),
             onPressed: () {
               Navigator.pop(context); 
-              _showLineInputSheet(existingLine: line); 
+              _showLineInputSheet(existingLine: line, targetTeamName: isMyLine ? null : teamName); 
             },
           ),
 
