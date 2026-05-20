@@ -383,6 +383,8 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   bool _isModalOpen = false;
   bool _isHoveringUI = false;
   bool _spreadsheetEnabled = false;
+  bool _isLineDeleteMode = false;
+  Set<String> _selectedLineIds = {};
   List<LatLng> _tempFreeLinePoints = [];
   List<LatLng> _frozenFreeLinePoints = [];
   
@@ -402,6 +404,10 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   bool get canUseAdminTools => isAdmin;
   String get _roleLabel => isAdmin ? "관리자" : "팀장";
   String get _adminTeamName => "admin";
+
+  void _clearSelectedLines() {
+    _selectedLineIds.clear();
+  }
   String? _lastSelectedGroupName; // ✅ 마지막으로 선택한 그룹 이름 저장
 
 Future<String> _getKoreanAddress(double lat, double lng) async {
