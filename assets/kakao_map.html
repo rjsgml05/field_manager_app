@@ -42,6 +42,48 @@
       border-color: rgba(46, 125, 50, 0.55);
       color: #1b5e20;
     }
+
+    .flat-marker-wrap {
+      align-items: center;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      pointer-events: auto;
+      user-select: none;
+    }
+
+    .flat-marker-dot {
+      align-items: center;
+      border: 1px solid rgba(0, 0, 0, 0.38);
+      border-radius: 50%;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+      display: flex;
+      font-size: 12px;
+      font-weight: 800;
+      height: 26px;
+      justify-content: center;
+      line-height: 1;
+      min-width: 26px;
+      padding: 0 2px;
+      text-align: center;
+    }
+
+    .flat-marker-title {
+      background: rgba(255, 255, 255, 0.78);
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      border-radius: 3px;
+      color: #222222;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.2;
+      margin-top: 2px;
+      max-width: 88px;
+      overflow: hidden;
+      padding: 2px 5px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
@@ -99,6 +141,46 @@
       return '<div class="' + className + '"' + style + '>' + safeContent + '</div>';
     }
 
+    function textColorForBackground(color) {
+      var hex = String(color || '#4CAF50').replace('#', '');
+      if (hex.length === 3) {
+        hex = hex.split('').map(function(ch) { return ch + ch; }).join('');
+      }
+      var r = parseInt(hex.substring(0, 2), 16);
+      var g = parseInt(hex.substring(2, 4), 16);
+      var b = parseInt(hex.substring(4, 6), 16);
+      var brightness = (r * 299 + g * 587 + b * 114) / 1000;
+      return brightness > 150 ? '#111111' : '#ffffff';
+    }
+
+    function makeFlatMarkerContent(item, number, id) {
+      var color = String(item.color || '#4CAF50');
+      var title = String(item.title ?? item.name ?? '');
+      var root = document.createElement('div');
+      var dot = document.createElement('div');
+      var label = document.createElement('div');
+
+      root.className = 'flat-marker-wrap';
+      dot.className = 'flat-marker-dot';
+      label.className = 'flat-marker-title';
+
+      dot.style.backgroundColor = color;
+      dot.style.color = textColorForBackground(color);
+      dot.textContent = String(item.number ?? number);
+      label.textContent = title;
+
+      root.appendChild(dot);
+      if (title) root.appendChild(label);
+
+      root.addEventListener('click', function(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        postToFlutter('MarkerChannel', id);
+      });
+
+      return root;
+    }
+
     function initMap() {
       var container = document.getElementById('map');
       map = new kakao.maps.Map(container, {
@@ -125,29 +207,18 @@
       markerMap = {};
       markerOverlayMap = {};
 
-      normalizeItems(markers).forEach(function(item) {
+      normalizeItems(markers).forEach(function(item, index) {
         var id = String(item.id ?? '');
         var position = toLatLng(item);
-        var marker = new kakao.maps.Marker({
+        var marker = new kakao.maps.CustomOverlay({
           map: map,
-          position: position
-        });
-
-        kakao.maps.event.addListener(marker, 'click', function() {
-          postToFlutter('MarkerChannel', id);
+          position: position,
+          content: makeFlatMarkerContent(item, index + 1, id),
+          xAnchor: 0.5,
+          yAnchor: 0.42
         });
 
         markerMap[id] = marker;
-
-        if (item.title || item.name) {
-          var overlay = new kakao.maps.CustomOverlay({
-            map: map,
-            position: position,
-            content: makeLabel(item.title ?? item.name, 'marker-label', item.color),
-            yAnchor: 2.2
-          });
-          markerOverlayMap[id] = overlay;
-        }
       });
     }
 
