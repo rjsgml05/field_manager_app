@@ -376,6 +376,7 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   final ImagePicker _picker = ImagePicker();
   final List<String> _tempLineMarkerIds = [];
   WebViewController? _webViewController;
+  bool _mapRenderQueued = false;
   bool _isTappingMode = false, _isMoveMode = false, _isLineMode = false;
   bool _isMapControlActive = true;
   bool _isFreeLineMode = false;
@@ -520,9 +521,7 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
   void _setStateAndRefreshMap(VoidCallback fn) {
     if (!mounted) return;
     setState(fn);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _updateMarkers();
-    });
+    _updateMarkers();
   }
 
   void _handleKakaoMarkerTap(String markerId) {
@@ -640,8 +639,16 @@ void dispose() {
 
 
 Future<void> _updateMarkers() async {
-  await _renderMarkersOnKakaoMap();
-  await _renderLinesOnKakaoMap();
+  if (!mounted || _webViewController == null || _mapRenderQueued) return;
+
+  _mapRenderQueued = true;
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    _mapRenderQueued = false;
+    if (!mounted || _webViewController == null) return;
+
+    await _renderMarkersOnKakaoMap();
+    await _renderLinesOnKakaoMap();
+  });
 }
 
 String _colorToHex(Color color) {
@@ -744,7 +751,7 @@ List<Map<String, dynamic>> _buildLineJsonList() {
 
 Future<void> _renderMarkersOnKakaoMap() async {
   final controller = _webViewController;
-  if (controller == null) return;
+  if (!mounted || controller == null) return;
 
   try {
     await controller.runJavaScript('renderMarkers(${jsonEncode(_buildMarkerJsonList())});');
@@ -755,7 +762,7 @@ Future<void> _renderMarkersOnKakaoMap() async {
 
 Future<void> _renderLinesOnKakaoMap() async {
   final controller = _webViewController;
-  if (controller == null) return;
+  if (!mounted || controller == null) return;
 
   try {
     await controller.runJavaScript('renderLines(${jsonEncode(_buildLineJsonList())});');
@@ -1054,6 +1061,7 @@ Future<void> _loadData() async {
                   }); 
                 }); 
                 _saveData(); 
+                _updateMarkers();
                 Navigator.pop(ctx);
               }, 
               child: const Text("수정 완료")
@@ -1509,6 +1517,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
             _lastSelectedGroupName = selG!.name;
             _markerDataMap[id] = newData;
           });
+          _updateMarkers();
           
           // 기존 _saveData()는 전체를 덮어씌우므로 제외하고, 비상용 로컬 폰 저장만 수행
           final prefs = await SharedPreferences.getInstance();
@@ -1635,8 +1644,8 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                     onChanged: (v) {
                       setState(() {
                         team.isVisible = v;
-                        _updateMarkers(); 
                       });
+                      _updateMarkers(); 
                     },
                   ),
 
@@ -1680,8 +1689,8 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                             onChanged: (v) {
                               setState(() {
                                 g.isVisible = v;
-                                _updateMarkers(); 
                               });
+                              _updateMarkers(); 
                             },
                           ),
                         ],
@@ -1750,8 +1759,8 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                     onChanged: (val) {
                       setState(() {
                         g.isVisible = val;
-                        _updateMarkers();
                       });
+                      _updateMarkers();
                     },
                   ),
                 ],
@@ -2263,6 +2272,7 @@ if (widget.isAdmin && targetTeamName != null) {
     }
   });
   await _saveData();
+  _updateMarkers();
 }
                                     },
                                     child: const Text("삭제", style: TextStyle(color: Colors.white)),
@@ -2604,6 +2614,7 @@ void _showCreateMenu() {
                         for (String targetTeam in selectedTargetTeams) {
                           if (targetTeam == widget.teamName) {
                             setState(() { _lineDataMap[id] = newLine; });
+                            _updateMarkers();
                             _saveData();
                           } else {
                             try {
@@ -2635,6 +2646,7 @@ void _showCreateMenu() {
                           _tempLineMarkerIds.clear();
                           _tempFreeLinePoints.clear();
                         });
+                        _updateMarkers();
                         _saveData();
                       }
                     },
@@ -2680,6 +2692,7 @@ const SizedBox(height: 5),
                   icon: const Icon(Icons.delete, color: Colors.red),
                   onPressed: () {
                     setState(() => _lineDataMap.remove(lid));
+                    _updateMarkers();
                     _saveData();
                     Navigator.pop(context);
                   },
@@ -2877,6 +2890,7 @@ void _deleteGroupDialog(MapGroup group) {
                    // 필요시 로직 추가
                 });
               });
+              _updateMarkers();
               await _saveData();
               if (mounted) Navigator.pop(ctx);
             },
@@ -3663,6 +3677,7 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
             activeColor: Color(line.colorValue),
             onChanged: (val) async {
               setState(() { line.isVisible = val; });
+              _updateMarkers();
               
               if (isMyLine) {
                 _saveData(); 
@@ -3713,6 +3728,7 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
                         
                         if (isMyLine) {
                           setState(() => _lineDataMap.remove(line.id));
+                          _updateMarkers();
                           _saveData();
                         } else if (teamName != null) {
                           try {
