@@ -378,7 +378,6 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
 
   final ImagePicker _picker = ImagePicker();
   final List<String> _tempLineMarkerIds = [];
-  GoogleMapController? _mapController;
   WebViewController? _webViewController;
   bool _isTappingMode = false, _isMoveMode = false, _isLineMode = false;
   bool _isMapControlActive = true;
@@ -479,6 +478,28 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
       ..loadFlutterAsset('assets/kakao_map.html');
   }
 
+  Future<void> _moveTo(double lat, double lng, int level) async {
+    final controller = _webViewController;
+    if (controller == null) return;
+
+    try {
+      await controller.runJavaScript('moveTo($lat, $lng, $level);');
+    } catch (e) {
+      debugPrint('moveTo failed: $e');
+    }
+  }
+
+  Future<void> _zoomTo(int level) async {
+    final controller = _webViewController;
+    if (controller == null) return;
+
+    try {
+      await controller.runJavaScript('zoomTo($level);');
+    } catch (e) {
+      debugPrint('zoomTo failed: $e');
+    }
+  }
+
   @override
   void initState() { 
     super.initState(); 
@@ -513,16 +534,7 @@ void dispose() {
       desiredAccuracy: LocationAccuracy.high,
     );
 
-    if (_mapController != null) {
-      _mapController!.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: LatLng(position.latitude, position.longitude),
-            zoom: 16.0,
-          ),
-        ),
-      );
-    }
+    await _moveTo(position.latitude, position.longitude, 3);
   } catch (e) {
     debugPrint("위치 이동 에러: $e");
   }
@@ -1590,7 +1602,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                               subtitle: Text(marker.description, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: marker.isChecked ? Colors.blue : null)), 
                               onTap: () { 
                                 Navigator.pop(context); 
-                                _mapController?.animateCamera(CameraUpdate.newLatLngZoom(marker.position, 21)); 
+                                _moveTo(marker.lat, marker.lng, 1); 
                               },
                             )).toList(),
                     );
@@ -1654,7 +1666,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                 subtitle: Text(s.description, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: s.isChecked ? Colors.blue : Colors.grey)),
                 onTap: () {
                   Navigator.pop(context);
-                  _mapController?.animateCamera(CameraUpdate.newLatLngZoom(s.position, 21));
+                  _moveTo(s.lat, s.lng, 1);
                 },
               )).toList(),
             )),
@@ -1746,7 +1758,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                 heroTag: "gps", 
                 onPressed: () async { 
                   Position p = await Geolocator.getCurrentPosition(); 
-                  _mapController?.animateCamera(CameraUpdate.newLatLngZoom(LatLng(p.latitude, p.longitude), 17)); 
+                  _moveTo(p.latitude, p.longitude, 3); 
                 }, 
                 child: const Icon(Icons.my_location)
               )
@@ -3631,7 +3643,8 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
         if (!line.isVisible) return;
         Navigator.pop(context);
         if (line.points.isNotEmpty) {
-          _mapController?.animateCamera(CameraUpdate.newLatLngZoom(line.points.first, 17));
+          final firstPoint = line.points.first;
+          _moveTo(firstPoint.latitude, firstPoint.longitude, 3);
         }
       },
     );

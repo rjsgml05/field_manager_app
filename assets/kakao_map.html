@@ -197,6 +197,22 @@
       });
     }
 
+    function moveTo(lat, lng, level) {
+      if (!map) return;
+
+      var position = new kakao.maps.LatLng(Number(lat), Number(lng));
+      map.setCenter(position);
+
+      if (level !== undefined && level !== null) {
+        map.setLevel(Number(level));
+      }
+    }
+
+    function zoomTo(level) {
+      if (!map) return;
+      map.setLevel(Number(level));
+    }
+
     function showCurrentLocation(location) {
       if (currentLocationMarker) currentLocationMarker.setMap(null);
       if (currentLocationOverlay) currentLocationOverlay.setMap(null);
