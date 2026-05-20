@@ -1625,14 +1625,24 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                 mainAxisSize: MainAxisSize.min,
                 children: [
                    // ⭐ [수정됨] 기존 PDF(전송) 버튼 자리를 '카카오맵 뷰어' 버튼으로 교체
-                   IconButton(
-                    icon: const Icon(Icons.map, color: Colors.green), // 아이콘과 색상 변경
-                    tooltip: "카카오맵 뷰어에서 보기",
-                    onPressed: () {
-                      Navigator.pop(context); // 사이드바 닫기
-                      _openKakaoMapViewer(g); // 🚀 뷰어 실행 함수 호출!
-                    },
-                  ),
+                   if (kIsWeb)
+  IconButton(
+    icon: const Icon(Icons.map, color: Colors.green),
+    tooltip: "카카오맵 뷰어에서 보기",
+    onPressed: () {
+      Navigator.pop(context);
+      _openKakaoMapViewer(g);
+    },
+  )
+else if (widget.isAdmin)
+  IconButton(
+    icon: const Icon(Icons.send, color: Colors.blue),
+    tooltip: "그룹 전송",
+    onPressed: () {
+      Navigator.pop(context);
+      _showSendGroupSheet(g);
+    },
+  ),
                   
                   // 2. 삭제 버튼 (복구 유지)
                   IconButton(
@@ -2060,8 +2070,10 @@ void _showMarkerDetails(MarkerId mid, {TeamData? fromOtherTeam}) {
                     await _syncToGoogleSheetAdmin(d, targetTeamName); 
                   } else {
                     await _saveData();
-                    // ✅ [추가] 내 팀 시트 동기화
+                   // ✅ 내 팀 시트 동기화
                     await _syncToGoogleSheet(d); 
+  // ✅ [추가] 관리자(admin) 시트에도 온오프 상태 반영
+                    await _syncToGoogleSheetAdmin(d, "admin");
                   }
                   
                   // 2. 지도 마커와 슬라이드바 텍스트 색상 즉시 갱신을 위해 호출
