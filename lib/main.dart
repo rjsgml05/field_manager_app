@@ -455,12 +455,14 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
         'MarkerChannel',
         onMessageReceived: (JavaScriptMessage message) {
           debugPrint("MarkerChannel: ${message.message}");
+          _handleKakaoMarkerTap(message.message);
         },
       )
       ..addJavaScriptChannel(
         'MapTapChannel',
         onMessageReceived: (JavaScriptMessage message) {
           debugPrint("MapTapChannel: ${message.message}");
+          _handleKakaoMapTap(message.message);
         },
       )
       ..addJavaScriptChannel(
@@ -494,6 +496,68 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
       await controller.runJavaScript('zoomTo($level);');
     } catch (e) {
       debugPrint('zoomTo failed: $e');
+    }
+  }
+
+  void _setStateAndRefreshMap(VoidCallback fn) {
+    if (!mounted) return;
+    setState(fn);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _updateMarkers();
+    });
+  }
+
+  void _handleKakaoMarkerTap(String markerId) {
+    if (_isModalOpen || _isHoveringUI || !_isMapControlActive) return;
+
+    String targetMarkerId = markerId;
+    TeamData? targetTeam;
+    SiteData? site = _markerDataMap[targetMarkerId];
+
+    if (site == null && widget.isAdmin) {
+      for (final entry in _allTeamsMap.entries) {
+        final prefix = '${entry.key}_';
+        if (!markerId.startsWith(prefix)) continue;
+
+        final localId = markerId.substring(prefix.length);
+        final candidate = entry.value.markers[localId];
+        if (candidate != null) {
+          targetMarkerId = localId;
+          targetTeam = entry.value;
+          site = candidate;
+          break;
+        }
+      }
+    }
+
+    if (site == null) return;
+
+    if (_isFreeLineMode) {
+      _setStateAndRefreshMap(() => _tempFreeLinePoints.add(site!.position));
+    } else if (_isLineMode) {
+      _setStateAndRefreshMap(() => _tempLineMarkerIds.add(markerId));
+    } else {
+      _showMarkerDetails(targetMarkerId, fromOtherTeam: targetTeam);
+    }
+  }
+
+  void _handleKakaoMapTap(String message) {
+    if (_isModalOpen || !_isMapControlActive) return;
+
+    try {
+      final data = jsonDecode(message) as Map<String, dynamic>;
+      final point = LatLng(
+        (data['lat'] as num).toDouble(),
+        (data['lng'] as num).toDouble(),
+      );
+
+      if (_isTappingMode) {
+        _showInputSheet(newPoint: point);
+      } else if (_isFreeLineMode) {
+        _setStateAndRefreshMap(() => _tempFreeLinePoints.add(point));
+      }
+    } catch (e) {
+      debugPrint('MapTapChannel parse failed: $e');
     }
   }
 

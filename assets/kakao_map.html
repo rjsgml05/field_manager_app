@@ -93,9 +93,10 @@
       });
     }
 
-    function makeLabel(content, className) {
+    function makeLabel(content, className, color) {
       var safeContent = String(content ?? '');
-      return '<div class="' + className + '">' + safeContent + '</div>';
+      var style = color ? ' style="border-color: ' + color + ';"' : '';
+      return '<div class="' + className + '"' + style + '>' + safeContent + '</div>';
     }
 
     function initMap() {
@@ -142,7 +143,7 @@
           var overlay = new kakao.maps.CustomOverlay({
             map: map,
             position: position,
-            content: makeLabel(item.title ?? item.name, 'marker-label'),
+            content: makeLabel(item.title ?? item.name, 'marker-label', item.color),
             yAnchor: 2.2
           });
           markerOverlayMap[id] = overlay;
@@ -190,7 +191,7 @@
         var overlay = new kakao.maps.CustomOverlay({
           map: map,
           position: labelPosition,
-          content: makeLabel(line.title ?? line.name ?? id, 'line-label'),
+          content: makeLabel(line.title ?? line.name ?? id, 'line-label', line.color),
           yAnchor: 1.35
         });
         lineOverlayMap[id] = overlay;
