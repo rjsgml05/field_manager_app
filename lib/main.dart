@@ -382,6 +382,7 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   bool _isFreeLineMode = false;
   bool _isModalOpen = false;
   bool _isHoveringUI = false;
+  bool _spreadsheetEnabled = false;
   List<LatLng> _tempFreeLinePoints = [];
   List<LatLng> _frozenFreeLinePoints = [];
   
@@ -1482,7 +1483,10 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
              if (idx != -1) markers[idx] = newData.toJson();
              else markers.add(newData.toJson());
              await docRef.update({'markers': markers});
-             await _syncToGoogleSheetAdmin(newData, targetTeamName);
+             final shouldUpload = isAdmin ? _spreadsheetEnabled : true;
+             if (shouldUpload) {
+               await _uploadToSpreadsheet(newData, targetTeamName: targetTeamName);
+             }
            }
         } else {
           // ✅ 내 데이터 저장 로직 (트랜잭션 적용: 동시 접속 덮어쓰기 완벽 방지)
@@ -1534,7 +1538,10 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
           await prefs.setString('${widget.teamName}_${widget.teamPw}_m', jsonEncode(_markerDataMap.values.map((m) => m.toJson()).toList()));
           await prefs.setString('${widget.teamName}_${widget.teamPw}_g', jsonEncode(_userGroups.map((g) => g.toJson()).toList()));
           
-          await _syncToGoogleSheet(newData);
+          final shouldUpload = isAdmin ? _spreadsheetEnabled : true;
+          if (shouldUpload) {
+            await _uploadToSpreadsheet(newData, targetTeamName: targetTeamName);
+          }
         }
       }).timeout(const Duration(seconds: 20)); // ⏱️ 20초 후 강제 중단
 
@@ -1600,6 +1607,17 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                 ),
               ),
             ),
+
+            if (isAdmin)
+              SwitchListTile(
+                secondary: const Icon(Icons.table_chart, color: Colors.green),
+                title: const Text("Spreadsheet upload"),
+                subtitle: const Text("Off by default on every app start"),
+                value: _spreadsheetEnabled,
+                onChanged: (value) {
+                  setState(() => _spreadsheetEnabled = value);
+                },
+              ),
 
             // 2. [관리자 전용] 협력사(다른 팀) 목록 표시
             if (isAdmin) ...[
@@ -3118,6 +3136,15 @@ void _deleteGroupDialog(MapGroup group) {
         const SnackBar(content: Text('PDF 기능은 지도 전환 작업 중 임시 비활성화되었습니다.')),
       );
     }
+  }
+
+Future<void> _uploadToSpreadsheet(SiteData siteData, {String? targetTeamName}) async {
+    if (isAdmin && targetTeamName != null) {
+      await _syncToGoogleSheetAdmin(siteData, targetTeamName);
+      return;
+    }
+
+    await _syncToGoogleSheet(siteData);
   }
 
 Future<void> _syncToGoogleSheet(SiteData site) async {
