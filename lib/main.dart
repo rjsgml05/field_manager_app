@@ -509,6 +509,7 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
 
   void _handleKakaoMarkerTap(String markerId) {
     if (_isModalOpen || _isHoveringUI || !_isMapControlActive) return;
+    if (markerId.trim().isEmpty) return;
 
     String targetMarkerId = markerId;
     TeamData? targetTeam;
@@ -541,23 +542,40 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
     }
   }
 
+  LatLng? _parseKakaoMapTapPoint(String message) {
+    try {
+      final data = jsonDecode(message);
+      if (data is Map<String, dynamic>) {
+        return LatLng(
+          (data['lat'] as num).toDouble(),
+          (data['lng'] as num).toDouble(),
+        );
+      }
+    } catch (_) {
+      final parts = message.split(',');
+      if (parts.length == 2) {
+        final lat = double.tryParse(parts[0].trim());
+        final lng = double.tryParse(parts[1].trim());
+        if (lat != null && lng != null) return LatLng(lat, lng);
+      }
+    }
+
+    return null;
+  }
+
   void _handleKakaoMapTap(String message) {
     if (_isModalOpen || !_isMapControlActive) return;
 
-    try {
-      final data = jsonDecode(message) as Map<String, dynamic>;
-      final point = LatLng(
-        (data['lat'] as num).toDouble(),
-        (data['lng'] as num).toDouble(),
-      );
+    final point = _parseKakaoMapTapPoint(message);
+    if (point == null) {
+      debugPrint('MapTapChannel parse failed: $message');
+      return;
+    }
 
-      if (_isTappingMode) {
-        _showInputSheet(newPoint: point);
-      } else if (_isFreeLineMode) {
-        _setStateAndRefreshMap(() => _tempFreeLinePoints.add(point));
-      }
-    } catch (e) {
-      debugPrint('MapTapChannel parse failed: $e');
+    if (_isTappingMode) {
+      _showInputSheet(newPoint: point);
+    } else if (_isFreeLineMode) {
+      _setStateAndRefreshMap(() => _tempFreeLinePoints.add(point));
     }
   }
 
