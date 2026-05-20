@@ -444,18 +444,17 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   Future<void> _deleteAllLines() async {
     if (_lineDataMap.isEmpty) return;
 
-    final lineCount = _lineDataMap.length;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Delete all lines"),
-        content: Text("Delete all $lineCount line(s)?"),
+        title: const Text("전체 삭제"),
+        content: const Text("모든 선(Line)을 삭제하시겠습니까?"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("취소")),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("Delete", style: TextStyle(color: Colors.white)),
+            child: const Text("삭제", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -1690,6 +1689,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
 // ✅ [최종 수정] 보관함 모드 스위치 제거 (항상 실시간 지도 모드) + 모든 기능 유지
   Widget _buildDrawer() {
     return Drawer(
+      width: 360,
       child: MouseRegion(
         onEnter: (_) => setState(() => _isMapControlActive = false),
         onExit: (_) => setState(() => _isMapControlActive = true),
@@ -1856,35 +1856,37 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
             ),
             
             ..._userGroups.map((g) => ExpansionTile(
-              title: Text(g.name, style: TextStyle(color: g.color, fontWeight: FontWeight.bold)),
+              title: Text(
+                g.name,
+                softWrap: true,
+                overflow: TextOverflow.visible,
+                style: TextStyle(color: g.color, fontWeight: FontWeight.bold),
+              ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                   // ⭐ [수정됨] 기존 PDF(전송) 버튼 자리를 '카카오맵 뷰어' 버튼으로 교체
                    IconButton(
                     icon: const Icon(Icons.cloud_upload, color: Colors.blueAccent),
                     tooltip: "데이터 전송",
                     onPressed: () => _showSendGroupSheet(g),
-                  ),
-                   IconButton(
-                    icon: const Icon(Icons.map, color: Colors.green), // 아이콘과 색상 변경
-                    tooltip: "카카오맵 뷰어에서 보기",
-                    onPressed: () {
-                      Navigator.pop(context); // 사이드바 닫기
-                      _openKakaoMapViewer(g); // 🚀 뷰어 실행 함수 호출!
-                    },
+                    constraints: const BoxConstraints.tightFor(width: 36, height: 40),
+                    padding: EdgeInsets.zero,
                   ),
                   
                   // 2. 삭제 버튼 (복구 유지)
                   IconButton(
                     icon: const Icon(Icons.delete_forever, color: Colors.red),
                     onPressed: () => _deleteGroupDialog(g),
+                    constraints: const BoxConstraints.tightFor(width: 36, height: 40),
+                    padding: EdgeInsets.zero,
                   ),
 
                   // 3. 설정(수정) 버튼
                   IconButton(
                     icon: const Icon(Icons.settings, color: Colors.grey),
                     onPressed: () => _showEditGroupDialog(g),
+                    constraints: const BoxConstraints.tightFor(width: 36, height: 40),
+                    padding: EdgeInsets.zero,
                   ),
                   
                   // 4. 보이기 스위치
@@ -1904,8 +1906,8 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                 // ✅ 아이콘 추가 및 색상 적용 (보기 좋게 통일)
                 leading: Icon(Icons.location_on, size: 18, color: s.isChecked ? Colors.blue : Colors.grey),
                 // ✅ 텍스트에 조건부 TextStyle 추가
-                title: Text(s.title, style: TextStyle(color: s.isChecked ? Colors.blue : null, fontWeight: FontWeight.bold)),
-                subtitle: Text(s.description, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: s.isChecked ? Colors.blue : Colors.grey)),
+                title: Text(s.title, softWrap: true, overflow: TextOverflow.visible, style: TextStyle(color: s.isChecked ? Colors.blue : null, fontWeight: FontWeight.bold)),
+                subtitle: Text(s.description, softWrap: true, overflow: TextOverflow.visible, style: TextStyle(color: s.isChecked ? Colors.blue : Colors.grey)),
                 onTap: () {
                   Navigator.pop(context);
                   _moveTo(s.lat, s.lng, 1);
@@ -1936,16 +1938,28 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                   const Expanded(child: Text("선 목록 (Lines)", style: TextStyle(fontWeight: FontWeight.bold))),
                   if (_isLineDeleteMode)
                     TextButton(
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(0, 36),
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
                       onPressed: _selectedLineIds.isEmpty ? null : _deleteSelectedLines,
                       child: const Text("선택 삭제"),
                     ),
                   if (_isLineDeleteMode)
                     TextButton(
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(0, 36),
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
                       onPressed: _lineDataMap.isEmpty ? null : _deleteAllLines,
                       child: const Text("전체 삭제"),
                     ),
                   IconButton(
                     icon: Icon(_isLineDeleteMode ? Icons.close : Icons.checklist),
+                    constraints: const BoxConstraints.tightFor(width: 36, height: 40),
+                    padding: EdgeInsets.zero,
                     tooltip: _isLineDeleteMode ? "삭제 모드 종료" : "삭제 모드",
                     onPressed: () {
                       setState(() {
@@ -3854,6 +3868,8 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
     final isSelectedLine = _selectedLineIds.contains(line.id);
 
     return ListTile(
+      dense: _isLineDeleteMode,
+      contentPadding: EdgeInsets.symmetric(horizontal: _isLineDeleteMode ? 8 : 16),
       leading: _isLineDeleteMode
           ? Checkbox(
               value: isSelectedLine,
@@ -3870,11 +3886,14 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
           : Icon(Icons.horizontal_rule, color: Color(line.colorValue)),
       title: Text(
         "${isMyLine ? '' : '[$teamName] '}${line.title}",
+        maxLines: _isLineDeleteMode ? 2 : 1,
+        overflow: TextOverflow.ellipsis,
+        softWrap: true,
         style: TextStyle(color: line.isVisible ? Colors.black : Colors.grey, fontSize: 13),
       ),
       subtitle: Text(line.description, maxLines: 1, overflow: TextOverflow.ellipsis),
       
-      trailing: Row(
+      trailing: _isLineDeleteMode ? null : Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           // On/Off 스위치
@@ -4462,94 +4481,6 @@ Future<void> _distributeAiDataToTeams(List<String> targetTeams, String aiGroupNa
     }
   }
 
-  // ⭐ [새로 추가] 해당 그룹 마커를 JSON으로 업로드하고 카카오맵 뷰어 띄우기
-Future<void> _openKakaoMapViewer(MapGroup group) async {
-    setState(() {
-      _isGlobalProcessing = true;
-      _processingText = "지도 뷰어 준비 중...";
-    });
-
-    try {
-      List<SiteData> groupMarkers = _markerDataMap.values
-          .where((m) => m.group.name == group.name)
-          .toList();
-
-      if (groupMarkers.isEmpty) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("해당 그룹에 마커가 없습니다.")));
-        return;
-      }
-
-      List<Map<String, dynamic>> markersJson = groupMarkers.map((m) => {
-        'title': m.title,
-        'lat': m.lat,
-        'lng': m.lng,
-        'description': m.description,
-      }).toList();
-
-      String newJsonString = jsonEncode(markersJson);
-
-      // ⭐ 파일명을 그룹명 기반 고정 이름으로 (매번 새로 만들지 않음)
-      String fileName = "viewer_${widget.teamName}_${group.name}.json";
-      var ref = FirebaseStorage.instance.ref().child("viewer/$fileName");
-
-      // ⭐ 기존 파일 내용과 비교해서 다를 때만 업로드
-      bool needUpload = true;
-      try {
-        final existing = await http.get(Uri.parse(await ref.getDownloadURL()));
-        if (existing.statusCode == 200 && existing.body == newJsonString) {
-          needUpload = false; // 내용 같으면 업로드 스킵
-        }
-      } catch (_) {
-        needUpload = true; // 파일 없으면 새로 업로드
-      }
-
-      String jsonDownloadUrl;
-      if (needUpload) {
-        await ref.putData(
-          Uint8List.fromList(utf8.encode(newJsonString)),
-          SettableMetadata(contentType: 'application/json')
-        );
-      }
-      jsonDownloadUrl = await ref.getDownloadURL();
-
-      String viewerHtmlUrl = "https://fieldmanager-c94c2.web.app/viewer.html";
-      final Uri url = Uri.parse("$viewerHtmlUrl?data=${Uri.encodeComponent(jsonDownloadUrl)}");
-
-      if (mounted) setState(() => _isGlobalProcessing = false);
-
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text("지도 준비 완료", style: TextStyle(fontWeight: FontWeight.bold)),
-            content: const Text("데이터 업로드가 완료되었습니다.\n아래 버튼을 눌러 카카오맵을 확인하세요."),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text("취소", style: TextStyle(color: Colors.grey))),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                onPressed: () {
-                  launchUrl(url, webOnlyWindowName: '_blank');
-                  Navigator.pop(ctx);
-                },
-                child: const Text("지도 열기",
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              )
-            ],
-          )
-        );
-      }
-
-    } catch (e) {
-      debugPrint("뷰어 실행 에러: $e");
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("오류 발생: $e")));
-    } finally {
-      if (mounted) setState(() => _isGlobalProcessing = false);
-    }
-  }
   
   } // ✅ 여기가 진짜 MapSampleState 클래스 끝나는 곳! (괄호 딱 하나!)
 

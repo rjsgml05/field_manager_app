@@ -59,14 +59,11 @@
       border-radius: 50%;
       box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
       display: flex;
-      font-size: 12px;
-      font-weight: 800;
-      height: 26px;
+      height: 16px;
       justify-content: center;
       line-height: 1;
-      min-width: 26px;
-      padding: 0 2px;
-      text-align: center;
+      padding: 0;
+      width: 16px;
     }
 
     .flat-marker-title {
@@ -188,8 +185,6 @@
       label.className = 'flat-marker-title';
 
       dot.style.backgroundColor = color;
-      dot.style.color = textColorForBackground(color);
-      dot.textContent = String(item.number ?? number);
       label.textContent = title;
 
       root.appendChild(dot);
