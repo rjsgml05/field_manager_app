@@ -400,6 +400,7 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   bool get canManageTeamData => isAdmin || isLeader;
   bool get canUseAdminTools => isAdmin;
   String get _roleLabel => isAdmin ? "관리자" : "팀장";
+  String get _adminTeamName => "admin";
   String? _lastSelectedGroupName; // ✅ 마지막으로 선택한 그룹 이름 저장
 
 Future<String> _getKoreanAddress(double lat, double lng) async {
@@ -1740,6 +1741,11 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                 mainAxisSize: MainAxisSize.min,
                 children: [
                    // ⭐ [수정됨] 기존 PDF(전송) 버튼 자리를 '카카오맵 뷰어' 버튼으로 교체
+                   IconButton(
+                    icon: const Icon(Icons.cloud_upload, color: Colors.blueAccent),
+                    tooltip: "데이터 전송",
+                    onPressed: () => _showSendGroupSheet(g),
+                  ),
                    IconButton(
                     icon: const Icon(Icons.map, color: Colors.green), // 아이콘과 색상 변경
                     tooltip: "카카오맵 뷰어에서 보기",
@@ -4016,7 +4022,45 @@ Future<void> _distributeAiDataToTeams(List<String> targetTeams, String aiGroupNa
       setState(() => _isGlobalProcessing = false);
     }
   }
+  void _showLeaderSendToAdminSheet(MapGroup group) {
+    final targetGroupName = '${widget.teamName}/${group.name}';
+    final markerCount = _markerDataMap.values.where((m) => m.group.name == group.name).length;
+
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Send data to admin", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            Text("Target group: $targetGroupName"),
+            Text("Markers: $markerCount"),
+            const SizedBox(height: 6),
+            const Text("Line data is not included.", style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 18),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 45), backgroundColor: Colors.green),
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await _sendGroupDataToTeams([_adminTeamName], group);
+              },
+              child: const Text("Send", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showSendGroupSheet(MapGroup group) {
+    if (isLeader) {
+      _showLeaderSendToAdminSheet(group);
+      return;
+    }
+
     List<String> selectedTargetTeams = []; // 기본적으로 선택된 팀 없음
 
     showModalBottomSheet(
@@ -4091,7 +4135,84 @@ Future<void> _distributeAiDataToTeams(List<String> targetTeams, String aiGroupNa
   // =====================================================================
   // ✅ [3단계 추가] 2. 선택된 팀들의 DB에 그룹과 마커를 복사하여 꽂아주는 함수
   // =====================================================================
+  Future<void> _sendLeaderGroupToAdmin(MapGroup group) async {
+    final targetGroupName = '${widget.teamName}/${group.name}';
+    final targetGroup = MapGroup(
+      name: targetGroupName,
+      colorValue: group.colorValue,
+      isVisible: group.isVisible,
+    );
+    final markersToSend = _markerDataMap.values
+        .where((m) => m.group.name == group.name)
+        .map((m) {
+          final markerJson = m.toJson();
+          markerJson['id'] = '${widget.teamName}_${m.id}';
+          markerJson['group'] = targetGroup.toJson();
+          return markerJson;
+        })
+        .toList();
+
+    setState(() { _isGlobalProcessing = true; _processingText = "관리자에게 데이터 전송 중..."; });
+
+    try {
+      final docRef = FirebaseFirestore.instance.collection('teams').doc(_adminTeamName);
+
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final snapshot = await transaction.get(docRef);
+
+        if (!snapshot.exists) {
+          transaction.set(docRef, {
+            'teamName': _adminTeamName,
+            'teamPw': '1234',
+            'groups': [targetGroup.toJson()],
+            'markers': markersToSend,
+            'lines': [],
+          }, SetOptions(merge: true));
+          return;
+        }
+
+        final data = snapshot.data()!;
+        final groups = List<dynamic>.from(data['groups'] ?? []);
+        final markers = List<dynamic>.from(data['markers'] ?? []);
+
+        groups.removeWhere((g) => g is Map && g['name'] == targetGroupName);
+        groups.add(targetGroup.toJson());
+
+        markers.removeWhere((m) =>
+            m is Map &&
+            m['group'] is Map &&
+            m['group']['name'] == targetGroupName);
+        markers.addAll(markersToSend);
+
+        transaction.update(docRef, {
+          'groups': groups,
+          'markers': markers,
+        });
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("관리자에게 '$targetGroupName' 데이터가 전송되었습니다."), backgroundColor: Colors.green)
+        );
+      }
+    } catch (e) {
+      debugPrint("팀장 데이터 전송 에러: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("전송 에러: $e"), backgroundColor: Colors.red)
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isGlobalProcessing = false);
+    }
+  }
+
   Future<void> _sendGroupDataToTeams(List<String> targetTeams, MapGroup group) async {
+    if (isLeader) {
+      await _sendLeaderGroupToAdmin(group);
+      return;
+    }
+
     setState(() { _isGlobalProcessing = true; _processingText = "선택한 팀으로 데이터 전송 중..."; });
 
     try {
