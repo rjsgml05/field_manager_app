@@ -395,6 +395,11 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   // ------------------------------------------------------------------
 
   double _currentZoom = 13.0;
+  bool get isAdmin => widget.isAdmin;
+  bool get isLeader => !isAdmin;
+  bool get canManageTeamData => isAdmin || isLeader;
+  bool get canUseAdminTools => isAdmin;
+  String get _roleLabel => isAdmin ? "관리자" : "팀장";
   String? _lastSelectedGroupName; // ✅ 마지막으로 선택한 그룹 이름 저장
 
 Future<String> _getKoreanAddress(double lat, double lng) async {
@@ -532,7 +537,7 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
     TeamData? targetTeam;
     SiteData? site = _markerDataMap[targetMarkerId];
 
-    if (site == null && widget.isAdmin) {
+    if (site == null && isAdmin) {
       for (final entry in _allTeamsMap.entries) {
         final prefix = '${entry.key}_';
         if (!markerId.startsWith(prefix)) continue;
@@ -691,7 +696,7 @@ List<Map<String, dynamic>> _buildMarkerJsonList() {
     }
   }
 
-  if (widget.isAdmin) {
+  if (isAdmin) {
     for (var team in _allTeamsMap.values) {
       if (!team.isVisible) continue;
 
@@ -723,7 +728,7 @@ List<Map<String, dynamic>> _buildLineJsonList() {
     }
   }
 
-  if (widget.isAdmin) {
+  if (isAdmin) {
     for (var team in _allTeamsMap.values) {
       if (!team.isVisible) continue;
 
@@ -858,7 +863,7 @@ Future<void> _loadData() async {
     });
 
     // 3. [관리자 모드] 안전하게 불러오기 (마커 깜빡임 및 초기화 방지 적용 완료)
-    if (widget.isAdmin) {
+    if (isAdmin) {
       _allTeamsSub = FirebaseFirestore.instance.collection('teams').snapshots().listen((snapshot) {
         if (!mounted) return;
 
@@ -1112,6 +1117,8 @@ Future<void> _loadData() async {
 
   // ✅ [추가] 관리자용 팀명(폴더명) 수정 함수
   void _editTeamNameDialog(String oldTeamName) {
+    if (!canUseAdminTools) return;
+
     TextEditingController nameCtrl = TextEditingController(text: oldTeamName);
     showDialog(
       context: context,
@@ -1144,6 +1151,8 @@ Future<void> _loadData() async {
 
   // ✅ [수정] 관리자용 팀 폴더 전체 삭제 함수 (즉시 반영)
   void _deleteTeamDialog(String teamName) {
+    if (!canUseAdminTools) return;
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1461,7 +1470,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
           group: selG!, photos: serverPhotos,
         );
 
-        if (widget.isAdmin && targetTeamName != null) {
+        if (isAdmin && targetTeamName != null) {
            // 관리자 모드 저장 로직
            var docRef = FirebaseFirestore.instance.collection('teams').doc(targetTeamName);
            var snapshot = await docRef.get();
@@ -1581,18 +1590,18 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
             // 1. 헤더 (시스템 로고)
             DrawerHeader(
               decoration: BoxDecoration(
-                color: widget.isAdmin ? Colors.blueAccent : Colors.green
+                color: isAdmin ? Colors.blueAccent : Colors.green
               ),
               child: Center(
                 child: Text(
-                  widget.isAdmin ? "통합 관제 시스템" : "현장 관리 시스템",
+                  isAdmin ? "통합 관제 시스템" : "현장 관리 시스템",
                   style: const TextStyle(color: Colors.white, fontSize: 22),
                 ),
               ),
             ),
 
             // 2. [관리자 전용] 협력사(다른 팀) 목록 표시
-            if (widget.isAdmin) ...[
+            if (isAdmin) ...[
               // 통합 관리 버튼 (저장/복구 기능 유지)
               Padding(
                 padding: const EdgeInsets.fromLTRB(15, 10, 5, 5),
@@ -1799,14 +1808,14 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
               title: const Text("선 목록 (Lines)", style: TextStyle(fontWeight: FontWeight.bold)),
               children: [
                 // 1. 선이 아예 없을 때
-                if (_lineDataMap.isEmpty && (!widget.isAdmin || _allTeamsMap.values.every((t) => t.lines.isEmpty)))
+                if (_lineDataMap.isEmpty && (!isAdmin || _allTeamsMap.values.every((t) => t.lines.isEmpty)))
                   const ListTile(title: Text("생성된 선이 없습니다.", style: TextStyle(fontSize: 12, color: Colors.grey)))
                 else ...[
                   // 2. [내 선] 목록 그리기 (함수 호출)
                   ..._lineDataMap.values.map((line) => _buildLineListTile(line, isMyLine: true)),
 
                   // 3. [관리자용] 다른 팀 선 목록 그리기 (함수 호출)
-                  if (widget.isAdmin)
+                  if (isAdmin)
                     ..._allTeamsMap.entries.expand((entry) {
                       String teamName = entry.key;
                       TeamData teamData = entry.value;
@@ -1838,11 +1847,11 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Expanded(child: Text('${widget.teamName}${widget.isAdmin ? " (관리자)" : ""}-지도')),
+            Expanded(child: Text('${widget.teamName} ($_roleLabel)-지도')),
             const Text("제작자 : 박건희", style: TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Colors.white70)),
           ],
         ),
-        backgroundColor: widget.isAdmin ? Colors.blueAccent : Colors.green,
+        backgroundColor: isAdmin ? Colors.blueAccent : Colors.green,
       ),
       drawer: _buildDrawer(),
       floatingActionButton: _uiBlocker(
@@ -2057,7 +2066,7 @@ void _showMarkerDetails(String mid, {TeamData? fromOtherTeam}) {
                   setModalState(() => d.isChecked = val);
                   
                   // 1. 서버/로컬 데이터 저장
-                  if (widget.isAdmin && targetTeamName != null) {
+                  if (isAdmin && targetTeamName != null) {
                     var docRef = FirebaseFirestore.instance.collection('teams').doc(targetTeamName);
                     var snap = await docRef.get();
                     if (snap.exists) {
@@ -2131,7 +2140,7 @@ void _showMarkerDetails(String mid, {TeamData? fromOtherTeam}) {
   },
 ),
 
-if (widget.isAdmin)
+if (isAdmin)
     IconButton(
       icon: const Icon(Icons.gps_fixed, color: Colors.blueAccent, size: 28),
       tooltip: "이 위치로 GPS 변경",
@@ -2182,7 +2191,7 @@ if (widget.isAdmin)
                       ),
 
                       // 수정/삭제 버튼 (권한 있을 때만)
-                      if (fromOtherTeam == null || widget.isAdmin) ...[
+                      if (fromOtherTeam == null || isAdmin) ...[
                         IconButton(
                           icon: const Icon(Icons.edit, color: Colors.blue), 
                           onPressed: () { 
@@ -2208,7 +2217,7 @@ if (widget.isAdmin)
                                       Navigator.pop(context);
 
                                       // 삭제 로직
-if (widget.isAdmin && targetTeamName != null) {
+if (isAdmin && targetTeamName != null) {
   // 1. [관리자 모드] 서버에서 직접 삭제 및 그룹 정리
   try {
     var docRef = FirebaseFirestore.instance.collection('teams').doc(targetTeamName);
@@ -2339,6 +2348,8 @@ if (widget.isAdmin && targetTeamName != null) {
   Widget _colorSlider(String l, double v, Function(double) o, Color c) => Row(children: [Text(l), Expanded(child: Slider(value: v, min: 0, max: 255, activeColor: c, onChanged: o))]);
   // --- [마커/선 생성 메뉴 팝업] ---
 void _showCreateMenu() {
+    if (!canManageTeamData) return;
+
     showModalBottomSheet(
       context: context,
       builder: (c) => Column(
@@ -2467,6 +2478,7 @@ void _showCreateMenu() {
               );
             },
           ),
+        if (canUseAdminTools)
         ListTile(
             leading: const Icon(Icons.cloud_download, color: Colors.deepPurple),
             title: const Text("AI 탐지 마커 불러오기"),
@@ -2528,7 +2540,7 @@ void _showCreateMenu() {
                 children: [
                   Text(existingLine == null ? "새 선 생성" : "선 정보 수정", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   
-                  if (widget.isAdmin && existingLine == null) ...[
+                  if (isAdmin && existingLine == null) ...[
                     const SizedBox(height: 15),
                     const Align(
                       alignment: Alignment.centerLeft, 
@@ -2610,7 +2622,7 @@ void _showCreateMenu() {
                       );
                       Navigator.pop(ctx); 
 
-                      if (widget.isAdmin && existingLine == null) {
+                      if (isAdmin && existingLine == null) {
                         for (String targetTeam in selectedTargetTeams) {
                           if (targetTeam == widget.teamName) {
                             setState(() { _lineDataMap[id] = newLine; });
@@ -2769,6 +2781,8 @@ Future<void> _downloadMarkerPhotos(SiteData d) async {
 
 // ✅ [수정됨] 관리자용: 타 팀의 그룹 삭제 시 마커 + 연결된 선(Line)까지 완벽 제거
   void _deleteOtherTeamGroupDialog(String targetTeamName, MapGroup group) {
+    if (!canUseAdminTools) return;
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -3262,6 +3276,8 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
 
   // 1. 아카이브 관리 팝업창
   void _showArchiveManagerDialog(String teamName, List<MapGroup> groups) {
+    if (!canUseAdminTools) return;
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -3321,6 +3337,8 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
 
 // ✅ [최종 수정] 아카이브 삭제 기능(영구 삭제 확인 포함) 추가된 통합 관리 창
   void _showGlobalArchiveDialog() {
+    if (!canUseAdminTools) return;
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -3495,6 +3513,8 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
   }
   // 2. 그룹 데이터 저장 (타입 캐스팅 오류 해결)
   Future<void> _archiveGroupData(String teamName, MapGroup group) async {
+    if (!canUseAdminTools) return;
+
     // 1) 팀 데이터 확인
     if (!_allTeamsMap.containsKey(teamName)) return;
     var teamData = _allTeamsMap[teamName];
@@ -3542,6 +3562,8 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
 
  // 3. 그룹 데이터 불러오기 (복구 기능 - 그룹 삭제 시 재생성 로직 포함)
   Future<void> _loadArchiveData(String teamName, MapGroup group, BuildContext dialogCtx) async {
+    if (!canUseAdminTools) return;
+
     // 1) 경고 팝업
     bool? confirm = await showDialog<bool>(
       context: context,
@@ -3787,6 +3809,8 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
 
 // ✅ 1. 파이어베이스에 올라간 '하나의 파일'들 목록 보기 (에러 디버깅 강화 버전)
   Future<void> _showAiImportListDialog() async {
+    if (!canUseAdminTools) return;
+
     setState(() { _isGlobalProcessing = true; _processingText = "서버 데이터 조회 중..."; });
 
     try {
@@ -3863,6 +3887,8 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
   }
   // ✅ 2. 선 그리기 때와 완벽히 동일한 UI! (FilterChip 팀 선택)
   void _showAiTeamSelectionSheet(String aiGroupName, List<dynamic> aiManholes) {
+    if (!canUseAdminTools) return;
+
     List<String> selectedTargetTeams = [widget.teamName]; // 기본값: 내 팀
 
     showModalBottomSheet(
@@ -3932,6 +3958,8 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
 
   // ✅ 3. 선택된 여러 팀에 트랜잭션으로 안전하게 한 번에 꽂아줌
 Future<void> _distributeAiDataToTeams(List<String> targetTeams, String aiGroupName, List<dynamic> aiManholes) async {
+    if (!canUseAdminTools) return;
+
     setState(() { _isGlobalProcessing = true; _processingText = "선택한 팀으로 데이터 배포 중..."; });
 
     try {
