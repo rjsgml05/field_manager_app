@@ -21,7 +21,6 @@ import 'web_download_stub.dart' if (dart.library.html) 'web_download_web.dart' a
 import 'package:geocoding/geocoding.dart';
 import 'package:archive/archive.dart';
 import 'package:url_launcher/url_launcher.dart'; // ◀ 외부 링크 열기용
-import 'dart:ui' as ui;
 import 'package:media_scanner/media_scanner.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'dart:async';
@@ -372,7 +371,6 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   final Map<String, SiteData> _markerDataMap = {};
   // ... 나머지 기존 코드들 ...
   final Map<String, LineData> _lineDataMap = {};
-  final Map<String, BitmapDescriptor> _markerIconCache = {};
   final List<MapGroup> _userGroups = [];
   
   // ✅ 관리자 전용: 전체 팀 데이터를 저장할 Map
@@ -3530,74 +3528,6 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
       return "-";
     }
   }
-// [수정] 웹은 작게, 앱은 크게 그리는 반응형 마커 함수
-Future<BitmapDescriptor> _createNameLabelMarker(String label, Color color) async {
-  if (kIsWeb) {
-    final fontData = await rootBundle.load("assets/fonts/NanumGothic.ttf");
-    final fontLoader = FontLoader('NanumGothic');
-    fontLoader.addFont(Future.value(fontData));
-    await fontLoader.load();
-    await Future.delayed(const Duration(milliseconds: 100));
-  }
-  final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
-  final Canvas canvas = Canvas(pictureRecorder);
-  
-  // ✅ 1. 플랫폼별 사이즈 분기 (핵심!)
-  // kIsWeb이 true면(웹) 작게, false면(앱) 크게 설정
-  final double fontSize = kIsWeb ? 14.0 : 28.0;       // 앱은 글자 2배 키움
-  final double circleRadius = kIsWeb ? 9.0 : 18.0;    // 앱은 원 2배 키움
-  final double borderThickness = kIsWeb ? 1.5 : 3.0;  // 테두리도 두껍게
-  
-  // 2. 글자 준비
-  TextPainter textPainter = TextPainter(
-    textDirection: TextDirection.ltr,
-    textAlign: TextAlign.center,
-  );
-
-  textPainter.text = TextSpan(
-    text: label,
-    style: TextStyle(
-      fontSize: fontSize,
-      fontWeight: FontWeight.bold,
-      color: Colors.black,
-      backgroundColor: Colors.white70, 
-      fontFamily: 'NanumGothic',
-    ),
-  );
-  textPainter.layout();
-
-  // 3. 캔버스 크기 계산 (여백도 비율에 맞춰 조정)
-  double horizontalPadding = kIsWeb ? 6.0 : 12.0; // 좌우 여백
-  double verticalSpacing = kIsWeb ? 2.0 : 4.0;    // 원과 글자 사이 간격
-
-  double width = (textPainter.width > circleRadius * 2) ? textPainter.width : circleRadius * 2;
-  width += horizontalPadding; 
-  
-  double height = circleRadius * 2 + textPainter.height + verticalSpacing;
-
-  // 4. 그림 그리기
-  
-  // (1) 색깔 원 그리기
-  final Paint circlePaint = Paint()..color = color;
-  final Paint borderPaint = Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = borderThickness;
-  
-  // 원의 중심점
-  Offset circleCenter = Offset(width / 2, circleRadius + borderThickness);
-  
-  canvas.drawCircle(circleCenter, circleRadius, circlePaint); 
-  canvas.drawCircle(circleCenter, circleRadius, borderPaint); 
-
-  // (2) 글자 그리기
-  textPainter.paint(canvas, Offset((width - textPainter.width) / 2, circleRadius * 2 + verticalSpacing));
-
-  // 5. 이미지 변환
-  final ui.Image image = await pictureRecorder.endRecording().toImage(width.toInt(), height.toInt());
-  final ByteData? data = await image.toByteData(format: ui.ImageByteFormat.png);
-  
-  return BitmapDescriptor.fromBytes(data!.buffer.asUint8List());
-}
-
-
 // 1. 선 수정 다이얼로그 함수
   void _editLineDialog(LineData line) {
     _showLineInputSheet(existingLine: line);
