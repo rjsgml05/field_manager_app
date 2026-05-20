@@ -118,6 +118,9 @@
     var LABEL_HIDE_LEVEL = 7;
     var LINE_LABEL_HIDE_LEVEL = 8;
     var CLUSTER_LEVEL = 8;
+    var VIEWPORT_RENDER_DEBOUNCE_MS = 120;
+    var viewportRenderTimer = null;
+    var latestVisibleBounds = null;
 
     function postToFlutter(channelName, payload) {
       var channel = window[channelName];
@@ -153,6 +156,21 @@
           items[key].setMap(null);
         }
       });
+    }
+
+    function updateVisibleBoundsSnapshot() {
+      if (!map || typeof map.getBounds !== 'function') return;
+
+      var bounds = map.getBounds();
+      var sw = bounds.getSouthWest();
+      var ne = bounds.getNorthEast();
+
+      latestVisibleBounds = {
+        swLat: sw.getLat(),
+        swLng: sw.getLng(),
+        neLat: ne.getLat(),
+        neLng: ne.getLng()
+      };
     }
 
     function makeLabel(content, className, color) {
@@ -368,8 +386,25 @@
     }
 
     function refreshZoomDependentLayers() {
+      if (viewportRenderTimer) {
+        clearTimeout(viewportRenderTimer);
+        viewportRenderTimer = null;
+      }
+      updateVisibleBoundsSnapshot();
       redrawMarkers();
       redrawLines();
+    }
+
+    function scheduleRefreshZoomDependentLayers() {
+      if (!map) return;
+
+      updateVisibleBoundsSnapshot();
+      if (viewportRenderTimer) clearTimeout(viewportRenderTimer);
+
+      viewportRenderTimer = setTimeout(function() {
+        viewportRenderTimer = null;
+        refreshZoomDependentLayers();
+      }, VIEWPORT_RENDER_DEBOUNCE_MS);
     }
 
     function initMap() {
@@ -378,6 +413,7 @@
         center: new kakao.maps.LatLng(35.1795, 129.0756),
         level: 5
       });
+      updateVisibleBoundsSnapshot();
 
       kakao.maps.event.addListener(map, 'click', function(mouseEvent) {
         var latLng = mouseEvent.latLng;
@@ -387,7 +423,8 @@
         });
       });
 
-      kakao.maps.event.addListener(map, 'zoom_changed', refreshZoomDependentLayers);
+      kakao.maps.event.addListener(map, 'zoom_changed', scheduleRefreshZoomDependentLayers);
+      kakao.maps.event.addListener(map, 'idle', scheduleRefreshZoomDependentLayers);
 
       postToFlutter('FlutterChannel', {
         type: 'mapReady'
