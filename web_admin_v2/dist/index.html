@@ -1,11 +1,2338 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ko">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Field Manager Admin V2</title>
+  <style>
+    :root {
+      --sidebar-width: 360px;
+      --blue: #1976d2;
+      --blue-dark: #115293;
+      --border: #d9dee7;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --surface: #ffffff;
+      --panel: #f8fafc;
+      --disabled: #94a3b8;
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body,
+    #app {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+    }
+
+    html,
+    body {
+      overflow: hidden;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: #e5e7eb;
+    }
+
+    #app {
+      display: block;
+      min-width: 100vw;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: var(--sidebar-width);
+      min-width: var(--sidebar-width);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: var(--surface);
+      border-right: 1px solid #cfd7e3;
+      box-shadow: 2px 0 10px rgba(15, 23, 42, 0.1);
+      z-index: 20;
+      transform: translateX(0);
+      transition: transform 220ms ease;
+    }
+
+    #app.sidebar-closed .sidebar {
+      transform: translateX(-100%);
+    }
+
+    .sidebar-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 15;
+      background: rgba(15, 23, 42, 0.18);
+      opacity: 1;
+      pointer-events: auto;
+      transition: opacity 220ms ease;
+    }
+
+    #app.sidebar-closed .sidebar-backdrop {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .sidebar-header {
+      padding: 16px;
+      background: linear-gradient(180deg, var(--blue), var(--blue-dark));
+      color: #fff;
+    }
+
+    .sidebar-title {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: 0;
+    }
+
+    .sidebar-subtitle {
+      margin: 6px 0 0;
+      font-size: 13px;
+      opacity: 0.92;
+    }
+
+    .sidebar-body {
+      flex: 1;
+      min-height: 0;
+      padding: 10px;
+      overflow-y: auto;
+    }
+
+    .section {
+      margin-bottom: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+      background: #fff;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .section-body { padding: 8px; }
+
+    .status-value {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 900;
+    }
+
+    .list {
+      display: grid;
+      gap: 7px;
+    }
+
+    .switch-row,
+    .team-row,
+    .group-row,
+    .marker-row,
+    .line-row {
+      min-width: 0;
+      border: 1px solid #e5eaf2;
+      border-radius: 7px;
+      background: #fff;
+    }
+
+    .switch-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+    }
+
+    .team-summary,
+    .group-summary,
+    .line-summary {
+      display: grid;
+      grid-template-columns: 18px 1fr auto;
+      align-items: center;
+      gap: 7px;
+      min-height: 36px;
+      padding: 7px;
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .team-row {
+      background: #ffffff;
+    }
+
+    .team-row > .group-row,
+    .team-group-row {
+      position: relative;
+      margin: 0 7px 7px 24px;
+      background: #f8fbff;
+      border-color: #dbeafe;
+    }
+
+    .team-row > .group-row::before,
+    .team-group-row::before {
+      content: "";
+      position: absolute;
+      top: -7px;
+      bottom: 12px;
+      left: -13px;
+      width: 2px;
+      background: #bfdbfe;
+    }
+
+    .team-row > .group-row::after,
+    .team-group-row::after {
+      content: "";
+      position: absolute;
+      top: 18px;
+      left: -13px;
+      width: 12px;
+      height: 2px;
+      background: #bfdbfe;
+    }
+
+    .team-summary::-webkit-details-marker,
+    .group-summary::-webkit-details-marker,
+    .line-summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .marker-row {
+      display: grid;
+      grid-template-columns: 18px 1fr;
+      gap: 7px;
+      align-items: center;
+      margin: 0 7px 6px 32px;
+      padding: 6px;
+      cursor: pointer;
+    }
+
+    .team-row .marker-row,
+    .team-marker-row {
+      margin-left: 48px;
+      background: #fbfdff;
+    }
+
+    .team-icon,
+    .group-dot,
+    .marker-dot,
+    .line-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #94a3b8;
+      flex: 0 0 auto;
+    }
+
+    .group-dot,
+    .marker-dot {
+      border: 2px solid #fff;
+      box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.18);
+    }
+
+    .line-dot {
+      height: 4px;
+      border-radius: 999px;
+    }
+
+    .row-main { min-width: 0; }
+
+    .row-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .row-sub {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .row-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .tiny-button {
+      min-width: 32px;
+      height: 25px;
+      padding: 0 6px;
+      border: 1px solid #d7deea;
+      border-radius: 6px;
+      background: #fff;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+    }
+
+    .tiny-button.disabled-look {
+      color: var(--disabled);
+      background: #f8fafc;
+    }
+
+    .toggle {
+      position: relative;
+      width: 42px;
+      height: 24px;
+      border: 0;
+      border-radius: 999px;
+      background: #cbd5e1;
+      cursor: pointer;
+      transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+    }
+
+    .toggle::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+      transition: background-color 160ms ease, transform 160ms ease;
+    }
+
+    .toggle.on { background: var(--blue); }
+    .toggle.on::after { transform: translateX(18px); }
+
+    .full-button {
+      width: 100%;
+      height: 36px;
+      margin-bottom: 12px;
+      border: 0;
+      border-radius: 7px;
+      background: var(--blue);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .empty-text {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .sidebar-footer {
+      padding: 10px;
+      border-top: 1px solid var(--border);
+      background: #fff;
+    }
+
+    .message {
+      min-height: 32px;
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .logout-button {
+      width: 100%;
+      height: 34px;
+      border: 1px solid #e5e7eb;
+      border-radius: 7px;
+      background: #f8fafc;
+      color: #64748b;
+      font-size: 13px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .map-area {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #e8eef7;
+    }
+
+    #map {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      background: #e8eef7;
+      z-index: 0;
+    }
+
+    .map-toolbar {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      max-width: calc(100% - 24px);
+      padding: 8px;
+      border: 1px solid rgba(217, 222, 231, 0.95);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow: var(--shadow);
+    }
+
+    .sidebar-toggle {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 25;
+      width: 38px;
+      height: 38px;
+      border: 0;
+      border-radius: 9px;
+      background: rgba(255, 255, 255, 0.96);
+      color: #1f2937;
+      font-size: 20px;
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: var(--shadow);
+      transition: left 220ms ease, background-color 160ms ease;
+    }
+
+    #app.sidebar-open .sidebar-toggle {
+      left: calc(var(--sidebar-width) + 12px);
+    }
+
+    .map-button {
+      height: 32px;
+      padding: 0 11px;
+      border: 0;
+      border-radius: 7px;
+      background: #1f2937;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .map-button.active {
+      background: #f97316;
+    }
+
+    .readonly-badge {
+      flex: 0 0 auto;
+      padding: 7px 9px;
+      border-radius: 999px;
+      background: #eef4ff;
+      color: #1d4ed8;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .info-card {
+      position: absolute;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%) translateY(0);
+      z-index: 10;
+      width: min(640px, calc(100% - 40px));
+      max-height: min(58vh, 440px);
+      padding: 14px;
+      overflow: auto;
+      border: 1px solid rgba(217, 222, 231, 0.95);
+      border-radius: 16px;
+      background: #fff;
+      box-shadow: var(--shadow);
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transition: opacity 180ms ease, transform 180ms ease, visibility 180ms ease;
+    }
+
+    .info-card.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: translateX(-50%) translateY(18px);
+    }
+
+    .info-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .info-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 900;
+    }
+
+    .close-button {
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border: 1px solid #d7deea;
+      border-radius: 6px;
+      background: #fff;
+      color: #334155;
+      font-size: 15px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .marker-title {
+      margin: 0 0 10px;
+      font-size: 17px;
+      font-weight: 900;
+    }
+
+    .marker-meta {
+      display: grid;
+      gap: 7px;
+    }
+
+    .info-line {
+      display: grid;
+      grid-template-columns: 112px 1fr;
+      gap: 8px;
+      align-items: start;
+      padding: 7px;
+      border: 1px solid #edf0f5;
+      border-radius: 7px;
+      background: #fbfcff;
+      font-size: 12px;
+    }
+
+    .info-key {
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .info-value {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-weight: 800;
+    }
+
+    .flat-marker-wrap {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+      touch-action: none;
+      pointer-events: auto;
+      will-change: transform;
+    }
+
+    .flat-marker-dot {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 2px solid #1f2937;
+      box-shadow: 0 1px 4px rgba(15, 23, 42, 0.28);
+      background: #4f46e5;
+    }
+
+    .flat-marker-title {
+      min-width: 18px;
+      max-width: 86px;
+      margin-top: 2px;
+      padding: 2px 5px;
+      border: 1px solid #4b5563;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.96);
+      color: #111827;
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      box-shadow: 0 1px 4px rgba(15, 23, 42, 0.14);
+    }
+
+    .flat-marker-check {
+      position: absolute;
+      top: -5px;
+      right: calc(50% - 18px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid #fff;
+      background: #111827;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 900;
+      line-height: 1;
+      z-index: 2;
+      box-shadow: 0 1px 4px rgba(15, 23, 42, 0.28);
+    }
+
+    .flat-marker-wrap.marker-focus .flat-marker-dot {
+      outline: 3px solid rgba(25, 118, 210, 0.28);
+      transform: scale(1.18);
+      transition: outline-color 180ms ease, transform 180ms ease;
+    }
+
+    .line-label {
+      max-width: 160px;
+      padding: 3px 8px;
+      border: 1px solid rgba(15, 23, 42, 0.16);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: none;
+      color: #111827;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      box-shadow: 0 2px 7px rgba(15, 23, 42, 0.18);
+      pointer-events: none;
+    }
+
+    .marker-card {
+      display: grid;
+      gap: 9px;
+    }
+
+    .marker-card-head {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 10px;
+      align-items: start;
+    }
+
+    .marker-card-title {
+      min-width: 0;
+    }
+
+    .marker-card-title h3 {
+      margin: 0 0 4px;
+      font-size: 17px;
+      font-weight: 900;
+      line-height: 1.3;
+      color: #1d4ed8;
+    }
+
+    .marker-card-subtitle {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .marker-card-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 5px;
+    }
+
+    .marker-action {
+      min-width: 30px;
+      height: 30px;
+      padding: 0 7px;
+      border: 1px solid #d7deea;
+      border-radius: 7px;
+      background: #fff;
+      color: #334155;
+      font-size: 13px;
+      font-weight: 900;
+      cursor: pointer;
+      transition: background-color 160ms ease, border-color 160ms ease, transform 120ms ease;
+    }
+
+    .marker-action:hover {
+      background: #eff6ff;
+      border-color: #93c5fd;
+    }
+
+    .marker-action:active {
+      transform: translateY(1px);
+    }
+
+    .marker-address {
+      display: flex;
+      gap: 7px;
+      align-items: flex-start;
+      padding: 8px;
+      border: 1px solid #e5eaf2;
+      border-radius: 8px;
+      background: #fbfcff;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.4;
+    }
+
+    .marker-primary-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 20px;
+      font-weight: 900;
+      color: #111827;
+    }
+
+    .marker-photo-grid {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+
+    .marker-photo {
+      width: 72px;
+      height: 72px;
+      object-fit: cover;
+      flex: 0 0 auto;
+      border: 1px solid #d7deea;
+      border-radius: 8px;
+      background: #f1f5f9;
+    }
+
+    .photo-error {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 96px;
+      height: 72px;
+      flex: 0 0 auto;
+      border: 1px solid #d7deea;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      text-align: center;
+      padding: 6px;
+    }
+
+    @media (max-width: 820px) {
+      :root { --sidebar-width: 300px; }
+      .sidebar-title { font-size: 18px; }
+      .map-toolbar {
+        left: 8px;
+        right: 8px;
+        justify-content: flex-end;
+        overflow-x: auto;
+      }
+
+      .info-card {
+        width: calc(100% - 20px);
+        bottom: 12px;
+        max-height: 62vh;
+      }
+    }
+  </style>
 </head>
 <body>
-  <h1>Field Manager Admin V2</h1>
-  <p>V2 관리자 웹 준비 중</p>
+  <div id="app" class="sidebar-open">
+    <aside class="sidebar" aria-label="Field Manager Admin V2 sidebar">
+      <header class="sidebar-header">
+        <h1 class="sidebar-title">통합 관제 시스템 V2</h1>
+        <p class="sidebar-subtitle">KakaoMap 관리자</p>
+      </header>
+
+      <div class="sidebar-body">
+        <section class="section">
+          <div class="section-header">Spreadsheet upload</div>
+          <div class="section-body">
+            <div class="switch-row">
+              <div>
+                <div class="row-title">관리자 전용 토글</div>
+                <div class="row-sub">Placeholder only</div>
+              </div>
+              <button id="spreadsheetToggle" class="toggle" type="button" aria-label="Spreadsheet placeholder"></button>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-header">
+            <span>협력사/팀 목록</span>
+            <span id="teamTotal" class="status-value">0</span>
+          </div>
+          <div id="teamList" class="section-body list">
+            <p class="empty-text">Loading teams...</p>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-header">
+            <span>나의 데이터</span>
+            <span id="groupTotal" class="status-value">0</span>
+          </div>
+          <div id="myGroupList" class="section-body list">
+            <p class="empty-text">그룹 없음</p>
+          </div>
+        </section>
+
+        <button id="addGroupButton" class="full-button" type="button">+ 새 그룹 추가</button>
+
+        <section class="section">
+          <div class="section-header">
+            <span>선 목록 (Lines)</span>
+            <button id="lineToggleButton" class="tiny-button" type="button">-</button>
+          </div>
+          <div id="lineSectionBody" class="section-body list">
+            <p class="empty-text">선 데이터가 없습니다.</p>
+          </div>
+        </section>
+      </div>
+
+      <footer class="sidebar-footer">
+        <p id="adminStatusMessage" class="message">Read-only admin map is ready.</p>
+        <button id="logoutButton" class="logout-button" type="button">로그아웃</button>
+      </footer>
+    </aside>
+    <div id="sidebarBackdrop" class="sidebar-backdrop" aria-hidden="true"></div>
+
+    <main class="map-area">
+      <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="Toggle sidebar">☰</button>
+      <div id="map" aria-label="Field Manager Admin V2 KakaoMap"></div>
+      <div class="map-toolbar" aria-label="Map controls">
+        <button id="refreshButton" class="map-button" type="button">새로고침</button>
+        <button id="fitBoundsButton" class="map-button" type="button">전체보기</button>
+        <button id="markerMoveButton" class="map-button" type="button">마커 이동</button>
+        <button id="cadastralButton" class="map-button" type="button">지적편집도</button>
+        <span class="readonly-badge">READ ONLY</span>
+      </div>
+
+      <section id="infoCard" class="info-card hidden" aria-label="Marker information">
+        <div class="info-header">
+          <h2 class="info-title">마커 정보</h2>
+          <button id="closeInfoButton" class="close-button" type="button" aria-label="Close marker info">x</button>
+        </div>
+        <div id="infoPanel"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=4a2743b9e49b8da391510688eb04d69d&autoload=false"></script>
+  <script>
+    console.log("[ADMIN_V2] init");
+
+    var ADMIN_TEAM_DOC_ID = "admin";
+    var BUSAN_CENTER = { lat: 35.1795, lng: 129.0756 };
+    var firebaseConfig = {
+      apiKey: "AIzaSyDe_DmJBD4aFBOrUlLrJBB5Snoc1yPBljE",
+      authDomain: "fieldmanager-c94c2.firebaseapp.com",
+      projectId: "fieldmanager-c94c2",
+      storageBucket: "fieldmanager-c94c2.firebasestorage.app",
+      messagingSenderId: "1023081610040",
+      appId: "1:1023081610040:web:0ff5070edd63eca65fdfcd",
+      measurementId: "G-MW5011FHYE"
+    };
+
+    var db = null;
+    var map = null;
+    var markerObjects = {};
+    var markerImageCache = {};
+    var lineOverlays = {};
+    var lineLabelOverlays = {};
+    var allTeams = [];
+    var ownTeam = null;
+    var teamVisibility = {};
+    var groupVisibility = {};
+    var lineVisibility = {};
+    var initialAutoFitDone = false;
+    var TARGET_MARKER_LEVEL = 2;
+    var markerMoveMode = false;
+    var suppressNextMapClick = false;
+    var focusedMarkerId = null;
+
+    // TODO(Admin V2): marker create/edit/delete, line create/edit/delete,
+    // data share, Spreadsheet upload, AI import, cadastral overlay, and PDF/JPG drawing overlay.
+    // This file keeps those features as placeholders except marker ON/OFF and marker lat/lng move.
+
+    function setStatus(id, text) {
+      console.log("[ADMIN_V2_STATUS]", id, text);
+    }
+
+    function setFirebaseStatus(text) { setStatus("firebaseStatus", text); }
+    function setMapStatus(text) { setStatus("mapStatus", text); }
+    function setMarkerCount(count) { console.log("[ADMIN_V2_STATUS] markers", count); }
+
+    function setTeamCount(count) {
+      document.getElementById("teamTotal").textContent = String(count);
+    }
+
+    function setRefreshEnabled(enabled) {
+      document.getElementById("refreshButton").disabled = !enabled;
+    }
+
+    function setAdminMessage(message) {
+      document.getElementById("adminStatusMessage").textContent = message;
+    }
+
+    function relayoutMap() {
+      if (!map || !window.kakao || !kakao.maps) return;
+      map.relayout();
+    }
+
+    function initFirebase() {
+      try {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.firestore();
+        setFirebaseStatus("Ready");
+        console.log("[ADMIN_V2] firebase ready");
+      } catch (error) {
+        setFirebaseStatus("Error");
+        console.error("[ADMIN_V2] firebase init failed", error);
+      }
+    }
+
+    function initKakaoMap() {
+      if (!window.kakao || !kakao.maps || !kakao.maps.load) {
+        setMapStatus("SDK error");
+        return;
+      }
+
+      try {
+        kakao.maps.load(function() {
+          try {
+            var container = document.getElementById("map");
+            map = new kakao.maps.Map(container, {
+              center: new kakao.maps.LatLng(BUSAN_CENTER.lat, BUSAN_CENTER.lng),
+              level: 4
+            });
+            setMapStatus("Map connected");
+            setTimeout(relayoutMap, 120);
+            window.addEventListener("resize", function() {
+              setTimeout(relayoutMap, 60);
+            });
+            kakao.maps.event.addListener(map, "click", function(mouseEvent) {
+              if (suppressNextMapClick) {
+                suppressNextMapClick = false;
+                return;
+              }
+              closeMarkerInfo();
+              closeSidebar();
+            });
+            loadAdminMarkers();
+          } catch (error) {
+            setMapStatus("Map error");
+            console.error("[ADMIN_V2] kakao map init failed", error);
+          }
+        });
+      } catch (error) {
+        setMapStatus("SDK error");
+        console.error("[ADMIN_V2] kakao sdk failed", error);
+      }
+    }
+
+    function colorValueToHex(value, fallback) {
+      if (typeof value === "string" && value.charAt(0) === "#") return value;
+      var numberValue = Number(value);
+      if (!Number.isFinite(numberValue)) return fallback || "#4F46E5";
+      var hex = (numberValue >>> 0).toString(16).padStart(8, "0");
+      return "#" + hex.slice(2).toUpperCase();
+    }
+
+    function readBool(value) {
+      return value === true || value === "true" || value === 1 || value === "1";
+    }
+
+    function markerIdOf(item) {
+      return String(item.id || item.markerId || item.originalMarkerId || item.sourceMarkerId || "");
+    }
+
+    function normalizeGroups(data) {
+      var groups = Array.isArray(data.groups) ? data.groups : [];
+      return groups.map(function(group, index) {
+        var item = group || {};
+        return {
+          name: String(item.name || "Group " + (index + 1)),
+          color: colorValueToHex(item.colorValue, "#4F46E5"),
+          isVisible: item.isVisible !== false
+        };
+      });
+    }
+
+    function makeGroupLookup(groups) {
+      var lookup = {};
+      groups.forEach(function(group) {
+        if (!group || !group.name) return;
+        lookup[String(group.name)] = group;
+      });
+      return lookup;
+    }
+
+    function normalizeMarkers(data, teamDocId) {
+      var groups = Array.isArray(data.groups) ? data.groups : [];
+      var groupLookup = makeGroupLookup(groups);
+      var markers = Array.isArray(data.markers) ? data.markers : [];
+
+      return markers.map(function(item, index) {
+        var marker = item || {};
+        var group = marker.group || {};
+        var groupName = String(group.name || marker.groupName || "Default group");
+        var groupMeta = groupLookup[groupName] || group;
+        var rawId = markerIdOf(marker) || "marker_" + index;
+
+        return {
+          id: String(teamDocId || ADMIN_TEAM_DOC_ID) + "::" + rawId,
+          rawId: rawId,
+          markerId: marker.markerId || marker.id || rawId,
+          originalMarkerId: marker.originalMarkerId || "",
+          sourceMarkerId: marker.sourceMarkerId || "",
+          parentMarkerId: marker.parentMarkerId || "",
+          lat: Number(marker.lat),
+          lng: Number(marker.lng),
+          title: marker.title || marker.name || "Untitled",
+          description: marker.description || "",
+          address: marker.address || "",
+          groupName: groupName,
+          teamName: String(teamDocId || ADMIN_TEAM_DOC_ID),
+          color: marker.color || colorValueToHex(groupMeta.colorValue, "#4F46E5"),
+          isChecked: readBool(marker.isChecked) || readBool(marker.checked) || readBool(marker.isOn),
+          photos: normalizePhotos(marker.photos)
+        };
+      }).filter(function(marker) {
+        return marker.id && Number.isFinite(marker.lat) && Number.isFinite(marker.lng);
+      });
+    }
+
+    function normalizePhotos(photos) {
+      if (!Array.isArray(photos)) return [];
+      return photos.map(function(photo) {
+        if (typeof photo === "string") return { url: photo };
+        var item = photo || {};
+        return {
+          url: item.url || item.downloadUrl || item.thumbnailUrl || item.path || item.filePath || "",
+          comment: item.comment || ""
+        };
+      }).filter(function(photo) {
+        return !!photo.url;
+      });
+    }
+
+    function normalizeLines(data, teamDocId) {
+      var lines = Array.isArray(data.lines) ? data.lines : [];
+      return lines.map(function(item, index) {
+        var line = item || {};
+        var points = Array.isArray(line.points) ? line.points.map(function(point) {
+          return {
+            lat: Number(point && point.lat),
+            lng: Number(point && point.lng)
+          };
+        }).filter(function(point) {
+          return Number.isFinite(point.lat) && Number.isFinite(point.lng);
+        }) : [];
+
+        return {
+          id: String(teamDocId || ADMIN_TEAM_DOC_ID) + "::" + String(line.id || "line_" + index),
+          lineId: String(line.id || "line_" + index),
+          teamName: String(teamDocId || ADMIN_TEAM_DOC_ID),
+          title: line.title || "Untitled line",
+          description: line.description || "",
+          markerIds: Array.isArray(line.markerIds) ? line.markerIds.map(String) : [],
+          points: points,
+          color: colorValueToHex(line.colorValue, "#7C3AED"),
+          isVisible: line.isVisible !== false
+        };
+      });
+    }
+
+    function normalizeTeam(docId, data) {
+      var source = data || {};
+      return {
+        docId: docId,
+        teamName: source.teamName || docId,
+        groups: normalizeGroups(source),
+        markers: normalizeMarkers(source, docId),
+        lines: normalizeLines(source, docId)
+      };
+    }
+
+    async function loadAdminMarkers() {
+      if (!db || !map) return;
+      setRefreshEnabled(false);
+      setFirebaseStatus("Loading");
+
+      try {
+        var snapshot = await db.collection("teams").get();
+        var teams = [];
+        var adminTeam = null;
+
+        snapshot.forEach(function(doc) {
+          var team = normalizeTeam(doc.id, doc.data() || {});
+          if (doc.id === ADMIN_TEAM_DOC_ID) {
+            adminTeam = team;
+          } else {
+            teams.push(team);
+          }
+        });
+
+        ownTeam = adminTeam || normalizeTeam(ADMIN_TEAM_DOC_ID, {});
+        allTeams = teams;
+        syncVisibilityState();
+        renderTeams();
+        renderMyData();
+        renderLines();
+        renderMarkers(getVisibleMarkers(), { fitBounds: !initialAutoFitDone });
+        renderMapLines(getVisibleLines());
+        if (!initialAutoFitDone) initialAutoFitDone = true;
+        setMarkerCount(getVisibleMarkers().length);
+        setTeamCount(allTeams.length);
+        setFirebaseStatus("Ready");
+        setAdminMessage("Read-only data refreshed.");
+        console.log("[ADMIN_V2] markers loaded", ownTeam.markers.length);
+      } catch (error) {
+        setFirebaseStatus("Error");
+        console.error("[ADMIN_V2] markers load failed", error);
+      } finally {
+        setRefreshEnabled(true);
+      }
+    }
+
+    function syncVisibilityState() {
+      if (ownTeam) {
+        ownTeam.groups.forEach(function(group) {
+          var key = groupKey(ownTeam.docId, group.name);
+          if (groupVisibility[key] === undefined) groupVisibility[key] = group.isVisible !== false;
+        });
+        ownTeam.lines.forEach(function(line) {
+          if (lineVisibility[line.id] === undefined) lineVisibility[line.id] = line.isVisible !== false;
+        });
+      }
+
+      allTeams.forEach(function(team) {
+        if (teamVisibility[team.docId] === undefined) teamVisibility[team.docId] = true;
+        team.groups.forEach(function(group) {
+          var key = groupKey(team.docId, group.name);
+          if (groupVisibility[key] === undefined) groupVisibility[key] = group.isVisible !== false;
+        });
+        team.lines.forEach(function(line) {
+          if (lineVisibility[line.id] === undefined) lineVisibility[line.id] = line.isVisible !== false;
+        });
+      });
+    }
+
+    function groupKey(teamDocId, groupName) {
+      return String(teamDocId) + "::" + String(groupName);
+    }
+
+    function getVisibleMarkers() {
+      var markers = [];
+      if (ownTeam) {
+        ownTeam.markers.forEach(function(marker) {
+          if (groupVisibility[groupKey(ownTeam.docId, marker.groupName)] !== false) markers.push(marker);
+        });
+      }
+
+      allTeams.forEach(function(team) {
+        if (teamVisibility[team.docId] === false) return;
+        team.markers.forEach(function(marker) {
+          if (groupVisibility[groupKey(team.docId, marker.groupName)] !== false) markers.push(marker);
+        });
+      });
+
+      return markers;
+    }
+
+    function getVisibleLines() {
+      var lines = [];
+      if (ownTeam) {
+        ownTeam.lines.forEach(function(line) {
+          if (lineVisibility[line.id] !== false) lines.push(line);
+        });
+      }
+
+      allTeams.forEach(function(team) {
+        if (teamVisibility[team.docId] === false) return;
+        team.lines.forEach(function(line) {
+          if (lineVisibility[line.id] !== false) lines.push(line);
+        });
+      });
+
+      return lines;
+    }
+
+    function markerSourceKey(marker) {
+      var original = String(marker.originalMarkerId || "").trim();
+      var source = String(marker.sourceMarkerId || "").trim();
+      var parent = String(marker.parentMarkerId || "").trim();
+      if (original) return original;
+      if (source) return source;
+      if (parent) return parent;
+      return "";
+    }
+
+    function markerDisplayKey(marker) {
+      var sharedKey = markerSourceKey(marker);
+      if (sharedKey) return "shared:" + sharedKey;
+      var ownId = String(marker.markerId || marker.rawId || marker.id || "").trim();
+      return "own:" + String(marker.teamName || marker.docId || ADMIN_TEAM_DOC_ID) + ":" + ownId;
+    }
+
+    function markerCoordHash(marker) {
+      return Number(marker.lat).toFixed(5) + "," + Number(marker.lng).toFixed(5);
+    }
+
+    function isSameMarkerPosition(a, b) {
+      return Math.abs(Number(a.lat) - Number(b.lat)) <= 0.00001 &&
+        Math.abs(Number(a.lng) - Number(b.lng)) <= 0.00001;
+    }
+
+    function markerRenderPriority(marker) {
+      return String(marker.teamName || "") === ADMIN_TEAM_DOC_ID ? 0 : 3;
+    }
+
+    function mergeMarkerDuplicate(existing, incoming) {
+      var representative = markerRenderPriority(incoming) < markerRenderPriority(existing) ? incoming : existing;
+      var teams = [].concat(existing.duplicateTeams || [existing.teamName], incoming.duplicateTeams || [incoming.teamName])
+        .filter(Boolean);
+      var uniqueTeams = Array.from(new Set(teams.map(String))).sort();
+      representative.duplicateCount = (existing.duplicateCount || 1) + (incoming.duplicateCount || 1);
+      representative.duplicateTeams = uniqueTeams;
+      representative.isDeduped = representative.duplicateCount > 1;
+      representative.displayKey = existing.displayKey || incoming.displayKey || markerDisplayKey(representative);
+      return representative;
+    }
+
+    function dedupeVisibleMarkers(markers) {
+      var result = [];
+      (markers || []).forEach(function(marker) {
+        var baseDisplayKey = markerDisplayKey(marker);
+        var item = Object.assign({}, marker, {
+          displayKey: baseDisplayKey,
+          duplicateCount: marker.duplicateCount || 1,
+          duplicateTeams: marker.duplicateTeams || [marker.teamName],
+          isDeduped: marker.isDeduped === true
+        });
+        var matchIndex = -1;
+        var hasSameBaseKey = false;
+
+        for (var i = 0; i < result.length; i += 1) {
+          if (result[i].displayKey !== baseDisplayKey) continue;
+          hasSameBaseKey = true;
+          if (isSameMarkerPosition(result[i], item)) {
+            matchIndex = i;
+            break;
+          }
+        }
+
+        if (matchIndex !== -1) {
+          result[matchIndex] = mergeMarkerDuplicate(result[matchIndex], item);
+          return;
+        }
+
+        if (hasSameBaseKey) item.displayKey = baseDisplayKey + "@" + markerCoordHash(item);
+        result.push(item);
+      });
+      return result;
+    }
+
+    function normalizeSharedMarkerId(id) {
+      var value = String(id || "").trim();
+      if (!value) return "";
+      var prefixes = [ADMIN_TEAM_DOC_ID];
+      if (ownTeam) prefixes.push(ownTeam.docId, ownTeam.teamName);
+      allTeams.forEach(function(team) {
+        prefixes.push(team.docId, team.teamName);
+      });
+      prefixes.filter(Boolean).forEach(function(prefix) {
+        var clean = String(prefix);
+        [clean + "::", clean + "_", clean + "/", clean + "-"].forEach(function(token) {
+          if (value.indexOf(token) === 0) value = value.slice(token.length);
+        });
+      });
+      return value;
+    }
+
+    function linePathHash(line) {
+      return (line.points || []).map(function(point) {
+        return Number(point.lat).toFixed(6) + "," + Number(point.lng).toFixed(6);
+      }).join(">");
+    }
+
+    function lineDisplayKey(line) {
+      var pathHash = linePathHash(line);
+      var markerIds = Array.isArray(line.markerIds) ? line.markerIds.map(normalizeSharedMarkerId).filter(Boolean).join(">") : "";
+      if (markerIds) return "markers:" + markerIds + "|path:" + pathHash + "|color:" + line.color;
+      return "path:" + pathHash + "|color:" + line.color;
+    }
+
+    function mergeLineDuplicate(existing, incoming) {
+      var representative = String(incoming.teamName || "") === ADMIN_TEAM_DOC_ID ? incoming : existing;
+      var teams = [].concat(existing.duplicateTeams || [existing.teamName], incoming.duplicateTeams || [incoming.teamName])
+        .filter(Boolean);
+      var titles = [].concat(existing.duplicateTitles || [existing.title], incoming.duplicateTitles || [incoming.title])
+        .filter(Boolean);
+      representative.duplicateCount = (existing.duplicateCount || 1) + (incoming.duplicateCount || 1);
+      representative.duplicateTeams = Array.from(new Set(teams.map(String))).sort();
+      representative.duplicateTitles = Array.from(new Set(titles.map(String))).sort();
+      representative.isDeduped = representative.duplicateCount > 1;
+      representative.displayKey = existing.displayKey || incoming.displayKey || lineDisplayKey(representative);
+      representative.pathHash = existing.pathHash || incoming.pathHash || linePathHash(representative);
+      return representative;
+    }
+
+    function dedupeVisibleLines(lines) {
+      var result = [];
+      (lines || []).forEach(function(line) {
+        var pathHash = linePathHash(line);
+        var displayKey = lineDisplayKey(line);
+        var item = Object.assign({}, line, {
+          displayKey: displayKey,
+          pathHash: pathHash,
+          duplicateCount: line.duplicateCount || 1,
+          duplicateTeams: line.duplicateTeams || [line.teamName],
+          duplicateTitles: line.duplicateTitles || [line.title],
+          isDeduped: line.isDeduped === true
+        });
+        var matchIndex = -1;
+        for (var i = 0; i < result.length; i += 1) {
+          if (result[i].displayKey === displayKey) {
+            matchIndex = i;
+            break;
+          }
+        }
+        if (matchIndex !== -1) {
+          result[matchIndex] = mergeLineDuplicate(result[matchIndex], item);
+        } else {
+          result.push(item);
+        }
+      });
+      return result;
+    }
+
+    function markerSignature(marker) {
+      return [
+        marker.id,
+        marker.displayKey,
+        marker.title,
+        marker.groupName,
+        marker.color,
+        marker.isChecked ? "checked" : "unchecked",
+        marker.duplicateCount || 1,
+        marker.address,
+        marker.markerId,
+        marker.originalMarkerId,
+        marker.sourceMarkerId,
+        marker.parentMarkerId
+      ].join("|");
+    }
+
+    function markerLabelText(marker) {
+      var text = String(marker.title || marker.name || marker.markerId || marker.rawId || marker.id || "");
+      return text.length > 12 ? text.slice(0, 11) + "…" : text;
+    }
+
+    function markerImageTitle(marker) {
+      var text = String(marker.title || marker.name || marker.markerId || marker.rawId || marker.id || "").trim();
+      return text.length > 8 ? text.slice(0, 8) : text;
+    }
+
+    function markerImageChecked(marker) {
+      return marker.isChecked === true || marker.isChecked === "true" ||
+        marker.checked === true || marker.checked === "true" ||
+        marker.isOn === true || marker.isOn === "true";
+    }
+
+    function normalizeMarkerColor(color) {
+      var value = String(color || "#4F46E5").trim();
+      if (!/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(value)) return "#4F46E5";
+      if (value.length === 4) {
+        value = "#" + value.charAt(1) + value.charAt(1) + value.charAt(2) + value.charAt(2) + value.charAt(3) + value.charAt(3);
+      }
+      return value.toUpperCase();
+    }
+
+    function markerImageKey(marker) {
+      return [
+        normalizeMarkerColor(marker.color),
+        markerImageTitle(marker),
+        markerImageChecked(marker) ? "1" : "0"
+      ].join("|");
+    }
+
+    function createMarkerImage(marker) {
+      var cacheKey = markerImageKey(marker);
+      if (markerImageCache[cacheKey]) return markerImageCache[cacheKey];
+
+      var color = normalizeMarkerColor(marker.color);
+      var title = markerImageTitle(marker);
+      var isChecked = markerImageChecked(marker);
+      var ratio = Math.min(window.devicePixelRatio || 1, 2);
+      var dotSize = 15;
+      var dotRadius = dotSize / 2;
+      var labelFontSize = 10;
+      var labelHeight = title ? 15 : 0;
+      var measureCanvas = document.createElement("canvas");
+      var measureCtx = measureCanvas.getContext("2d");
+      measureCtx.font = "700 " + labelFontSize + "px Arial, sans-serif";
+      var measuredText = title ? Math.ceil(measureCtx.measureText(title).width) : 0;
+      var labelWidth = title ? Math.max(18, Math.min(70, measuredText + 10)) : 0;
+      var width = Math.ceil(Math.max(30, labelWidth + 6, isChecked ? 34 : 30));
+      var height = Math.ceil(dotSize + (title ? labelHeight + 3 : 0) + 5);
+      var dotCx = width / 2;
+      var dotCy = dotRadius + 2;
+      var labelX = (width - labelWidth) / 2;
+      var labelY = dotSize + 5;
+
+      var canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(width * ratio);
+      canvas.height = Math.ceil(height * ratio);
+      canvas.style.width = width + "px";
+      canvas.style.height = height + "px";
+      var ctx = canvas.getContext("2d");
+      ctx.scale(ratio, ratio);
+
+      ctx.fillStyle = color;
+      ctx.strokeStyle = "#333333";
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.arc(dotCx, dotCy, dotRadius - 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      if (isChecked) {
+        var checkCx = dotCx + 7;
+        var checkCy = dotCy - 5.5;
+        ctx.fillStyle = "#ffffff";
+        ctx.strokeStyle = "#333333";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(checkCx, checkCy, 4.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.strokeStyle = "#111111";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(checkCx - 2.2, checkCy);
+        ctx.lineTo(checkCx - 0.4, checkCy + 1.9);
+        ctx.lineTo(checkCx + 2.5, checkCy - 2);
+        ctx.stroke();
+      }
+
+      if (title) {
+        ctx.fillStyle = "#ffffff";
+        ctx.strokeStyle = "#444444";
+        ctx.lineWidth = 0.8;
+        drawRoundRect(ctx, labelX, labelY, labelWidth, labelHeight, 3);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#111111";
+        ctx.font = "700 " + labelFontSize + "px Arial, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(title, width / 2, labelY + labelHeight / 2 + 0.4);
+      }
+
+      var image = new kakao.maps.MarkerImage(
+        canvas.toDataURL("image/png"),
+        new kakao.maps.Size(width, height),
+        { offset: new kakao.maps.Point(width / 2, height) }
+      );
+      markerImageCache[cacheKey] = image;
+      return image;
+    }
+
+    function drawRoundRect(ctx, x, y, width, height, radius) {
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+      ctx.lineTo(x + width, y + height - radius);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+      ctx.lineTo(x + radius, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+    }
+
+    function createKakaoMarker(marker) {
+      var markerObj = new kakao.maps.Marker({
+        map: map,
+        position: new kakao.maps.LatLng(marker.lat, marker.lng),
+        image: createMarkerImage(marker),
+        clickable: true,
+        draggable: markerMoveMode
+      });
+      markerObj.__data = marker;
+      markerObj.__lat = Number(marker.lat);
+      markerObj.__lng = Number(marker.lng);
+      markerObj.__imageKey = markerImageKey(marker);
+      markerObj.__signature = markerSignature(marker);
+      markerObj.__draggable = markerMoveMode;
+
+      kakao.maps.event.addListener(markerObj, "click", function() {
+        if (markerMoveMode) return;
+        showMarkerInfo(markerObj.__data);
+      });
+
+      kakao.maps.event.addListener(markerObj, "dragend", function() {
+        if (!markerMoveMode) return;
+        var position = markerObj.getPosition();
+        suppressNextMapClick = true;
+        setTimeout(function() { suppressNextMapClick = false; }, 160);
+        saveMovedMarkerPosition(markerObj.__data, position.getLat(), position.getLng());
+      });
+
+      return markerObj;
+    }
+
+    function renderMarkers(markers, options) {
+      options = options || {};
+      var renderItems = dedupeVisibleMarkers(markers);
+      var keep = {};
+      var created = 0;
+      var reused = 0;
+      var moved = 0;
+      var imageUpdated = 0;
+      var removed = 0;
+
+      renderItems.forEach(function(marker) {
+        var id = String(marker.id || marker.markerId || marker.rawId || "");
+        if (!id) return;
+        keep[id] = true;
+        var markerObj = markerObjects[id];
+        var lat = Number(marker.lat);
+        var lng = Number(marker.lng);
+        var nextImageKey = markerImageKey(marker);
+
+        if (!markerObj) {
+          markerObj = createKakaoMarker(marker);
+          markerObjects[id] = markerObj;
+          created += 1;
+          return;
+        }
+
+        if (markerObj.__lat !== lat || markerObj.__lng !== lng) {
+          markerObj.setPosition(new kakao.maps.LatLng(lat, lng));
+          markerObj.__lat = lat;
+          markerObj.__lng = lng;
+          moved += 1;
+        }
+
+        if (markerObj.__imageKey !== nextImageKey) {
+          markerObj.setImage(createMarkerImage(marker));
+          markerObj.__imageKey = nextImageKey;
+          imageUpdated += 1;
+        } else {
+          reused += 1;
+        }
+
+        if (markerObj.__draggable !== markerMoveMode && typeof markerObj.setDraggable === "function") {
+          markerObj.setDraggable(markerMoveMode);
+          markerObj.__draggable = markerMoveMode;
+        }
+        markerObj.__data = marker;
+        markerObj.__signature = markerSignature(marker);
+        markerObj.setMap(map);
+      });
+
+      Object.keys(markerObjects).forEach(function(id) {
+        if (keep[id]) return;
+        markerObjects[id].setMap(null);
+        delete markerObjects[id];
+        removed += 1;
+      });
+
+      console.log("[ADMIN_V2_MARKERS]", {
+        raw: markers.length,
+        rendered: renderItems.length,
+        created: created,
+        reused: reused,
+        moved: moved,
+        imageUpdated: imageUpdated,
+        removed: removed,
+        imageCache: Object.keys(markerImageCache).length
+      });
+
+      if (options.fitBounds === true) fitBoundsToVisibleItems();
+    }
+
+    function renderMapLines(lines) {
+      lines = dedupeVisibleLines(lines);
+      var keep = {};
+
+      lines.forEach(function(line) {
+        if (!line.points || line.points.length < 2) return;
+        keep[line.id] = true;
+
+        var path = line.points.map(function(point) {
+          return new kakao.maps.LatLng(point.lat, point.lng);
+        });
+        var signature = [
+          line.id,
+          line.displayKey,
+          line.title,
+          line.color,
+          line.duplicateCount || 1,
+          line.points.map(function(point) { return point.lat + "," + point.lng; }).join(";")
+        ].join("|");
+        var overlay = lineOverlays[line.id];
+
+        if (overlay && overlay.__signature === signature) return;
+        if (overlay) overlay.setMap(null);
+
+        overlay = new kakao.maps.Polyline({
+          map: map,
+          path: path,
+          strokeWeight: 3,
+          strokeColor: line.color,
+          strokeOpacity: 0.9,
+          strokeStyle: "solid"
+        });
+        overlay.__signature = signature;
+        lineOverlays[line.id] = overlay;
+
+        kakao.maps.event.addListener(overlay, "click", function() {
+          focusLine(line);
+        });
+      });
+
+      Object.keys(lineOverlays).forEach(function(id) {
+        if (keep[id]) return;
+        lineOverlays[id].setMap(null);
+        delete lineOverlays[id];
+      });
+
+      renderLineLabels(lines);
+    }
+
+    function renderLineLabels(lines) {
+      var keep = {};
+
+      lines.forEach(function(line) {
+        if (!line.points || line.points.length < 2 || !line.title) return;
+        keep[line.id] = true;
+
+        var position = lineLabelPosition(line);
+        var signature = [line.id, line.displayKey, line.title, line.color, line.duplicateCount || 1, position.lat, position.lng].join("|");
+        var overlay = lineLabelOverlays[line.id];
+
+        if (overlay && overlay.__signature === signature) return;
+        if (overlay) overlay.setMap(null);
+
+        var label = document.createElement("div");
+        label.className = "line-label";
+        label.textContent = line.title;
+        label.title = line.description || line.title;
+        label.style.borderColor = line.color;
+
+        overlay = new kakao.maps.CustomOverlay({
+          map: map,
+          position: new kakao.maps.LatLng(position.lat, position.lng),
+          content: label,
+          yAnchor: 0.5
+        });
+        overlay.__signature = signature;
+        lineLabelOverlays[line.id] = overlay;
+      });
+
+      Object.keys(lineLabelOverlays).forEach(function(id) {
+        if (keep[id]) return;
+        lineLabelOverlays[id].setMap(null);
+        delete lineLabelOverlays[id];
+      });
+    }
+
+    function lineLabelPosition(line) {
+      var points = line.points || [];
+      var midIndex = Math.floor(points.length / 2);
+      if (points.length % 2 === 1) return points[midIndex];
+      var first = points[0];
+      var last = points[points.length - 1];
+      return {
+        lat: (first.lat + last.lat) / 2,
+        lng: (first.lng + last.lng) / 2
+      };
+    }
+
+    function fitBoundsToVisibleItems() {
+      if (!map) return;
+      var bounds = new kakao.maps.LatLngBounds();
+      var hasBounds = false;
+
+      dedupeVisibleMarkers(getVisibleMarkers()).forEach(function(marker) {
+        bounds.extend(new kakao.maps.LatLng(marker.lat, marker.lng));
+        hasBounds = true;
+      });
+
+      dedupeVisibleLines(getVisibleLines()).forEach(function(line) {
+        line.points.forEach(function(point) {
+          bounds.extend(new kakao.maps.LatLng(point.lat, point.lng));
+          hasBounds = true;
+        });
+      });
+
+      if (hasBounds) {
+        map.setBounds(bounds);
+        setTimeout(relayoutMap, 60);
+      }
+    }
+
+    function focusMarker(marker) {
+      if (!map) return;
+      if (typeof map.getLevel === "function" && map.getLevel() > TARGET_MARKER_LEVEL) {
+        map.setLevel(TARGET_MARKER_LEVEL);
+      }
+      map.setCenter(new kakao.maps.LatLng(marker.lat, marker.lng));
+      showMarkerInfo(marker);
+      focusedMarkerId = marker.id;
+      setTimeout(function() {
+        if (focusedMarkerId === marker.id) {
+          focusedMarkerId = null;
+        }
+      }, 900);
+    }
+
+    function focusLine(line) {
+      if (!map || !line.points || !line.points.length) return;
+      var point = line.points[0];
+      map.setCenter(new kakao.maps.LatLng(point.lat, point.lng));
+      setAdminMessage("Line selected: " + line.title);
+    }
+
+    async function saveMovedMarkerPosition(marker, lat, lng) {
+      if (!db) return false;
+      setAdminMessage("마커 위치 저장 중...");
+
+      try {
+        var docRef = db.collection("teams").doc(ADMIN_TEAM_DOC_ID);
+        var snapshot = await docRef.get();
+        if (!snapshot.exists) {
+          console.warn("[ADMIN_V2_MARKER_MOVE] marker not found", marker.markerId || marker.rawId || marker.id);
+          setAdminMessage("이동할 마커를 찾을 수 없습니다.");
+          renderMarkers(getVisibleMarkers(), { fitBounds: false, preserveViewport: true });
+          return false;
+        }
+
+        var data = snapshot.data() || {};
+        var markers = Array.isArray(data.markers) ? data.markers.slice() : [];
+        var markerIndex = markers.findIndex(function(item) {
+          return markerMatches(item, marker);
+        });
+
+        if (markerIndex === -1) {
+          console.warn("[ADMIN_V2_MARKER_MOVE] marker not found", marker.markerId || marker.rawId || marker.id);
+          setAdminMessage("이동할 마커를 찾을 수 없습니다.");
+          renderMarkers(getVisibleMarkers(), { fitBounds: false, preserveViewport: true });
+          return false;
+        }
+
+        var updated = Object.assign({}, markers[markerIndex]);
+        updated.lat = lat;
+        updated.lng = lng;
+        markers[markerIndex] = updated;
+        await docRef.update({ markers: markers });
+
+        applyMarkerMoveLocally(marker, lat, lng);
+        console.log("[ADMIN_V2_MARKER_MOVE] updated", marker.markerId || marker.rawId || marker.id, lat, lng);
+        return true;
+      } catch (error) {
+        console.error("[ADMIN_V2_MARKER_MOVE] update failed", error);
+        setAdminMessage("마커 위치 저장 실패");
+        renderMarkers(getVisibleMarkers(), { fitBounds: false, preserveViewport: true });
+        return false;
+      }
+    }
+
+    function applyMarkerMoveLocally(marker, lat, lng) {
+      var updatedMarker = null;
+      if (ownTeam) {
+        ownTeam.markers.forEach(function(item) {
+          if (normalizedMarkerMatches(item, marker)) {
+            item.lat = lat;
+            item.lng = lng;
+            updatedMarker = item;
+          }
+        });
+      }
+
+      renderMyData();
+      renderTeams();
+      renderMarkers(getVisibleMarkers(), { fitBounds: false, preserveViewport: true });
+      if (updatedMarker && !document.getElementById("infoCard").classList.contains("hidden")) {
+        showMarkerInfo(updatedMarker);
+      }
+      setAdminMessage("마커 위치가 저장되었습니다.");
+    }
+
+    function countMarkersByGroup(markers) {
+      var counts = {};
+      markers.forEach(function(marker) {
+        counts[marker.groupName] = (counts[marker.groupName] || 0) + 1;
+      });
+      return counts;
+    }
+
+    function renderTeams() {
+      var list = document.getElementById("teamList");
+      list.innerHTML = "";
+
+      if (!allTeams.length) {
+        var empty = document.createElement("p");
+        empty.className = "empty-text";
+        empty.textContent = "팀 데이터가 없습니다.";
+        list.appendChild(empty);
+        return;
+      }
+
+      allTeams.forEach(function(team) {
+        var details = document.createElement("details");
+        details.className = "team-row";
+
+        var summary = document.createElement("summary");
+        summary.className = "team-summary";
+
+        var icon = document.createElement("span");
+        icon.className = "team-icon";
+        icon.style.background = "#3b82f6";
+
+        var main = makeRowMain(team.teamName, team.groups.length + " groups / " + team.markers.length + " markers");
+        var actions = document.createElement("div");
+        actions.className = "row-actions";
+        actions.appendChild(makeTinyButton("수정", "team edit: " + team.docId, true));
+        actions.appendChild(makeTinyButton("삭제", "team delete: " + team.docId, true));
+        actions.appendChild(makeToggle(teamVisibility[team.docId] !== false, function(next) {
+          teamVisibility[team.docId] = next;
+          renderTeams();
+          refreshVisibleMap();
+          setAdminMessage("Team visibility changed locally: " + team.teamName);
+        }));
+
+        summary.appendChild(icon);
+        summary.appendChild(main);
+        summary.appendChild(actions);
+        details.appendChild(summary);
+        renderTeamGroups(details, team);
+        list.appendChild(details);
+      });
+    }
+
+    function renderTeamGroups(parent, team) {
+      var counts = countMarkersByGroup(team.markers);
+      if (!team.groups.length) {
+        var empty = document.createElement("p");
+        empty.className = "empty-text";
+        empty.style.margin = "0 8px 8px 32px";
+        empty.textContent = "그룹 없음";
+        parent.appendChild(empty);
+        return;
+      }
+
+      team.groups.forEach(function(group) {
+        var details = document.createElement("details");
+        details.className = "group-row team-group-row";
+
+        var summary = makeGroupSummary(team, group, counts[group.name] || 0);
+        details.appendChild(summary);
+
+        var markers = team.markers.filter(function(marker) { return marker.groupName === group.name; });
+        renderMarkerRows(details, markers, true);
+        parent.appendChild(details);
+      });
+    }
+
+    function renderMyData() {
+      var list = document.getElementById("myGroupList");
+      var total = document.getElementById("groupTotal");
+      list.innerHTML = "";
+
+      if (!ownTeam || !ownTeam.groups.length) {
+        total.textContent = "0";
+        var empty = document.createElement("p");
+        empty.className = "empty-text";
+        empty.textContent = "그룹 없음";
+        list.appendChild(empty);
+        return;
+      }
+
+      total.textContent = String(ownTeam.groups.length);
+      var counts = countMarkersByGroup(ownTeam.markers);
+
+      ownTeam.groups.forEach(function(group) {
+        var details = document.createElement("details");
+        details.className = "group-row";
+        details.appendChild(makeGroupSummary(ownTeam, group, counts[group.name] || 0));
+        renderMarkerRows(details, ownTeam.markers.filter(function(marker) { return marker.groupName === group.name; }));
+        list.appendChild(details);
+      });
+    }
+
+    function makeGroupSummary(team, group, count) {
+      var summary = document.createElement("summary");
+      summary.className = "group-summary";
+
+      var dot = document.createElement("span");
+      dot.className = "group-dot";
+      dot.style.background = group.color;
+
+      var main = makeRowMain(group.name, count + " markers");
+      var actions = document.createElement("div");
+      actions.className = "row-actions";
+      actions.appendChild(makeTinyButton("삭제", "group delete: " + group.name, true));
+      actions.appendChild(makeTinyButton("설정", "group setting: " + group.name, true));
+      actions.appendChild(makeTinyButton("전송", "data share: " + group.name, true));
+      actions.appendChild(makeToggle(groupVisibility[groupKey(team.docId, group.name)] !== false, function(next) {
+        groupVisibility[groupKey(team.docId, group.name)] = next;
+        renderTeams();
+        renderMyData();
+        refreshVisibleMap();
+        setAdminMessage("Group visibility changed locally: " + group.name);
+      }));
+
+      summary.appendChild(dot);
+      summary.appendChild(main);
+      summary.appendChild(actions);
+      return summary;
+    }
+
+    function renderMarkerRows(parent, markers, isTeamChild) {
+      if (!markers.length) {
+        var empty = document.createElement("p");
+        empty.className = "empty-text";
+        empty.style.margin = "0 8px 8px 32px";
+        empty.textContent = "마커 없음";
+        parent.appendChild(empty);
+        return;
+      }
+
+      markers.forEach(function(marker) {
+        var row = document.createElement("div");
+        row.className = "marker-row" + (isTeamChild ? " team-marker-row" : "");
+        var dot = document.createElement("span");
+        dot.className = "marker-dot";
+        dot.style.background = marker.color;
+        var main = makeRowMain(marker.title, marker.isChecked ? "ON" : "OFF");
+        row.appendChild(dot);
+        row.appendChild(main);
+        row.addEventListener("click", function() {
+          focusMarker(marker);
+        });
+        parent.appendChild(row);
+      });
+    }
+
+    function renderLines() {
+      var body = document.getElementById("lineSectionBody");
+      body.innerHTML = "";
+      var lines = [];
+      if (ownTeam) lines = lines.concat(ownTeam.lines);
+      allTeams.forEach(function(team) { lines = lines.concat(team.lines); });
+
+      if (!lines.length) {
+        var empty = document.createElement("p");
+        empty.className = "empty-text";
+        empty.textContent = "선 데이터가 없습니다.";
+        body.appendChild(empty);
+        return;
+      }
+
+      lines.forEach(function(line) {
+        var row = document.createElement("div");
+        row.className = "line-row";
+        var summary = document.createElement("div");
+        summary.className = "line-summary";
+        var dot = document.createElement("span");
+        dot.className = "line-dot";
+        dot.style.background = line.color;
+        var main = makeRowMain((line.teamName === ADMIN_TEAM_DOC_ID ? "" : "[" + line.teamName + "] ") + line.title, line.description || "No description");
+        var actions = document.createElement("div");
+        actions.className = "row-actions";
+        actions.appendChild(makeTinyButton("설정", "line setting: " + line.lineId, true));
+        actions.appendChild(makeTinyButton("삭제", "line delete: " + line.lineId, true));
+        actions.appendChild(makeToggle(lineVisibility[line.id] !== false, function(next) {
+          lineVisibility[line.id] = next;
+          renderLines();
+          renderMapLines(getVisibleLines());
+          setAdminMessage("Line visibility changed locally: " + line.title);
+        }));
+        summary.appendChild(dot);
+        summary.appendChild(main);
+        summary.appendChild(actions);
+        summary.addEventListener("click", function() {
+          focusLine(line);
+        });
+        row.appendChild(summary);
+        body.appendChild(row);
+      });
+    }
+
+    function makeRowMain(titleText, subText) {
+      var main = document.createElement("div");
+      main.className = "row-main";
+      var title = document.createElement("div");
+      title.className = "row-title";
+      title.textContent = titleText;
+      var sub = document.createElement("div");
+      sub.className = "row-sub";
+      sub.textContent = subText;
+      main.appendChild(title);
+      main.appendChild(sub);
+      return main;
+    }
+
+    function makeTinyButton(label, actionName, disabledLook) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "tiny-button" + (disabledLook ? " disabled-look" : "");
+      button.textContent = label;
+      button.addEventListener("click", function(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        handlePlaceholderAction(actionName);
+      });
+      return button;
+    }
+
+    function makeToggle(enabled, onChange) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "toggle" + (enabled ? " on" : "");
+      button.addEventListener("click", function(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        onChange(!button.classList.contains("on"));
+      });
+      return button;
+    }
+
+    function refreshVisibleMap() {
+      var markers = getVisibleMarkers();
+      renderMarkers(markers);
+      renderMapLines(getVisibleLines());
+      setMarkerCount(markers.length);
+    }
+
+    function showMarkerInfo(marker) {
+      var card = document.getElementById("infoCard");
+      var panel = document.getElementById("infoPanel");
+      panel.innerHTML = "";
+      card.classList.remove("hidden");
+
+      var root = document.createElement("div");
+      root.className = "marker-card";
+      panel.appendChild(root);
+
+      var head = document.createElement("div");
+      head.className = "marker-card-head";
+      root.appendChild(head);
+
+      var checkToggle = makeToggle(marker.isChecked, function(next) {
+        updateMarkerCheck(marker, next);
+      });
+      head.appendChild(checkToggle);
+
+      var titleWrap = document.createElement("div");
+      titleWrap.className = "marker-card-title";
+      var title = document.createElement("h3");
+      title.textContent = "[" + marker.groupName + "] " + marker.title;
+      title.title = markerTechTitle(marker);
+      var subtitle = document.createElement("div");
+      subtitle.className = "marker-card-subtitle";
+      subtitle.textContent = (marker.markerId || marker.rawId || marker.id) + " / " + (marker.isChecked ? "ON" : "OFF");
+      titleWrap.appendChild(title);
+      titleWrap.appendChild(subtitle);
+      head.appendChild(titleWrap);
+
+      var actions = document.createElement("div");
+      actions.className = "marker-card-actions";
+      actions.appendChild(makeMarkerAction("이동", function() { focusMarker(marker); }));
+      actions.appendChild(makeMarkerAction("ON/OFF", function() { updateMarkerCheck(marker, !marker.isChecked); }));
+      actions.appendChild(makeMarkerAction("수정", function() { handlePlaceholderAction("marker edit"); }));
+      actions.appendChild(makeMarkerAction("삭제", function() { handlePlaceholderAction("marker delete"); }));
+      actions.appendChild(makeMarkerAction("전송", function() { handlePlaceholderAction("marker share"); }));
+      head.appendChild(actions);
+
+      var primaryTitle = document.createElement("div");
+      primaryTitle.className = "marker-primary-title";
+      primaryTitle.textContent = marker.title;
+      root.appendChild(primaryTitle);
+
+      var address = document.createElement("div");
+      address.className = "marker-address";
+      address.textContent = "📍 " + (marker.address || "주소 정보 없음");
+      root.appendChild(address);
+
+      renderMarkerPhotos(root, marker.photos || []);
+    }
+
+    function markerTechTitle(marker) {
+      return [
+        "team=" + (marker.teamName || ""),
+        "lat=" + marker.lat,
+        "lng=" + marker.lng,
+        "id=" + (marker.rawId || marker.id || ""),
+        "markerId=" + (marker.markerId || ""),
+        "originalMarkerId=" + (marker.originalMarkerId || ""),
+        "sourceMarkerId=" + (marker.sourceMarkerId || ""),
+        "parentMarkerId=" + (marker.parentMarkerId || "")
+      ].join("\n");
+    }
+
+    function makeMarkerAction(label, onClick) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "marker-action";
+      button.textContent = label;
+      button.addEventListener("click", function(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        onClick();
+      });
+      return button;
+    }
+
+    function renderMarkerPhotos(parent, photos) {
+      if (!photos.length) return;
+      var grid = document.createElement("div");
+      grid.className = "marker-photo-grid";
+      parent.appendChild(grid);
+
+      photos.forEach(function(photo) {
+        var img = document.createElement("img");
+        img.className = "marker-photo";
+        img.src = photo.url;
+        img.alt = photo.comment || "marker photo";
+        img.loading = "lazy";
+        img.addEventListener("error", function() {
+          var fallback = document.createElement("div");
+          fallback.className = "photo-error";
+          fallback.textContent = "사진 불러오기 실패";
+          img.replaceWith(fallback);
+        });
+        grid.appendChild(img);
+      });
+    }
+
+    async function updateMarkerCheck(marker, nextValue) {
+      if (!db) return;
+
+      try {
+        var docRef = db.collection("teams").doc(ADMIN_TEAM_DOC_ID);
+        var snapshot = await docRef.get();
+        if (!snapshot.exists) {
+          console.warn("[ADMIN_V2_MARKER_CHECK] marker not found", marker.markerId || marker.rawId || marker.id);
+          setAdminMessage("마커를 찾을 수 없습니다.");
+          return;
+        }
+
+        var data = snapshot.data() || {};
+        var markers = Array.isArray(data.markers) ? data.markers.slice() : [];
+        var markerIndex = markers.findIndex(function(item) {
+          return markerMatches(item, marker);
+        });
+
+        if (markerIndex === -1) {
+          console.warn("[ADMIN_V2_MARKER_CHECK] marker not found", marker.markerId || marker.rawId || marker.id);
+          setAdminMessage("마커를 찾을 수 없습니다.");
+          return;
+        }
+
+        var updated = Object.assign({}, markers[markerIndex]);
+        updated.isChecked = nextValue === true;
+        markers[markerIndex] = updated;
+        await docRef.update({ markers: markers });
+
+        console.log("[ADMIN_V2_MARKER_CHECK] updated", marker.markerId || marker.rawId || marker.id, nextValue === true);
+        applyMarkerCheckLocally(marker, nextValue === true);
+      } catch (error) {
+        console.error("[ADMIN_V2_MARKER_CHECK] update failed", error);
+        setAdminMessage("ON/OFF 업데이트 실패");
+      }
+    }
+
+    function markerMatches(item, marker) {
+      if (!item || !marker) return false;
+      var candidates = [
+        item.id,
+        item.rawId,
+        item.markerId,
+        item.originalMarkerId,
+        item.sourceMarkerId,
+        item.parentMarkerId
+      ].filter(Boolean).map(String);
+
+      var targets = [
+        marker.rawId,
+        marker.markerId,
+        marker.originalMarkerId,
+        marker.sourceMarkerId,
+        marker.parentMarkerId
+      ].filter(Boolean).map(String);
+
+      return targets.some(function(target) {
+        return candidates.indexOf(target) !== -1;
+      });
+    }
+
+    function normalizedMarkerMatches(item, marker) {
+      return markerMatches(item, marker) || markerMatches(marker, item);
+    }
+
+    function applyMarkerCheckLocally(marker, nextValue) {
+      var updatedMarker = null;
+      if (ownTeam) {
+        ownTeam.markers.forEach(function(item) {
+          if (normalizedMarkerMatches(item, marker)) {
+            item.isChecked = nextValue;
+            updatedMarker = item;
+          }
+        });
+      }
+
+      renderMyData();
+      renderTeams();
+      renderMarkers(getVisibleMarkers(), { fitBounds: false, preserveViewport: true });
+      setMarkerCount(getVisibleMarkers().length);
+      setAdminMessage("마커 ON/OFF가 업데이트되었습니다.");
+      showMarkerInfo(updatedMarker || Object.assign({}, marker, { isChecked: nextValue }));
+    }
+
+    function closeMarkerInfo() {
+      document.getElementById("infoCard").classList.add("hidden");
+    }
+
+    function toggleSidebar() {
+      var app = document.getElementById("app");
+      var closed = app.classList.toggle("sidebar-closed");
+      app.classList.toggle("sidebar-open", !closed);
+      setTimeout(relayoutMap, 240);
+    }
+
+    function closeSidebar() {
+      var app = document.getElementById("app");
+      if (!app.classList.contains("sidebar-closed")) {
+        app.classList.add("sidebar-closed");
+        app.classList.remove("sidebar-open");
+        setTimeout(relayoutMap, 240);
+      }
+    }
+
+    function toggleMarkerMoveMode() {
+      markerMoveMode = !markerMoveMode;
+      document.getElementById("markerMoveButton").classList.toggle("active", markerMoveMode);
+      Object.keys(markerObjects).forEach(function(id) {
+        var markerObj = markerObjects[id];
+        if (markerObj && typeof markerObj.setDraggable === "function") {
+          markerObj.setDraggable(markerMoveMode);
+          markerObj.__draggable = markerMoveMode;
+        }
+      });
+      setAdminMessage(markerMoveMode ? "마커 이동 모드 ON" : "마커 이동 모드 OFF");
+      console.log("[ADMIN_V2_UI] marker move mode", markerMoveMode);
+    }
+
+    function addInfoLine(panel, key, value) {
+      var row = document.createElement("div");
+      row.className = "info-line";
+      var keyEl = document.createElement("span");
+      keyEl.className = "info-key";
+      keyEl.textContent = key;
+      var valueEl = document.createElement("span");
+      valueEl.className = "info-value";
+      valueEl.textContent = value;
+      row.appendChild(keyEl);
+      row.appendChild(valueEl);
+      panel.appendChild(row);
+    }
+
+    function handlePlaceholderAction(actionName) {
+      var messages = {
+        "marker edit": "수정 기능은 준비 중입니다",
+        "marker delete": "삭제 기능은 준비 중입니다",
+        "marker share": "전송 기능은 준비 중입니다",
+        "team edit": "수정 기능은 준비 중입니다",
+        "team delete": "삭제 기능은 준비 중입니다",
+        "group delete": "삭제 기능은 준비 중입니다",
+        "group setting": "설정 기능은 준비 중입니다",
+        "data share": "전송 기능은 준비 중입니다",
+        "line setting": "설정 기능은 준비 중입니다",
+        "line delete": "삭제 기능은 준비 중입니다",
+        "add group": "마커/그룹 생성 기능은 준비 중입니다",
+        "logout": "로그아웃 기능은 준비 중입니다",
+        "spreadsheet upload": "Spreadsheet 업로드는 준비 중입니다",
+        "cadastral": "지적편집도 기능은 준비 중입니다"
+      };
+      var baseName = String(actionName || "").split(":")[0];
+      setAdminMessage(messages[baseName] || ("준비 중: " + actionName));
+      console.log("[ADMIN_V2_UI] action placeholder", actionName);
+    }
+
+    function bindEvents() {
+      document.querySelector(".sidebar").addEventListener("click", function(event) {
+        event.stopPropagation();
+      });
+      document.getElementById("sidebarBackdrop").addEventListener("click", function(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeMarkerInfo();
+        closeSidebar();
+      });
+      document.getElementById("infoCard").addEventListener("click", function(event) {
+        event.stopPropagation();
+      });
+      document.getElementById("sidebarToggle").addEventListener("click", function(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleSidebar();
+      });
+      document.getElementById("refreshButton").addEventListener("click", loadAdminMarkers);
+      document.getElementById("fitBoundsButton").addEventListener("click", fitBoundsToVisibleItems);
+      document.getElementById("markerMoveButton").addEventListener("click", toggleMarkerMoveMode);
+      document.getElementById("cadastralButton").addEventListener("click", function() {
+        handlePlaceholderAction("cadastral");
+      });
+      document.getElementById("addGroupButton").addEventListener("click", function() {
+        handlePlaceholderAction("add group");
+      });
+      document.getElementById("logoutButton").addEventListener("click", function() {
+        handlePlaceholderAction("logout");
+      });
+      document.getElementById("spreadsheetToggle").addEventListener("click", function() {
+        this.classList.toggle("on");
+        handlePlaceholderAction("spreadsheet upload");
+      });
+      document.getElementById("closeInfoButton").addEventListener("click", closeMarkerInfo);
+      document.getElementById("lineToggleButton").addEventListener("click", function() {
+        var body = document.getElementById("lineSectionBody");
+        var hidden = body.style.display === "none";
+        body.style.display = hidden ? "grid" : "none";
+        this.textContent = hidden ? "-" : "+";
+      });
+    }
+
+    function startAdminV2() {
+      bindEvents();
+      initFirebase();
+      initKakaoMap();
+    }
+
+    startAdminV2();
+  </script>
 </body>
 </html>
