@@ -70,6 +70,7 @@
       line-height: 1.25;
       max-width: 180px;
       padding: 4px 7px;
+      pointer-events: none;
       white-space: nowrap;
     }
 
@@ -81,6 +82,27 @@
     .current-location-label {
       border-color: rgba(46, 125, 50, 0.55);
       color: #1b5e20;
+    }
+
+    .current-location-marker {
+      align-items: center;
+      background: rgba(25, 118, 210, 0.18);
+      border-radius: 50%;
+      box-shadow: 0 0 10px rgba(25, 118, 210, 0.3);
+      display: flex;
+      height: 32px;
+      justify-content: center;
+      pointer-events: none;
+      width: 32px;
+    }
+
+    .current-location-core {
+      background: #1a73e8;
+      border: 3px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 1px 5px rgba(0, 0, 0, 0.35), 0 0 0 5px rgba(26, 115, 232, 0.18);
+      height: 14px;
+      width: 14px;
     }
 
     .flat-marker-wrap {
@@ -158,6 +180,7 @@
       line-height: 1;
       min-width: 38px;
       padding: 0 4px;
+      pointer-events: auto;
       user-select: none;
     }
   </style>
@@ -352,6 +375,17 @@
       return '<div class="' + className + '"' + style + '>' + safeContent + '</div>';
     }
 
+    function makeCurrentLocationContent() {
+      var root = document.createElement('div');
+      var core = document.createElement('div');
+
+      root.className = 'current-location-marker';
+      core.className = 'current-location-core';
+      root.appendChild(core);
+
+      return root;
+    }
+
     function textColorForBackground(color) {
       var hex = String(color || '#4CAF50').replace('#', '');
       if (hex.length === 3) {
@@ -422,6 +456,24 @@
           suppressNextMapClick = false;
         }
       }, 650);
+    }
+
+    function keepOverlayWrapperClickThrough(content) {
+      if (!content) return;
+      content.style.pointerEvents = 'auto';
+
+      requestAnimationFrame(function() {
+        var wrapper = content.parentElement;
+        var steps = 0;
+
+        while (wrapper && wrapper !== mapContainer && steps < 2) {
+          wrapper.style.pointerEvents = 'none';
+          wrapper = wrapper.parentElement;
+          steps++;
+        }
+
+        content.style.pointerEvents = 'auto';
+      });
     }
 
     function installMarkerDrag(root, overlay, id, item) {
@@ -633,13 +685,15 @@
       clusterMarkers(markerData, level).forEach(function(entry, index) {
         if (entry.type === 'cluster') {
           var clusterId = 'cluster_' + index;
+          var clusterContent = makeClusterContent(entry);
           markerMap[clusterId] = new kakao.maps.CustomOverlay({
             map: map,
             position: new kakao.maps.LatLng(entry.lat, entry.lng),
-            content: makeClusterContent(entry),
+            content: clusterContent,
             xAnchor: 0.5,
             yAnchor: 0.5
           });
+          keepOverlayWrapperClickThrough(clusterContent);
           return;
         }
 
@@ -669,6 +723,7 @@
           xAnchor: 0.5,
           yAnchor: showMarkerLabels ? 0.42 : 0.5
         });
+        keepOverlayWrapperClickThrough(markerContent);
         installMarkerDrag(markerContent, markerMap[id], id, item);
       });
     }
@@ -847,16 +902,12 @@
       if (!item) return;
 
       var position = toLatLng(item);
-      currentLocationMarker = new kakao.maps.Marker({
-        map: map,
-        position: position
-      });
-
       currentLocationOverlay = new kakao.maps.CustomOverlay({
         map: map,
         position: position,
-        content: makeLabel(item.title ?? '현재 위치', 'current-location-label'),
-        yAnchor: 2.2
+        content: makeCurrentLocationContent(),
+        xAnchor: 0.5,
+        yAnchor: 0.5
       });
 
       if (item.moveCamera !== false) {
