@@ -387,10 +387,15 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   final ImagePicker _picker = ImagePicker();
   final List<String> _tempLineMarkerIds = [];
   WebViewController? _webViewController;
-  bool _mapRenderQueued = false;
+  Timer? _markerUpdateTimer;
+  bool _isMapInteracting = false;
+  bool _hasPendingMarkerUpdate = false;
+  String? _lastSentMarkersHash;
+  String? _lastSentLinesHash;
   bool? _lastSentMarkerMoveMode;
   bool _isTappingMode = false, _isMoveMode = false, _isLineMode = false;
   bool _isMapControlActive = true;
+  bool _dedupeMapRenderItems = true;
   bool _isFreeLineMode = false;
   bool _isModalOpen = false;
   bool _isHoveringUI = false;
@@ -450,7 +455,7 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
       _clearSelectedLines();
     });
     await _saveData();
-    if (mounted) _updateMarkers();
+    if (mounted) _scheduleMarkerUpdate();
   }
 
   Future<void> _deleteAllLines() async {
@@ -479,7 +484,7 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
       _clearSelectedLines();
     });
     await _saveData();
-    if (mounted) _updateMarkers();
+    if (mounted) _scheduleMarkerUpdate();
   }
 
   Future<bool> _upsertLineInTeamDoc(String teamName, LineData line, {required bool addIfMissing}) async {
@@ -612,8 +617,18 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
         onMessageReceived: (JavaScriptMessage message) {
           if (_verboseMapDebug) debugPrint("FlutterChannel: ${message.message}");
           if (message.message.contains('mapReady')) {
+            _isMapInteracting = false;
+            _hasPendingMarkerUpdate = true;
             _lastSentMarkerMoveMode = null;
-            _updateMarkers();
+            _invalidateMarkerRenderHash();
+            _scheduleMarkerUpdate(ms: 0);
+          } else if (message.message.startsWith('mapInteractionStart')) {
+            if (_isMapInteracting) return;
+            _isMapInteracting = true;
+          } else if (message.message.startsWith('mapInteractionEnd')) {
+            if (!_isMapInteracting) return;
+            _isMapInteracting = false;
+            _flushPendingMarkerUpdateAfterMapIdle();
           }
         },
       )
@@ -644,7 +659,7 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
 
   Future<void> _setMarkerMoveModeOnKakaoMap(bool enabled) async {
     final controller = _webViewController;
-    if (controller == null) return;
+    if (!mounted || controller == null) return;
     if (_lastSentMarkerMoveMode == enabled) return;
 
     try {
@@ -676,7 +691,7 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
   void _setStateAndRefreshMap(VoidCallback fn) {
     if (!mounted) return;
     setState(fn);
-    _updateMarkers();
+    _scheduleMarkerUpdate();
   }
 
   void _handleKakaoMarkerTap(String markerId) {
@@ -1219,7 +1234,8 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
       if (targetTeamName != null && targetTeamName.isNotEmpty) {
         final updated = await _updateMovedMarkerByPath(targetTeamName, targetGroupName, candidates, point, sharedMove: isSharedMove);
         if (updated) {
-          _updateMarkers();
+          _invalidateMarkerRenderHash();
+          _scheduleMarkerUpdate(ms: 0);
           if (_verboseMapDebug) debugPrint('[KAKAO_MOVE_FOUND] scope=$scope markerId=$markerId originalMarkerId=$originalMarkerId');
         } else if (isSharedMove) {
           debugPrint('[KAKAO_MOVE_SKIP_CREATE] shared target not found markerId=$markerId originalMarkerId=$originalMarkerId');
@@ -1238,7 +1254,8 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
           }
         }
         if (updated) {
-          _updateMarkers();
+          _invalidateMarkerRenderHash();
+          _scheduleMarkerUpdate(ms: 0);
           if (_verboseMapDebug) debugPrint('[KAKAO_MOVE_FOUND] scope=$scope markerId=$markerId originalMarkerId=$originalMarkerId');
         } else {
           debugPrint('[KAKAO_MOVE_SKIP_CREATE] shared target not found markerId=$markerId originalMarkerId=$originalMarkerId');
@@ -1270,7 +1287,8 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
               point: point,
             );
           }
-          _updateMarkers();
+          _invalidateMarkerRenderHash();
+          _scheduleMarkerUpdate(ms: 0);
           if (_verboseMapDebug) debugPrint('[KAKAO_MOVE_FOUND] scope=$scope markerId=$markerId originalMarkerId=$originalMarkerId');
         } else {
           debugPrint('[KAKAO_MOVE_SKIP_CREATE] own target not found markerId=$markerId');
@@ -1322,7 +1340,8 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
               point: point,
             );
           }
-          _updateMarkers();
+          _invalidateMarkerRenderHash();
+          _scheduleMarkerUpdate(ms: 0);
           if (_verboseMapDebug) debugPrint('[KAKAO_MOVE_FOUND] scope=$scope markerId=$markerId originalMarkerId=$originalMarkerId');
         } else {
           debugPrint('[KAKAO_MOVE_SKIP_CREATE] own target not found markerId=$markerId');
@@ -1381,11 +1400,12 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
     super.initState(); 
     WidgetsBinding.instance.addObserver(this); // ◀ 이 줄 추가
     _initializeKakaoWebView();
-    _loadData().then((_) => _updateMarkers());
+    _loadData().then((_) => _scheduleMarkerUpdate());
   }
 
   @override
 void dispose() {
+  _markerUpdateTimer?.cancel();
   WidgetsBinding.instance.removeObserver(this);
   MockLocationPlugin.stopMockLocation();
   _myTeamSub?.cancel();    // ← 추가
@@ -1395,6 +1415,11 @@ void dispose() {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _isMapInteracting = false;
+      _hasPendingMarkerUpdate = true;
+      _scheduleMarkerUpdate(ms: 150);
+    }
     if (state == AppLifecycleState.detached) {
       MockLocationPlugin.stopMockLocation(); 
       debugPrint("앱이 완전히 종료되어 원래 GPS로 복구했습니다.");
@@ -1418,37 +1443,147 @@ void dispose() {
 }
 
 
-Future<void> _updateMarkers() async {
-  if (!mounted || _webViewController == null || _mapRenderQueued) return;
+void _scheduleMarkerUpdate({int ms = 80}) {
+  if (!mounted) return;
+  _markerUpdateTimer?.cancel();
+  if (_verboseMapDebug) debugPrint('[KAKAO_RENDER] scheduled ms=$ms');
 
-  _mapRenderQueued = true;
-  WidgetsBinding.instance.addPostFrameCallback((_) async {
-    _mapRenderQueued = false;
-    if (!mounted || _webViewController == null) return;
-
-    await _renderMarkersOnKakaoMap();
-    await _renderLinesOnKakaoMap();
+  _markerUpdateTimer = Timer(Duration(milliseconds: ms), () {
+    if (mounted) _flushMarkerUpdate();
   });
+}
+
+Future<void> _flushMarkerUpdate() async {
+  if (!mounted || _webViewController == null) return;
+
+  if (_isMapInteracting) {
+    _hasPendingMarkerUpdate = true;
+    if (_verboseMapDebug) debugPrint('[KAKAO_RENDER] blocked while map interacting');
+    return;
+  }
+
+  _hasPendingMarkerUpdate = false;
+  await _renderMarkersOnKakaoMap();
+  await _renderLinesOnKakaoMap();
+}
+
+void _flushPendingMarkerUpdateAfterMapIdle() {
+  if (!mounted) return;
+  if (_hasPendingMarkerUpdate) {
+    _hasPendingMarkerUpdate = false;
+    if (_verboseMapDebug) debugPrint('[KAKAO_RENDER] flushed after map idle');
+    _scheduleMarkerUpdate(ms: 150);
+  }
+}
+
+void _invalidateMarkerRenderHash() {
+  _lastSentMarkersHash = null;
+  _lastSentLinesHash = null;
 }
 
 String _colorToHex(Color color) {
   return '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
 }
 
-Map<String, dynamic> _siteToMarkerJson(String id, SiteData site, MapGroup group, {required String scope, required String teamName}) {
+String _firstNonEmptyMarkerSource(SiteData site) {
+  final original = site.originalMarkerId?.trim();
+  final source = site.sourceMarkerId?.trim();
+  final parent = site.parentMarkerId?.trim();
+
+  if (original != null && original.isNotEmpty) return original;
+  if (source != null && source.isNotEmpty) return source;
+  if (parent != null && parent.isNotEmpty) return parent;
+  return '';
+}
+
+bool _isSharedMarkerData(SiteData site) {
+  return _firstNonEmptyMarkerSource(site).isNotEmpty;
+}
+
+String _markerDisplayKey(SiteData site, String fallbackId, {required String teamName}) {
+  final sharedKey = _firstNonEmptyMarkerSource(site);
+  if (sharedKey.isNotEmpty) return 'shared:$sharedKey';
+
+  final ownId = site.id.trim().isNotEmpty ? site.id.trim() : fallbackId;
+  return 'own:$teamName:$ownId';
+}
+
+String _markerCoordHashFromJson(Map<String, dynamic> marker) {
+  final lat = (marker['lat'] as num?)?.toDouble() ?? 0;
+  final lng = (marker['lng'] as num?)?.toDouble() ?? 0;
+  return '${lat.toStringAsFixed(5)},${lng.toStringAsFixed(5)}';
+}
+
+bool _isSameMarkerRenderPosition(Map<String, dynamic> a, Map<String, dynamic> b) {
+  final aLat = (a['lat'] as num?)?.toDouble();
+  final aLng = (a['lng'] as num?)?.toDouble();
+  final bLat = (b['lat'] as num?)?.toDouble();
+  final bLng = (b['lng'] as num?)?.toDouble();
+  if (aLat == null || aLng == null || bLat == null || bLng == null) return false;
+
+  return (aLat - bLat).abs() <= 0.00001 && (aLng - bLng).abs() <= 0.00001;
+}
+
+int _markerRenderPriority(SiteData site, {required String teamName}) {
+  if (teamName == widget.teamName) return 0;
+  if (teamName == _adminTeamName) return 1;
+  if (!_isSharedMarkerData(site)) return 2;
+  return 3;
+}
+
+List<String> _stableStringList(Iterable<dynamic> values) {
+  final result = values
+      .where((v) => v != null && v.toString().trim().isNotEmpty)
+      .map((v) => v.toString())
+      .toSet()
+      .toList()
+    ..sort();
+  return result;
+}
+
+void _applyMarkerRenderKey(Map<String, dynamic> marker) {
+  marker['renderKey'] = [
+    marker['id'] ?? '',
+    marker['displayKey'] ?? '',
+    marker['lat'] ?? '',
+    marker['lng'] ?? '',
+    marker['title'] ?? marker['name'] ?? '',
+    marker['address'] ?? '',
+    marker['groupName'] ?? '',
+    marker['color'] ?? '',
+    marker['isChecked'] ?? false,
+    marker['duplicateCount'] ?? 1,
+  ].join('|');
+}
+
+Map<String, dynamic> _siteToMarkerJson(
+  String id,
+  SiteData site,
+  MapGroup group, {
+  required String scope,
+  required String teamName,
+}) {
   final groupKey = group.name;
-  final renderKey = '$scope|$teamName|$groupKey|${site.id}';
-  return {
+  final color = _colorToHex(group.color);
+  final displayKey = _markerDisplayKey(site, id, teamName: teamName);
+  final marker = <String, dynamic>{
     'id': id,
     'markerId': site.id,
-    'renderKey': renderKey,
     'lat': site.lat,
     'lng': site.lng,
     'title': site.title,
-    'color': _colorToHex(group.color),
+    'address': site.address,
+    'color': color,
     'groupName': group.name,
     'groupKey': groupKey,
     'scope': scope,
+    'teamName': teamName,
+    'ownerTeam': teamName,
+    'displayKey': displayKey,
+    'duplicateCount': 1,
+    'duplicateTeams': <String>[teamName],
+    'duplicateGroupNames': <String>[group.name],
+    'isDeduped': false,
     if (site.originalMarkerId != null) 'originalMarkerId': site.originalMarkerId,
     if (site.sourceMarkerId != null) 'sourceMarkerId': site.sourceMarkerId,
     if (site.parentMarkerId != null) 'parentMarkerId': site.parentMarkerId,
@@ -1463,34 +1598,254 @@ Map<String, dynamic> _siteToMarkerJson(String id, SiteData site, MapGroup group,
       'scope': scope,
     },
     'isChecked': site.isChecked,
+    '_baseDisplayKey': displayKey,
+    '_renderPriority': _markerRenderPriority(site, teamName: teamName),
   };
+  _applyMarkerRenderKey(marker);
+  return marker;
 }
 
-Map<String, dynamic> _lineToJson(String id, LineData line) {
-  return {
+String _normalizeSharedMarkerId(String id) {
+  var value = id.trim();
+  if (value.isEmpty) return value;
+
+  final knownPrefixes = <String>{
+    widget.teamName,
+    _adminTeamName,
+    ..._allTeamsMap.keys,
+    ..._allTeamsMap.values.map((team) => team.teamName),
+  }.where((prefix) => prefix.trim().isNotEmpty).toList()
+    ..sort((a, b) => b.length.compareTo(a.length));
+
+  for (final prefix in knownPrefixes) {
+    final token = '${prefix}_';
+    if (value.startsWith(token) && value.length > token.length) {
+      value = value.substring(token.length);
+      break;
+    }
+  }
+
+  return value;
+}
+
+String _linePathHash(LineData line) {
+  return line.points
+      .map((p) => '${p.latitude.toStringAsFixed(6)},${p.longitude.toStringAsFixed(6)}')
+      .join('>');
+}
+
+String _lineDisplayKey(LineData line, {required String ownerTeam}) {
+  final pathHash = _linePathHash(line);
+  final normalizedMarkerIds = line.markerIds.map(_normalizeSharedMarkerId).where((id) => id.isNotEmpty).join('>');
+  if (normalizedMarkerIds.isNotEmpty) {
+    return 'markers:$normalizedMarkerIds|path:$pathHash|color:${line.colorValue}';
+  }
+
+  return 'path:$pathHash|color:${line.colorValue}';
+}
+
+int _lineRenderPriority({required String ownerTeam}) {
+  if (ownerTeam == widget.teamName) return 0;
+  if (ownerTeam == _adminTeamName) return 1;
+  return 3;
+}
+
+void _applyLineRenderKey(Map<String, dynamic> line) {
+  line['renderKey'] = [
+    line['id'] ?? '',
+    line['displayKey'] ?? '',
+    line['title'] ?? line['name'] ?? '',
+    line['color'] ?? '',
+    line['pathHash'] ?? '',
+    line['duplicateCount'] ?? 1,
+  ].join('|');
+}
+
+Map<String, dynamic> _lineToJson(String id, LineData line, {required String ownerTeam}) {
+  final points = line.points.map((p) => {'lat': p.latitude, 'lng': p.longitude}).toList();
+  final color = _colorToHex(Color(line.colorValue));
+  final displayKey = _lineDisplayKey(line, ownerTeam: ownerTeam);
+  final pathHash = _linePathHash(line);
+  final lineJson = <String, dynamic>{
     'id': id,
     'title': line.title,
-    'color': _colorToHex(Color(line.colorValue)),
-    'points': line.points.map((p) => {'lat': p.latitude, 'lng': p.longitude}).toList(),
+    'description': line.description,
+    'color': color,
+    'isVisible': line.isVisible,
+    'markerIds': line.markerIds,
+    'points': points,
+    'displayKey': displayKey,
+    'pathHash': pathHash,
+    'duplicateCount': 1,
+    'duplicateTeams': <String>[ownerTeam],
+    'duplicateTitles': <String>[line.title],
+    'duplicateVisibleStates': <String, bool>{ownerTeam: line.isVisible},
+    'isDeduped': false,
+    '_baseDisplayKey': displayKey,
+    '_renderPriority': _lineRenderPriority(ownerTeam: ownerTeam),
   };
+  _applyLineRenderKey(lineJson);
+  return lineJson;
 }
 
-List<Map<String, dynamic>> _buildMarkerJsonList() {
+Map<String, dynamic> _cleanRenderMetadata(Map<String, dynamic> item) {
+  item.remove('_baseDisplayKey');
+  item.remove('_renderPriority');
+  return item;
+}
+
+Map<String, dynamic> _mergeMarkerDuplicateMetadata(Map<String, dynamic> existing, Map<String, dynamic> incoming) {
+  final duplicateCount = ((existing['duplicateCount'] as num?)?.toInt() ?? 1) + 1;
+  final duplicateTeams = _stableStringList([
+    ...List<dynamic>.from(existing['duplicateTeams'] ?? const []),
+    ...List<dynamic>.from(incoming['duplicateTeams'] ?? const []),
+  ]);
+  final duplicateGroupNames = _stableStringList([
+    ...List<dynamic>.from(existing['duplicateGroupNames'] ?? const []),
+    ...List<dynamic>.from(incoming['duplicateGroupNames'] ?? const []),
+  ]);
+
+  final existingPriority = (existing['_renderPriority'] as num?)?.toInt() ?? 99;
+  final incomingPriority = (incoming['_renderPriority'] as num?)?.toInt() ?? 99;
+  final representative = incomingPriority < existingPriority ? incoming : existing;
+
+  representative['duplicateCount'] = duplicateCount;
+  representative['duplicateTeams'] = duplicateTeams;
+  representative['duplicateGroupNames'] = duplicateGroupNames;
+  representative['isDeduped'] = duplicateCount > 1;
+  representative['_baseDisplayKey'] = existing['_baseDisplayKey'] ?? incoming['_baseDisplayKey'] ?? representative['displayKey'];
+  representative['displayKey'] = existing['displayKey'] ?? incoming['displayKey'] ?? representative['displayKey'];
+  _applyMarkerRenderKey(representative);
+  return representative;
+}
+
+List<Map<String, dynamic>> _dedupeMarkerJsonList(List<Map<String, dynamic>> rawMarkers) {
+  if (!_dedupeMapRenderItems) return rawMarkers.map(_cleanRenderMetadata).toList();
+
+  final result = <Map<String, dynamic>>[];
+  final sharedSourceKeys = rawMarkers
+      .map((marker) => (marker['_baseDisplayKey'] ?? marker['displayKey'] ?? '').toString())
+      .where((displayKey) => displayKey.startsWith('shared:') && displayKey.length > 'shared:'.length)
+      .map((displayKey) => displayKey.substring('shared:'.length))
+      .toSet();
+
+  for (final marker in rawMarkers) {
+    var baseDisplayKey = (marker['_baseDisplayKey'] ?? marker['displayKey'] ?? marker['id'] ?? '').toString();
+    final markerId = (marker['markerId'] ?? '').toString();
+    if (!baseDisplayKey.startsWith('shared:') && markerId.isNotEmpty && sharedSourceKeys.contains(markerId)) {
+      baseDisplayKey = 'shared:$markerId';
+      marker['_baseDisplayKey'] = baseDisplayKey;
+      marker['displayKey'] = baseDisplayKey;
+      _applyMarkerRenderKey(marker);
+    }
+    var matchIndex = -1;
+    var hasSameBaseKey = false;
+
+    for (var i = 0; i < result.length; i++) {
+      final existingBaseKey = (result[i]['_baseDisplayKey'] ?? result[i]['displayKey'] ?? result[i]['id'] ?? '').toString();
+      if (existingBaseKey != baseDisplayKey) continue;
+
+      hasSameBaseKey = true;
+      if (_isSameMarkerRenderPosition(result[i], marker)) {
+        matchIndex = i;
+        break;
+      }
+    }
+
+    if (matchIndex != -1) {
+      result[matchIndex] = _mergeMarkerDuplicateMetadata(result[matchIndex], marker);
+      continue;
+    }
+
+    if (hasSameBaseKey) {
+      marker['displayKey'] = '$baseDisplayKey@${_markerCoordHashFromJson(marker)}';
+      _applyMarkerRenderKey(marker);
+    }
+    result.add(marker);
+  }
+
+  return result.map(_cleanRenderMetadata).toList();
+}
+
+Map<String, dynamic> _mergeLineDuplicateMetadata(Map<String, dynamic> existing, Map<String, dynamic> incoming) {
+  final duplicateCount = ((existing['duplicateCount'] as num?)?.toInt() ?? 1) + 1;
+  final duplicateTeams = _stableStringList([
+    ...List<dynamic>.from(existing['duplicateTeams'] ?? const []),
+    ...List<dynamic>.from(incoming['duplicateTeams'] ?? const []),
+  ]);
+  final duplicateTitles = _stableStringList([
+    ...List<dynamic>.from(existing['duplicateTitles'] ?? const []),
+    ...List<dynamic>.from(incoming['duplicateTitles'] ?? const []),
+  ]);
+  final visibleStates = <String, bool>{
+    ...Map<String, bool>.from(existing['duplicateVisibleStates'] ?? const <String, bool>{}),
+    ...Map<String, bool>.from(incoming['duplicateVisibleStates'] ?? const <String, bool>{}),
+  };
+
+  final existingPriority = (existing['_renderPriority'] as num?)?.toInt() ?? 99;
+  final incomingPriority = (incoming['_renderPriority'] as num?)?.toInt() ?? 99;
+  final representative = incomingPriority < existingPriority ? incoming : existing;
+
+  representative['duplicateCount'] = duplicateCount;
+  representative['duplicateTeams'] = duplicateTeams;
+  representative['duplicateTitles'] = duplicateTitles;
+  representative['duplicateVisibleStates'] = visibleStates;
+  representative['isDeduped'] = duplicateCount > 1;
+  representative['_baseDisplayKey'] = existing['_baseDisplayKey'] ?? incoming['_baseDisplayKey'] ?? representative['displayKey'];
+  representative['displayKey'] = existing['displayKey'] ?? incoming['displayKey'] ?? representative['displayKey'];
+  _applyLineRenderKey(representative);
+  return representative;
+}
+
+List<Map<String, dynamic>> _dedupeLineJsonList(List<Map<String, dynamic>> rawLines) {
+  if (!_dedupeMapRenderItems) return rawLines.map(_cleanRenderMetadata).toList();
+
+  final result = <Map<String, dynamic>>[];
+
+  for (final line in rawLines) {
+    final baseDisplayKey = (line['_baseDisplayKey'] ?? line['displayKey'] ?? line['id'] ?? '').toString();
+    final pathHash = (line['pathHash'] ?? '').toString();
+    var matchIndex = -1;
+    var hasSameBaseKey = false;
+
+    for (var i = 0; i < result.length; i++) {
+      final existingBaseKey = (result[i]['_baseDisplayKey'] ?? result[i]['displayKey'] ?? result[i]['id'] ?? '').toString();
+      if (existingBaseKey != baseDisplayKey) continue;
+
+      hasSameBaseKey = true;
+      if ((result[i]['pathHash'] ?? '').toString() == pathHash) {
+        matchIndex = i;
+        break;
+      }
+    }
+
+    if (matchIndex != -1) {
+      result[matchIndex] = _mergeLineDuplicateMetadata(result[matchIndex], line);
+      continue;
+    }
+
+    if (hasSameBaseKey && pathHash.isNotEmpty) {
+      line['displayKey'] = '$baseDisplayKey@$pathHash';
+      _applyLineRenderKey(line);
+    }
+    result.add(line);
+  }
+
+  return result.map(_cleanRenderMetadata).toList();
+}
+
+List<Map<String, dynamic>> _buildMarkerJsonList({bool dedupe = true}) {
   final markers = <Map<String, dynamic>>[];
-  final renderedKeys = <String>{};
-  final globalOriginalKeys = <String>{};
 
   for (var entry in _markerDataMap.entries) {
     final id = entry.key;
     final site = entry.value;
-    final baseKey = site.originalMarkerId ?? site.sourceMarkerId ?? site.parentMarkerId ?? id;
     final group = _userGroups.firstWhere(
       (g) => g.name == site.group.name,
       orElse: () => site.group,
     );
 
     if (group.isVisible) {
-      globalOriginalKeys.add(baseKey);
       final scope = site.originalMarkerId != null || site.sourceMarkerId != null || site.parentMarkerId != null ? 'received' : 'own';
       if (_verboseMapDebug) debugPrint('MARKER_RENDER markerId=$id groupName=${group.name} groupKey=${group.name} scope=$scope originalMarkerId=${site.originalMarkerId} sourceMarkerId=${site.sourceMarkerId} updateTarget=${widget.teamName}|${group.name}|${site.id}');
       markers.add(_siteToMarkerJson(id, site, group, scope: scope, teamName: widget.teamName));
@@ -1506,34 +1861,34 @@ List<Map<String, dynamic>> _buildMarkerJsonList() {
       for (var entry in team.markers.entries) {
         final id = entry.key;
         final site = entry.value;
-        final baseKey = site.originalMarkerId ?? site.sourceMarkerId ?? site.parentMarkerId ?? id;
-        if (globalOriginalKeys.contains(baseKey)) continue;
         final group = team.groups.firstWhere(
           (g) => g.name == site.group.name,
           orElse: () => site.group,
         );
 
         if (group.isVisible) {
-          if (renderedKeys.add('${teamDocId}_$baseKey')) {
-            final scope = site.originalMarkerId != null || site.sourceMarkerId != null || site.parentMarkerId != null || group.name.contains('/') ? 'shared' : 'own';
-            if (_verboseMapDebug) debugPrint('MARKER_RENDER markerId=${teamDocId}_$id groupName=${group.name} groupKey=${group.name} scope=$scope originalMarkerId=${site.originalMarkerId} sourceMarkerId=${site.sourceMarkerId} updateTarget=$teamDocId|${group.name}|${site.id}');
-            markers.add(_siteToMarkerJson('${teamDocId}_$id', site, group, scope: scope, teamName: teamDocId));
-          }
+          final scope = site.originalMarkerId != null || site.sourceMarkerId != null || site.parentMarkerId != null || group.name.contains('/') ? 'shared' : 'own';
+          if (_verboseMapDebug) debugPrint('MARKER_RENDER markerId=${teamDocId}_$id groupName=${group.name} groupKey=${group.name} scope=$scope originalMarkerId=${site.originalMarkerId} sourceMarkerId=${site.sourceMarkerId} updateTarget=$teamDocId|${group.name}|${site.id}');
+          markers.add(_siteToMarkerJson('${teamDocId}_$id', site, group, scope: scope, teamName: teamDocId));
         }
       }
     }
   }
 
-  return markers;
+  final result = dedupe ? _dedupeMarkerJsonList(markers) : markers.map(_cleanRenderMetadata).toList();
+  if (_verboseMapDebug) {
+    debugPrint('[KAKAO_DEDUPE] markers raw=${markers.length} rendered=${result.length} removed=${markers.length - result.length}');
+  }
+  return result;
 }
 
-List<Map<String, dynamic>> _buildLineJsonList() {
+List<Map<String, dynamic>> _buildLineJsonList({bool dedupe = true}) {
   final lines = <Map<String, dynamic>>[];
 
   for (var entry in _lineDataMap.entries) {
     final line = entry.value;
     if (line.isVisible) {
-      lines.add(_lineToJson(entry.key, line));
+      lines.add(_lineToJson(entry.key, line, ownerTeam: widget.teamName));
     }
   }
 
@@ -1544,7 +1899,7 @@ List<Map<String, dynamic>> _buildLineJsonList() {
       for (var entry in team.lines.entries) {
         final line = entry.value;
         if (line.isVisible) {
-          lines.add(_lineToJson('${team.teamName}_${line.id}', line));
+          lines.add(_lineToJson('${team.teamName}_${line.id}', line, ownerTeam: team.teamName));
         }
       }
     }
@@ -1552,15 +1907,43 @@ List<Map<String, dynamic>> _buildLineJsonList() {
 
   final pointsToDraw = _isModalOpen ? _frozenFreeLinePoints : _tempFreeLinePoints;
   if (pointsToDraw.isNotEmpty) {
+    final points = pointsToDraw.map((p) => {'lat': p.latitude, 'lng': p.longitude}).toList();
+    final pathHash = points.map((p) {
+      final lat = (p['lat'] as num).toDouble();
+      final lng = (p['lng'] as num).toDouble();
+      return '${lat.toStringAsFixed(6)},${lng.toStringAsFixed(6)}';
+    }).join('>');
     lines.add({
       'id': 'temp_free_line',
+      'displayKey': 'temp:${widget.teamName}:temp_free_line',
+      'pathHash': pathHash,
+      'renderKey': [
+        'temp_free_line',
+        'temp:${widget.teamName}:temp_free_line',
+        '',
+        _colorToHex(Colors.redAccent),
+        pathHash,
+        1,
+      ].join('|'),
+      'duplicateCount': 1,
+      'duplicateTeams': <String>[widget.teamName],
+      'duplicateTitles': <String>[''],
+      'duplicateVisibleStates': <String, bool>{widget.teamName: true},
+      'isDeduped': false,
       'title': '',
+      'description': '',
       'color': _colorToHex(Colors.redAccent),
-      'points': pointsToDraw.map((p) => {'lat': p.latitude, 'lng': p.longitude}).toList(),
+      'isVisible': true,
+      'markerIds': const <String>[],
+      'points': points,
     });
   }
 
-  return lines;
+  final result = dedupe ? _dedupeLineJsonList(lines) : lines.map(_cleanRenderMetadata).toList();
+  if (_verboseMapDebug) {
+    debugPrint('[KAKAO_DEDUPE] lines raw=${lines.length} rendered=${result.length} removed=${lines.length - result.length}');
+  }
+  return result;
 }
 
 Future<void> _renderMarkersOnKakaoMap() async {
@@ -1568,7 +1951,17 @@ Future<void> _renderMarkersOnKakaoMap() async {
   if (!mounted || controller == null) return;
 
   try {
-    await controller.runJavaScript('renderMarkers(${jsonEncode(_buildMarkerJsonList())});');
+    final markerList = _buildMarkerJsonList()
+      ..sort((a, b) => (a['id'] ?? '').toString().compareTo((b['id'] ?? '').toString()));
+    final hash = markerList.map((m) => (m['renderKey'] ?? '').toString()).join('||');
+    if (hash == _lastSentMarkersHash) {
+      if (_verboseMapDebug) debugPrint('[KAKAO_RENDER] skipped markers hash unchanged');
+      await _setMarkerMoveModeOnKakaoMap(_isMoveMode);
+      return;
+    }
+
+    await controller.runJavaScript('renderMarkers(${jsonEncode(markerList)});');
+    _lastSentMarkersHash = hash;
     await _setMarkerMoveModeOnKakaoMap(_isMoveMode);
   } catch (e) {
     debugPrint('renderMarkers failed: $e');
@@ -1580,7 +1973,16 @@ Future<void> _renderLinesOnKakaoMap() async {
   if (!mounted || controller == null) return;
 
   try {
-    await controller.runJavaScript('renderLines(${jsonEncode(_buildLineJsonList())});');
+    final lineList = _buildLineJsonList()
+      ..sort((a, b) => (a['id'] ?? '').toString().compareTo((b['id'] ?? '').toString()));
+    final hash = lineList.map((l) => (l['renderKey'] ?? '').toString()).join('||');
+    if (hash == _lastSentLinesHash) {
+      if (_verboseMapDebug) debugPrint('[KAKAO_RENDER] skipped lines hash unchanged');
+      return;
+    }
+
+    await controller.runJavaScript('renderLines(${jsonEncode(lineList)});');
+    _lastSentLinesHash = hash;
   } catch (e) {
     debugPrint('renderLines failed: $e');
   }
@@ -1654,7 +2056,7 @@ Future<void> _loadData() async {
         });
 
         // 화면에 마커 아이콘 다시 그리기
-        _updateMarkers();
+        _scheduleMarkerUpdate(ms: 200);
       } else if (!doc.exists && mounted) {
         // 📍 2. 관리자가 파이어베이스에서 팀 폴더(문서)를 아예 삭제했을 때
         setState(() {
@@ -1663,7 +2065,7 @@ Future<void> _loadData() async {
           _lineDataMap.clear();   // 선 데이터 비우기
         });
         // 화면에서 마커/선 싹 지우기
-        _updateMarkers();
+        _scheduleMarkerUpdate(ms: 200);
 
         // (선택 사항) 사용자에게 알려주기
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1711,8 +2113,8 @@ Future<void> _loadData() async {
                   : {},
             );
           }
-          _updateMarkers(); // 화면 갱신
         });
+        _scheduleMarkerUpdate(ms: 200); // 화면 갱신
       });
     }
   }
@@ -1876,7 +2278,7 @@ Future<void> _loadData() async {
                   }); 
                 }); 
                 _saveData(); 
-                _updateMarkers();
+                _scheduleMarkerUpdate(ms: 0);
                 Navigator.pop(ctx);
               }, 
               child: const Text("수정 완료")
@@ -1978,8 +2380,8 @@ Future<void> _loadData() async {
               // 1. ✅ [핵심] 화면에서 먼저 즉시 지웁니다 (눈속임이지만 사용자 경험엔 필수)
               setState(() {
                 _allTeamsMap.remove(teamName);
-                _updateMarkers(); // 지도에서도 마커 제거
               });
+              _scheduleMarkerUpdate(); // 지도에서도 마커 제거
 
               // 2. 그 다음 실제 서버 삭제 수행
               try {
@@ -2087,7 +2489,7 @@ Future<void> _loadData() async {
     });
 
     await _saveData();
-    _updateMarkers();
+    _scheduleMarkerUpdate(ms: 0);
 
     if (_isOriginalMarkerForSharedSync(marker)) {
       await _appendNewMarkerToSharedGroups(
@@ -2497,9 +2899,9 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
           });
           if (shouldRenumberMarkerGroups) {
             await _saveData();
-            _updateMarkers();
+            _scheduleMarkerUpdate(ms: 0);
           } else {
-            _updateMarkers();
+            _scheduleMarkerUpdate(ms: 0);
 
             // 기존 _saveData()는 전체를 덮어씌우므로 제외하고, 비상용 로컬 폰 저장만 수행
             final prefs = await SharedPreferences.getInstance();
@@ -2650,7 +3052,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                       setState(() {
                         team.isVisible = v;
                       });
-                      _updateMarkers(); 
+                      _scheduleMarkerUpdate();
                     },
                   ),
 
@@ -2695,7 +3097,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                               setState(() {
                                 g.isVisible = v;
                               });
-                              _updateMarkers(); 
+                              _scheduleMarkerUpdate();
                             },
                           ),
                         ],
@@ -2772,7 +3174,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                       setState(() {
                         g.isVisible = val;
                       });
-                      _updateMarkers();
+                      _scheduleMarkerUpdate();
                     },
                   ),
                 ],
@@ -2974,7 +3376,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
               onPressed: () {
                 setState(() { _isMoveMode = !_isMoveMode; });
                 _setMarkerMoveModeOnKakaoMap(_isMoveMode);
-                _updateMarkers(); 
+                _scheduleMarkerUpdate();
               }, 
               child: Icon(Icons.open_with, color: _isMoveMode ? Colors.white : Colors.black)
             ),
@@ -3209,7 +3611,7 @@ void _showMarkerDetails(String mid, {TeamData? fromOtherTeam}) {
                   }
                   
                   // 2. 지도 마커와 슬라이드바 텍스트 색상 즉시 갱신을 위해 호출
-                  _updateMarkers(); 
+                  _scheduleMarkerUpdate();
                 },
                         ),
                         Expanded(
@@ -3403,7 +3805,7 @@ if (isAdmin && targetTeamName != null) {
     }
   });
   await _saveData();
-  _updateMarkers();
+  _scheduleMarkerUpdate(ms: 0);
 }
                                     },
                                     child: const Text("삭제", style: TextStyle(color: Colors.white)),
@@ -3748,7 +4150,7 @@ void _showCreateMenu() {
                         for (String targetTeam in selectedTargetTeams) {
                           if (targetTeam == widget.teamName) {
                             setState(() { _lineDataMap[id] = newLine; });
-                            _updateMarkers();
+                            _scheduleMarkerUpdate(ms: 0);
                             _saveData();
                           } else {
                             try {
@@ -3778,7 +4180,7 @@ void _showCreateMenu() {
                           _tempLineMarkerIds.clear();
                           _tempFreeLinePoints.clear();
                         });
-                        _updateMarkers();
+                        _scheduleMarkerUpdate(ms: 0);
                       } else {
                         setState(() {
                           _lineDataMap[id] = newLine;
@@ -3787,7 +4189,7 @@ void _showCreateMenu() {
                           _tempLineMarkerIds.clear();
                           _tempFreeLinePoints.clear();
                         });
-                        _updateMarkers();
+                        _scheduleMarkerUpdate(ms: 0);
                         await _saveData();
                         if (isAdmin && existingLine != null) {
                           await _updateDistributedLine(newLine);
@@ -3836,7 +4238,7 @@ const SizedBox(height: 5),
                   icon: const Icon(Icons.delete, color: Colors.red),
                   onPressed: () {
                     setState(() => _lineDataMap.remove(lid));
-                    _updateMarkers();
+                    _scheduleMarkerUpdate(ms: 0);
                     _saveData();
                     Navigator.pop(context);
                   },
@@ -4036,7 +4438,7 @@ void _deleteGroupDialog(MapGroup group) {
                    // 필요시 로직 추가
                 });
               });
-              _updateMarkers();
+              _scheduleMarkerUpdate(ms: 0);
               await _saveData();
               if (mounted) Navigator.pop(ctx);
             },
@@ -4860,7 +5262,7 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
             activeColor: Color(line.colorValue),
             onChanged: (val) async {
               setState(() { line.isVisible = val; });
-              _updateMarkers();
+              _scheduleMarkerUpdate();
               
               if (isMyLine) {
                 _saveData(); 
@@ -4911,7 +5313,7 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
                         
                         if (isMyLine) {
                           setState(() => _lineDataMap.remove(line.id));
-                          _updateMarkers();
+                          _scheduleMarkerUpdate();
                           _saveData();
                         } else if (teamName != null) {
                           try {
@@ -4968,17 +5370,6 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
       child: child,
     );
   }
-
-  Timer? _markerUpdateTimer;
-
-  // ✅ [추가] _updateMarkers 중복 호출 방지 함수
-  void _scheduleMarkerUpdate() {
-    _markerUpdateTimer?.cancel();
-    _markerUpdateTimer = Timer(const Duration(milliseconds: 300), () {
-      if (mounted) _updateMarkers();
-    });
-  }
-
 // ✅ 1. 파이어베이스에 올라간 '하나의 파일'들 목록 보기 (에러 디버깅 강화 버전)
   Future<void> _showAiImportListDialog() async {
     if (!canUseAdminTools) return;
