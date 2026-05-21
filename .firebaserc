@@ -1,5 +1,15 @@
 {
   "projects": {
     "default": "fieldmanager-c94c2"
-  }
+  },
+  "targets": {
+    "fieldmanager-c94c2": {
+      "hosting": {
+        "admin-v2": [
+          "fieldmanager-admin-v2-c94c2"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }
