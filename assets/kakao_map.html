@@ -4,6 +4,46 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Kakao Map</title>
+  <script>
+    var mapReady = false;
+    var pendingMarkers = null;
+    var pendingLines = null;
+    var markerMoveMode = false;
+
+    window.__kakaoMapState = window.__kakaoMapState || {
+      mapReady: mapReady,
+      pendingMarkers: pendingMarkers,
+      pendingLines: pendingLines,
+      pendingDrawMarkers: null,
+      markerMoveMode: markerMoveMode
+    };
+
+    window.renderMarkers = function(markers) {
+      pendingMarkers = markers;
+      window.__kakaoMapState.pendingMarkers = markers;
+      console.log("renderMarkers pending", Array.isArray(markers) ? markers.length : "unknown");
+    };
+
+    window.renderLines = function(lines) {
+      pendingLines = lines;
+      window.__kakaoMapState.pendingLines = lines;
+      console.log("renderLines pending", Array.isArray(lines) ? lines.length : "unknown");
+    };
+
+    window.setMarkerMoveMode = function(enabled) {
+      markerMoveMode = enabled === true || enabled === "true";
+      window.__kakaoMapState.markerMoveMode = markerMoveMode;
+      console.log("setMarkerMoveMode", markerMoveMode);
+    };
+
+    window.debugLogToFlutter = function(payload) {
+      try {
+        console.log("KAKAO_MOVE_DEBUG", JSON.stringify(payload));
+      } catch (e) {
+        console.log("debugLogToFlutter failed", e);
+      }
+    };
+  </script>
   <style>
     html,
     body,
@@ -55,15 +95,36 @@
 
     .flat-marker-dot {
       align-items: center;
-      border: 1px solid rgba(0, 0, 0, 0.38);
+      border: 1px solid rgba(255, 255, 255, 0.88);
       border-radius: 50%;
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.42), 0 1px 4px rgba(0, 0, 0, 0.28);
       display: flex;
       height: 16px;
       justify-content: center;
       line-height: 1;
       padding: 0;
+      position: relative;
       width: 16px;
+    }
+
+    .flat-marker-check {
+      align-items: center;
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.35);
+      border-radius: 50%;
+      bottom: -3px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.24);
+      color: #111111;
+      display: flex;
+      font-size: 8px;
+      font-weight: 900;
+      height: 9px;
+      justify-content: center;
+      line-height: 1;
+      pointer-events: none;
+      position: absolute;
+      right: -3px;
+      width: 9px;
     }
 
     .flat-marker-title {
@@ -105,7 +166,35 @@
   <div id="map"></div>
 
   <script>
+    window.__kakaoMapState = window.__kakaoMapState || {
+      mapReady: false,
+      pendingMarkers: null,
+      pendingLines: null,
+      pendingDrawMarkers: null,
+      markerMoveMode: false
+    };
+
+    window.renderMarkers = function(markers) {
+      window.__kakaoMapState.pendingMarkers = markers;
+      console.log('renderMarkers pending', Array.isArray(markers) ? markers.length : 'unknown');
+    };
+
+    window.renderLines = function(lines) {
+      window.__kakaoMapState.pendingLines = lines;
+      console.log('renderLines pending', Array.isArray(lines) ? lines.length : 'unknown');
+    };
+
+    window.setMarkerMoveMode = function(enabled) {
+      window.__kakaoMapState.markerMoveMode = enabled === true || enabled === 'true';
+      console.log('setMarkerMoveMode', window.__kakaoMapState.markerMoveMode);
+    };
+
     var map;
+    var mapContainer = null;
+    var mapReady = window.__kakaoMapState.mapReady === true;
+    var pendingMarkers = window.__kakaoMapState.pendingMarkers;
+    var pendingLines = window.__kakaoMapState.pendingLines;
+    var pendingDrawMarkers = window.__kakaoMapState.pendingDrawMarkers;
     var markerMap = {};
     var markerOverlayMap = {};
     var drawMarkerMap = {};
@@ -121,6 +210,22 @@
     var VIEWPORT_RENDER_DEBOUNCE_MS = 120;
     var viewportRenderTimer = null;
     var latestVisibleBounds = null;
+    var markerMoveMode = window.__kakaoMapState.markerMoveMode === true;
+    var activeMarkerDrag = null;
+    var suppressNextMapClick = false;
+    var suppressMapClickUntil = 0;
+
+    window.setMarkerMoveMode = function(enabled) {
+      markerMoveMode = enabled === true || enabled === 'true';
+      window.__kakaoMapState.markerMoveMode = markerMoveMode;
+      console.log('setMarkerMoveMode', markerMoveMode);
+      if (!markerMoveMode && activeMarkerDrag) {
+        activeMarkerDrag = null;
+        if (map && typeof map.setDraggable === 'function') {
+          map.setDraggable(true);
+        }
+      }
+    };
 
     function postToFlutter(channelName, payload) {
       var channel = window[channelName];
@@ -130,6 +235,18 @@
         channel.postMessage(message);
       }
     }
+
+    function sendDebugLog(payload) {
+      try {
+        console.log("KAKAO_MOVE_DEBUG", JSON.stringify(payload));
+      } catch (e) {
+        console.log("debugLogToFlutter failed", e);
+      }
+      postToFlutter('debugLog', payload);
+      postToFlutter('DebugLogChannel', payload);
+    }
+
+    window.debugLogToFlutter = sendDebugLog;
 
     function normalizeItems(items) {
       if (!items) return [];
@@ -142,6 +259,62 @@
       }
       return Array.isArray(items) ? items : [];
     }
+
+    function renderMarkersNow(markers) {
+      markerData = normalizeItems(markers);
+      redrawMarkers();
+    }
+
+    window.renderMarkers = function(markers) {
+      if (!mapReady || !map) {
+        pendingMarkers = markers;
+        window.__kakaoMapState.pendingMarkers = markers;
+        console.log('renderMarkers pending', Array.isArray(markers) ? markers.length : 'unknown');
+        return;
+      }
+      window.__kakaoMapState.pendingMarkers = null;
+      renderMarkersNow(markers);
+    };
+
+    function renderLinesNow(lines) {
+      lineData = normalizeItems(lines);
+      redrawLines();
+    }
+
+    window.renderLines = function(lines) {
+      if (!mapReady || !map) {
+        pendingLines = lines;
+        window.__kakaoMapState.pendingLines = lines;
+        console.log('renderLines pending', Array.isArray(lines) ? lines.length : 'unknown');
+        return;
+      }
+      window.__kakaoMapState.pendingLines = null;
+      renderLinesNow(lines);
+    };
+
+    function renderDrawMarkersNow(markers) {
+      clearMapItems(drawMarkerMap);
+      drawMarkerMap = {};
+
+      normalizeItems(markers).forEach(function(item) {
+        var id = String(item.id ?? '');
+        drawMarkerMap[id] = new kakao.maps.Marker({
+          map: map,
+          position: toLatLng(item),
+          opacity: Number(item.opacity ?? 0.75)
+        });
+      });
+    }
+
+    window.renderDrawMarkers = function(markers) {
+      if (!mapReady || !map) {
+        pendingDrawMarkers = markers;
+        window.__kakaoMapState.pendingDrawMarkers = markers;
+        return;
+      }
+      window.__kakaoMapState.pendingDrawMarkers = null;
+      renderDrawMarkersNow(markers);
+    };
 
     function toLatLng(item) {
       return new kakao.maps.LatLng(
@@ -197,6 +370,9 @@
       var root = document.createElement('div');
       var dot = document.createElement('div');
       var label = document.createElement('div');
+      var isChecked = item.isChecked === true || item.isChecked === 'true' ||
+        item.checked === true || item.checked === 'true' ||
+        item.isOn === true || item.isOn === 'true';
 
       root.className = 'flat-marker-wrap';
       dot.className = 'flat-marker-dot';
@@ -205,16 +381,156 @@
       dot.style.backgroundColor = color;
       label.textContent = title;
 
+      if (isChecked) {
+        var badge = document.createElement('div');
+        badge.className = 'flat-marker-check';
+        badge.textContent = '\u2713';
+        dot.appendChild(badge);
+      }
+
       root.appendChild(dot);
       if (title) root.appendChild(label);
 
       root.addEventListener('click', function(event) {
         event.preventDefault();
         event.stopPropagation();
+        if (root.__suppressMarkerClick) {
+          root.__suppressMarkerClick = false;
+          return;
+        }
         postToFlutter('MarkerChannel', id);
       });
 
       return root;
+    }
+
+    function getPointerContainerPoint(event) {
+      var source = event.touches && event.touches.length ? event.touches[0] :
+        (event.changedTouches && event.changedTouches.length ? event.changedTouches[0] : event);
+      var rect = (mapContainer || document.getElementById('map')).getBoundingClientRect();
+      return {
+        x: source.clientX - rect.left,
+        y: source.clientY - rect.top
+      };
+    }
+
+    function suppressMapClickBriefly() {
+      suppressNextMapClick = true;
+      suppressMapClickUntil = Date.now() + 600;
+      setTimeout(function() {
+        if (Date.now() >= suppressMapClickUntil) {
+          suppressNextMapClick = false;
+        }
+      }, 650);
+    }
+
+    function installMarkerDrag(root, overlay, id, item) {
+      root.style.touchAction = 'none';
+
+      function startDrag(event) {
+        if (!markerMoveMode || !map) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        suppressMapClickBriefly();
+
+        var projection = map.getProjection();
+        var pointer = getPointerContainerPoint(event);
+        var overlayPoint = projection.containerPointFromCoords(overlay.getPosition());
+
+        activeMarkerDrag = {
+          id: id,
+          item: item,
+          root: root,
+          overlay: overlay,
+          offsetX: pointer.x - overlayPoint.x,
+          offsetY: pointer.y - overlayPoint.y,
+          moved: false
+        };
+
+        if (typeof map.setDraggable === 'function') {
+          map.setDraggable(false);
+        }
+      }
+
+      root.addEventListener('mousedown', startDrag);
+      root.addEventListener('touchstart', startDrag, { passive: false });
+    }
+
+    function moveActiveMarker(event) {
+      if (!activeMarkerDrag || !map) return;
+
+      event.preventDefault();
+
+      var projection = map.getProjection();
+      var pointer = getPointerContainerPoint(event);
+      var point = new kakao.maps.Point(
+        pointer.x - activeMarkerDrag.offsetX,
+        pointer.y - activeMarkerDrag.offsetY
+      );
+      var position = projection.coordsFromContainerPoint(point);
+
+      activeMarkerDrag.overlay.setPosition(position);
+      activeMarkerDrag.moved = true;
+      suppressMapClickBriefly();
+    }
+
+    function endActiveMarkerDrag(event) {
+      if (!activeMarkerDrag || !map) return;
+
+      event.preventDefault();
+
+      var drag = activeMarkerDrag;
+      activeMarkerDrag = null;
+
+      if (typeof map.setDraggable === 'function') {
+        map.setDraggable(true);
+      }
+
+      if (!drag.moved) return;
+
+      drag.root.__suppressMarkerClick = true;
+      suppressMapClickBriefly();
+      var position = drag.overlay.getPosition();
+      var dragItem = drag.item || {};
+      console.log('MARKER_DRAG_END', {
+        markerId: drag.id,
+        groupName: dragItem.groupName,
+        groupKey: dragItem.groupKey,
+        scope: dragItem.scope,
+        originalMarkerId: dragItem.originalMarkerId,
+        lat: position.getLat(),
+        lng: position.getLng()
+      });
+      var payload = {
+        event: 'dragend',
+        markerId: drag.id,
+        actualMarkerId: dragItem.markerId,
+        renderKey: dragItem.renderKey,
+        groupName: dragItem.groupName,
+        groupKey: dragItem.groupKey,
+        scope: dragItem.scope,
+        originalMarkerId: dragItem.originalMarkerId,
+        sourceMarkerId: dragItem.sourceMarkerId,
+        parentMarkerId: dragItem.parentMarkerId,
+        updateTarget: dragItem.updateTarget,
+        lat: position.getLat(),
+        lng: position.getLng()
+      };
+      try {
+        const payloadText = JSON.stringify(payload);
+        console.log("KAKAO_MOVE_DEBUG " + payloadText);
+
+        if (typeof MarkerDragChannel !== "undefined" && MarkerDragChannel.postMessage) {
+          MarkerDragChannel.postMessage(payloadText);
+        } else if (window.MarkerDragChannel && window.MarkerDragChannel.postMessage) {
+          window.MarkerDragChannel.postMessage(payloadText);
+        } else {
+          console.log("MarkerDragChannel not available " + payloadText);
+        }
+      } catch (e) {
+        console.log("MarkerDragChannel post failed", e);
+      }
     }
 
     function makeClusterContent(cluster) {
@@ -329,19 +645,31 @@
 
         var item = entry.item;
         var id = String(item.id ?? '');
+        console.log('MARKER_RENDER', {
+          markerId: id,
+          groupName: item.groupName,
+          groupKey: item.groupKey,
+          scope: item.scope,
+          originalMarkerId: item.originalMarkerId,
+          sourceMarkerId: item.sourceMarkerId,
+          updateTarget: item.updateTarget
+        });
         var itemForRender = Object.assign({}, item);
         if (!showMarkerLabels) {
           itemForRender.title = '';
           itemForRender.name = '';
         }
 
+        var markerContent = makeFlatMarkerContent(itemForRender, index + 1, id);
+        if (markerMap[id]) markerMap[id].setMap(null);
         markerMap[id] = new kakao.maps.CustomOverlay({
           map: map,
           position: toLatLng(item),
-          content: makeFlatMarkerContent(itemForRender, index + 1, id),
+          content: markerContent,
           xAnchor: 0.5,
           yAnchor: showMarkerLabels ? 0.42 : 0.5
         });
+        installMarkerDrag(markerContent, markerMap[id], id, item);
       });
     }
 
@@ -409,6 +737,7 @@
 
     function initMap() {
       var container = document.getElementById('map');
+      mapContainer = container;
       map = new kakao.maps.Map(container, {
         center: new kakao.maps.LatLng(35.1795, 129.0756),
         level: 5
@@ -416,6 +745,11 @@
       updateVisibleBoundsSnapshot();
 
       kakao.maps.event.addListener(map, 'click', function(mouseEvent) {
+        if (suppressNextMapClick || Date.now() < suppressMapClickUntil) {
+          suppressNextMapClick = false;
+          return;
+        }
+
         var latLng = mouseEvent.latLng;
         postToFlutter('MapTapChannel', {
           lat: latLng.getLat(),
@@ -425,34 +759,52 @@
 
       kakao.maps.event.addListener(map, 'zoom_changed', scheduleRefreshZoomDependentLayers);
       kakao.maps.event.addListener(map, 'idle', scheduleRefreshZoomDependentLayers);
+      document.addEventListener('mousemove', moveActiveMarker);
+      document.addEventListener('touchmove', moveActiveMarker, { passive: false });
+      document.addEventListener('mouseup', endActiveMarkerDrag);
+      document.addEventListener('touchend', endActiveMarkerDrag);
+      document.addEventListener('touchcancel', endActiveMarkerDrag);
+
+      mapReady = true;
+      window.__kakaoMapState.mapReady = true;
+      if (pendingMarkers !== null) {
+        var markers = pendingMarkers;
+        pendingMarkers = null;
+        window.__kakaoMapState.pendingMarkers = null;
+        window.renderMarkers(markers);
+      }
+      if (pendingLines !== null) {
+        var lines = pendingLines;
+        pendingLines = null;
+        window.__kakaoMapState.pendingLines = null;
+        window.renderLines(lines);
+      }
+      if (pendingDrawMarkers !== null) {
+        var drawMarkers = pendingDrawMarkers;
+        pendingDrawMarkers = null;
+        window.__kakaoMapState.pendingDrawMarkers = null;
+        window.renderDrawMarkers(drawMarkers);
+      }
 
       postToFlutter('FlutterChannel', {
         type: 'mapReady'
       });
     }
 
+    function setMarkerMoveMode(enabled) {
+      window.setMarkerMoveMode(enabled);
+    }
+
     function renderMarkers(markers) {
-      markerData = normalizeItems(markers);
-      redrawMarkers();
+      window.renderMarkers(markers);
     }
 
     function renderDrawMarkers(markers) {
-      clearMapItems(drawMarkerMap);
-      drawMarkerMap = {};
-
-      normalizeItems(markers).forEach(function(item) {
-        var id = String(item.id ?? '');
-        drawMarkerMap[id] = new kakao.maps.Marker({
-          map: map,
-          position: toLatLng(item),
-          opacity: Number(item.opacity ?? 0.75)
-        });
-      });
+      window.renderDrawMarkers(markers);
     }
 
     function renderLines(lines) {
-      lineData = normalizeItems(lines);
-      redrawLines();
+      window.renderLines(lines);
     }
 
     function moveTo(lat, lng, level) {
@@ -511,6 +863,11 @@
         map.setCenter(position);
       }
     }
+
+    window.moveTo = moveTo;
+    window.moveToLocation = moveTo;
+    window.zoomTo = zoomTo;
+    window.showCurrentLocation = showCurrentLocation;
   </script>
   <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=4a2743b9e49b8da391510688eb04d69d&autoload=false"></script>
   <script>

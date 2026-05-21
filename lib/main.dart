@@ -60,6 +60,7 @@ class SiteData {
   String address; 
   MapGroup group;
   List<PhotoItem> photos;
+  String? originalMarkerId, sourceMarkerId, parentMarkerId;
   bool isChecked; // ✅ 마커 상태 확인용 변수
 
   SiteData({
@@ -71,6 +72,9 @@ class SiteData {
     required this.address, 
     required this.group, 
     required this.photos, 
+    this.originalMarkerId,
+    this.sourceMarkerId,
+    this.parentMarkerId,
     this.isChecked = false // ✅ 기본값 추가
   });
 
@@ -84,6 +88,9 @@ class SiteData {
   Map<String, dynamic> toJson() => {
     'id': id, 'lat': lat, 'lng': lng, 'title': title, 'description': description, 
     'address': address, 'group': group.toJson(), 'photos': photos.map((p) => p.toJson()).toList(),
+    if (originalMarkerId != null) 'originalMarkerId': originalMarkerId,
+    if (sourceMarkerId != null) 'sourceMarkerId': sourceMarkerId,
+    if (parentMarkerId != null) 'parentMarkerId': parentMarkerId,
     'isChecked': isChecked // ✅ JSON 저장 시 포함
   };
 
@@ -93,7 +100,10 @@ class SiteData {
     address: json['address'] ?? "주소 정보 없음", 
     group: MapGroup.fromJson(json['group']), 
     photos: (json['photos'] as List).map((p) => PhotoItem.fromJson(p)).toList(),
-    isChecked: json['isChecked'] ?? false // ✅ JSON 불러올 때 포함
+    originalMarkerId: json['originalMarkerId']?.toString(),
+    sourceMarkerId: json['sourceMarkerId']?.toString(),
+    parentMarkerId: json['parentMarkerId']?.toString(),
+    isChecked: json['isChecked'] == true || json['isChecked'] == 'true' || json['checked'] == true || json['checked'] == 'true' || json['isOn'] == true || json['isOn'] == 'true' // ✅ JSON 불러올 때 포함
   );
 }
 
@@ -568,6 +578,25 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
         },
       )
       ..addJavaScriptChannel(
+        'MarkerDragChannel',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint("MarkerDragChannel: ${message.message}");
+          _handleKakaoMarkerMoved(message.message);
+        },
+      )
+      ..addJavaScriptChannel(
+        'DebugLogChannel',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint("[KAKAO_MOVE_DEBUG] payload: ${message.message}");
+        },
+      )
+      ..addJavaScriptChannel(
+        'debugLog',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint("[KAKAO_MOVE_DEBUG] ${message.message}");
+        },
+      )
+      ..addJavaScriptChannel(
         'MapTapChannel',
         onMessageReceived: (JavaScriptMessage message) {
           debugPrint("MapTapChannel: ${message.message}");
@@ -605,6 +634,17 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
       await controller.runJavaScript('zoomTo($level);');
     } catch (e) {
       debugPrint('zoomTo failed: $e');
+    }
+  }
+
+  Future<void> _setMarkerMoveModeOnKakaoMap(bool enabled) async {
+    final controller = _webViewController;
+    if (controller == null) return;
+
+    try {
+      await controller.runJavaScript('setMarkerMoveMode(${enabled ? 'true' : 'false'});');
+    } catch (e) {
+      debugPrint('setMarkerMoveMode failed: $e');
     }
   }
 
@@ -664,6 +704,338 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
       _setStateAndRefreshMap(() => _tempLineMarkerIds.add(markerId));
     } else {
       _showMarkerDetails(targetMarkerId, fromOtherTeam: targetTeam);
+    }
+  }
+
+  bool _updateConnectedLinePoints(Map<String, LineData> lines, String markerId, LatLng point) {
+    bool changed = false;
+
+    for (final line in lines.values) {
+      for (int i = 0; i < line.markerIds.length && i < line.points.length; i++) {
+        if (line.markerIds[i] == markerId) {
+          line.points[i] = point;
+          changed = true;
+        }
+      }
+    }
+
+    return changed;
+  }
+
+  MapEntry<String, SiteData>? _findMarkerEntry(Map<String, SiteData> markers, String markerId) {
+    final direct = markers[markerId];
+    if (direct != null) return MapEntry(markerId, direct);
+
+    for (final entry in markers.entries) {
+      final site = entry.value;
+      if (site.id == markerId ||
+          site.originalMarkerId == markerId ||
+          site.sourceMarkerId == markerId ||
+          site.parentMarkerId == markerId) return entry;
+    }
+
+    return null;
+  }
+
+  bool _matchesMoveMarker(SiteData site, String mapKey, String markerId) {
+    if (markerId.isEmpty) return false;
+    return mapKey == markerId ||
+        site.id == markerId ||
+        site.originalMarkerId == markerId ||
+        site.sourceMarkerId == markerId ||
+        site.parentMarkerId == markerId ||
+        mapKey.endsWith(markerId) ||
+        site.id.endsWith(markerId) ||
+        markerId.endsWith(site.id) ||
+        (site.originalMarkerId != null && markerId.endsWith(site.originalMarkerId!)) ||
+        (site.sourceMarkerId != null && markerId.endsWith(site.sourceMarkerId!));
+  }
+
+  MapEntry<String, SiteData>? _findMarkerEntryInGroup(Map<String, SiteData> markers, String? groupName, List<String> markerIds) {
+    for (final markerId in markerIds) {
+      final direct = markers[markerId];
+      if (direct != null && (groupName == null || direct.group.name == groupName)) {
+        return MapEntry(markerId, direct);
+      }
+    }
+
+    for (final entry in markers.entries) {
+      final site = entry.value;
+      if (groupName != null && site.group.name != groupName) continue;
+      for (final markerId in markerIds) {
+        if (_matchesMoveMarker(site, entry.key, markerId)) return entry;
+      }
+    }
+
+    return null;
+  }
+
+  List<String> _moveMarkerCandidates(Map data, Map target) {
+    final values = [
+      data['markerId'],
+      data['originalMarkerId'],
+      data['sourceMarkerId'],
+      target['markerId'],
+      target['originalMarkerId'],
+      target['sourceMarkerId'],
+      target['parentMarkerId'],
+      data['actualMarkerId'],
+      data['parentMarkerId'],
+    ];
+    final result = <String>[];
+
+    for (final value in values) {
+      final text = value?.toString() ?? '';
+      if (text.isNotEmpty && !result.contains(text)) result.add(text);
+    }
+
+    return result;
+  }
+
+  bool _matchesMoveMarkerJson(Map marker, String markerId) {
+    if (markerId.isEmpty) return false;
+    final id = marker['id']?.toString() ?? '';
+    final markerJsonId = marker['markerId']?.toString() ?? '';
+    final originalMarkerId = marker['originalMarkerId']?.toString() ?? '';
+    final sourceMarkerId = marker['sourceMarkerId']?.toString() ?? '';
+    final parentMarkerId = marker['parentMarkerId']?.toString() ?? '';
+
+    return id == markerId ||
+        markerJsonId == markerId ||
+        originalMarkerId == markerId ||
+        sourceMarkerId == markerId ||
+        parentMarkerId == markerId ||
+        id.endsWith(markerId) ||
+        markerJsonId.endsWith(markerId) ||
+        (id.isNotEmpty && markerId.endsWith(id)) ||
+        (originalMarkerId.isNotEmpty && markerId.endsWith(originalMarkerId)) ||
+        (sourceMarkerId.isNotEmpty && markerId.endsWith(sourceMarkerId));
+  }
+
+  Future<bool> _updateMovedMarkerByPath(String teamName, String? groupName, List<String> markerIds, LatLng point, {bool sharedMove = false}) async {
+    if (markerIds.isEmpty) return false;
+
+    if (teamName == widget.teamName) {
+      final entry = _findMarkerEntryInGroup(_markerDataMap, groupName, markerIds);
+      if (entry == null) return false;
+
+      final site = entry.value;
+      final actualId = site.id;
+      setState(() {
+        if (entry.key != actualId) {
+          _markerDataMap.remove(entry.key);
+          _markerDataMap[actualId] = site;
+        }
+        site.position = point;
+        for (final markerId in markerIds) {
+          _updateConnectedLinePoints(_lineDataMap, markerId, point);
+        }
+      });
+      final saved = await _saveMovedMarkerToTeamDoc(teamName, actualId, point, groupName: site.group.name, markerIds: markerIds);
+      return saved;
+    }
+
+    final team = _allTeamsMap[teamName];
+    if (team == null) return false;
+
+    final entry = _findMarkerEntryInGroup(team.markers, groupName, markerIds);
+    if (entry == null) return false;
+
+    final site = entry.value;
+    final actualId = site.id;
+    setState(() {
+      if (entry.key != actualId) {
+        team.markers.remove(entry.key);
+        team.markers[actualId] = site;
+      }
+      site.position = point;
+      for (final markerId in markerIds) {
+        _updateConnectedLinePoints(team.lines, markerId, point);
+      }
+    });
+    final saved = await _saveMovedMarkerToTeamDoc(teamName, actualId, point, groupName: site.group.name, markerIds: markerIds);
+    return saved;
+  }
+
+  Future<bool> _saveMovedMarkerToTeamDoc(String teamName, String markerId, LatLng point, {String? groupName, List<String>? markerIds}) async {
+    final docRef = FirebaseFirestore.instance.collection('teams').doc(teamName);
+    bool updated = false;
+    final candidates = markerIds == null || markerIds.isEmpty ? [markerId] : markerIds;
+
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final snapshot = await transaction.get(docRef);
+      if (!snapshot.exists) return;
+
+      final data = snapshot.data()!;
+      final markers = List<dynamic>.from(data['markers'] ?? []);
+      final markerIndex = markers.indexWhere((m) =>
+          m is Map &&
+          (groupName == null ||
+              (m['group'] is Map && m['group']['name'] == groupName)) &&
+          candidates.any((candidate) => _matchesMoveMarkerJson(Map<String, dynamic>.from(m), candidate)));
+      if (markerIndex == -1) return;
+
+      final marker = Map<String, dynamic>.from(markers[markerIndex] as Map);
+      final savedMarkerId = marker['id']?.toString() ?? markerId;
+      marker['lat'] = point.latitude;
+      marker['lng'] = point.longitude;
+      markers[markerIndex] = marker;
+
+      final updates = <String, dynamic>{'markers': markers};
+      final lines = List<dynamic>.from(data['lines'] ?? []);
+      bool lineChanged = false;
+
+      for (int i = 0; i < lines.length; i++) {
+        if (lines[i] is! Map) continue;
+
+        final line = Map<String, dynamic>.from(lines[i] as Map);
+        final markerIds = List<dynamic>.from(line['markerIds'] ?? []);
+        final points = List<dynamic>.from(line['points'] ?? []);
+        bool thisLineChanged = false;
+
+        for (int j = 0; j < markerIds.length && j < points.length; j++) {
+          if (markerIds[j] == markerId || markerIds[j] == savedMarkerId) {
+            points[j] = {'lat': point.latitude, 'lng': point.longitude};
+            thisLineChanged = true;
+            lineChanged = true;
+          }
+        }
+
+        if (thisLineChanged) {
+          line['points'] = points;
+          lines[i] = line;
+        }
+      }
+
+      if (lineChanged) updates['lines'] = lines;
+      transaction.update(docRef, updates);
+      updated = true;
+    });
+    return updated;
+  }
+
+  Future<void> _handleKakaoMarkerMoved(String message) async {
+    debugPrint('[KAKAO_MOVE_HANDLER] payload=$message');
+    if (!_isMoveMode) return;
+
+    try {
+      final data = jsonDecode(message);
+      if (data is! Map) return;
+
+      final markerId = data['markerId']?.toString() ?? '';
+      final lat = (data['lat'] as num?)?.toDouble();
+      final lng = (data['lng'] as num?)?.toDouble();
+      if (markerId.isEmpty || lat == null || lng == null) return;
+
+      final point = LatLng(lat, lng);
+      final target = data['updateTarget'] is Map ? Map<String, dynamic>.from(data['updateTarget'] as Map) : <String, dynamic>{};
+      final targetTeamName = target['teamName']?.toString();
+      final targetGroupName = (target['groupName'] ?? data['groupName'])?.toString();
+      final candidates = _moveMarkerCandidates(data, target);
+      final scope = (data['scope'] ?? target['scope'])?.toString() ?? '';
+      final originalMarkerId = (data['originalMarkerId'] ?? target['originalMarkerId'])?.toString() ?? '';
+      final isSharedMove = scope == 'shared' || originalMarkerId.isNotEmpty;
+
+      if (targetTeamName != null && targetTeamName.isNotEmpty) {
+        final updated = await _updateMovedMarkerByPath(targetTeamName, targetGroupName, candidates, point, sharedMove: isSharedMove);
+        if (updated) {
+          _updateMarkers();
+          debugPrint('[KAKAO_MOVE_FOUND] scope=$scope markerId=$markerId originalMarkerId=$originalMarkerId');
+        } else if (isSharedMove) {
+          debugPrint('[KAKAO_MOVE_SKIP_CREATE] shared target not found markerId=$markerId originalMarkerId=$originalMarkerId');
+        } else {
+          debugPrint('[KAKAO_MOVE_SKIP_CREATE] own target not found markerId=$markerId');
+        }
+        return;
+      }
+
+      if (isSharedMove) {
+        bool updated = await _updateMovedMarkerByPath(widget.teamName, targetGroupName, candidates, point, sharedMove: true);
+        if (!updated && isAdmin) {
+          for (final entry in _allTeamsMap.entries) {
+            updated = await _updateMovedMarkerByPath(entry.key, targetGroupName, candidates, point, sharedMove: true);
+            if (updated) break;
+          }
+        }
+        if (updated) {
+          _updateMarkers();
+          debugPrint('[KAKAO_MOVE_FOUND] scope=$scope markerId=$markerId originalMarkerId=$originalMarkerId');
+        } else {
+          debugPrint('[KAKAO_MOVE_SKIP_CREATE] shared target not found markerId=$markerId originalMarkerId=$originalMarkerId');
+        }
+        return;
+      }
+
+      final ownEntry = _findMarkerEntry(_markerDataMap, markerId);
+
+      if (ownEntry != null) {
+        final ownMarker = ownEntry.value;
+        final actualId = ownMarker.id;
+        setState(() {
+          if (ownEntry.key != actualId) {
+            _markerDataMap.remove(ownEntry.key);
+            _markerDataMap[actualId] = ownMarker;
+          }
+          ownMarker.position = point;
+          _updateConnectedLinePoints(_lineDataMap, actualId, point);
+          if (actualId != markerId) _updateConnectedLinePoints(_lineDataMap, markerId, point);
+        });
+        final saved = await _saveMovedMarkerToTeamDoc(widget.teamName, actualId, point, groupName: ownMarker.group.name, markerIds: candidates);
+        if (saved) {
+          _updateMarkers();
+          debugPrint('[KAKAO_MOVE_FOUND] scope=$scope markerId=$markerId originalMarkerId=$originalMarkerId');
+        } else {
+          debugPrint('[KAKAO_MOVE_SKIP_CREATE] own target not found markerId=$markerId');
+        }
+        return;
+      }
+
+      if (!isAdmin) {
+        debugPrint('[KAKAO_MOVE_SKIP_CREATE] own target not found markerId=$markerId');
+        return;
+      }
+
+      for (final entry in _allTeamsMap.entries) {
+        final docPrefix = '${entry.key}_';
+        final namePrefix = '${entry.value.teamName}_';
+        final String localId;
+        if (markerId.startsWith(docPrefix)) {
+          localId = markerId.substring(docPrefix.length);
+        } else if (markerId.startsWith(namePrefix)) {
+          localId = markerId.substring(namePrefix.length);
+        } else {
+          continue;
+        }
+
+        final siteEntry = _findMarkerEntry(entry.value.markers, localId);
+        if (siteEntry == null) {
+          debugPrint('[KAKAO_MOVE_SKIP_CREATE] own target not found markerId=$markerId');
+          return;
+        }
+
+        final site = siteEntry.value;
+        final actualId = site.id;
+        setState(() {
+          if (siteEntry.key != actualId) {
+            entry.value.markers.remove(siteEntry.key);
+            entry.value.markers[actualId] = site;
+          }
+          site.position = point;
+          _updateConnectedLinePoints(entry.value.lines, actualId, point);
+          if (actualId != localId) _updateConnectedLinePoints(entry.value.lines, localId, point);
+        });
+        final saved = await _saveMovedMarkerToTeamDoc(entry.key, actualId, point, groupName: site.group.name, markerIds: candidates);
+        if (saved) {
+          _updateMarkers();
+          debugPrint('[KAKAO_MOVE_FOUND] scope=$scope markerId=$markerId originalMarkerId=$originalMarkerId');
+        } else {
+          debugPrint('[KAKAO_MOVE_SKIP_CREATE] own target not found markerId=$markerId');
+        }
+        return;
+      }
+      debugPrint('[KAKAO_MOVE_SKIP_CREATE] own target not found markerId=$markerId');
+    } catch (e) {
+      debugPrint('MarkerDragChannel parse failed: $e');
     }
   }
 
@@ -763,14 +1135,34 @@ String _colorToHex(Color color) {
   return '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
 }
 
-Map<String, dynamic> _siteToMarkerJson(String id, SiteData site, MapGroup group) {
+Map<String, dynamic> _siteToMarkerJson(String id, SiteData site, MapGroup group, {required String scope, required String teamName}) {
+  final groupKey = group.name;
+  final renderKey = '$scope|$teamName|$groupKey|${site.id}';
   return {
     'id': id,
+    'markerId': site.id,
+    'renderKey': renderKey,
     'lat': site.lat,
     'lng': site.lng,
     'title': site.title,
-    'color': _colorToHex(site.isChecked ? Colors.blue : group.color),
+    'color': _colorToHex(group.color),
     'groupName': group.name,
+    'groupKey': groupKey,
+    'scope': scope,
+    if (site.originalMarkerId != null) 'originalMarkerId': site.originalMarkerId,
+    if (site.sourceMarkerId != null) 'sourceMarkerId': site.sourceMarkerId,
+    if (site.parentMarkerId != null) 'parentMarkerId': site.parentMarkerId,
+    'updateTarget': {
+      'teamName': teamName,
+      'groupName': group.name,
+      'groupKey': groupKey,
+      'markerId': site.id,
+      'originalMarkerId': site.originalMarkerId,
+      'sourceMarkerId': site.sourceMarkerId,
+      'parentMarkerId': site.parentMarkerId,
+      'scope': scope,
+    },
+    'isChecked': site.isChecked,
   };
 }
 
@@ -785,34 +1177,50 @@ Map<String, dynamic> _lineToJson(String id, LineData line) {
 
 List<Map<String, dynamic>> _buildMarkerJsonList() {
   final markers = <Map<String, dynamic>>[];
+  final renderedKeys = <String>{};
+  final globalOriginalKeys = <String>{};
 
   for (var entry in _markerDataMap.entries) {
     final id = entry.key;
     final site = entry.value;
+    final baseKey = site.originalMarkerId ?? site.sourceMarkerId ?? site.parentMarkerId ?? id;
+    globalOriginalKeys.add(baseKey);
     final group = _userGroups.firstWhere(
       (g) => g.name == site.group.name,
       orElse: () => site.group,
     );
 
     if (group.isVisible) {
-      markers.add(_siteToMarkerJson(id, site, group));
+      if (renderedKeys.add(baseKey)) {
+        final scope = site.originalMarkerId != null || site.sourceMarkerId != null || site.parentMarkerId != null ? 'received' : 'own';
+        debugPrint('MARKER_RENDER markerId=$id groupName=${group.name} groupKey=${group.name} scope=$scope originalMarkerId=${site.originalMarkerId} sourceMarkerId=${site.sourceMarkerId} updateTarget=${widget.teamName}|${group.name}|${site.id}');
+        markers.add(_siteToMarkerJson(id, site, group, scope: scope, teamName: widget.teamName));
+      }
     }
   }
 
   if (isAdmin) {
-    for (var team in _allTeamsMap.values) {
+    for (var teamEntry in _allTeamsMap.entries) {
+      final teamDocId = teamEntry.key;
+      final team = teamEntry.value;
       if (!team.isVisible) continue;
 
       for (var entry in team.markers.entries) {
         final id = entry.key;
         final site = entry.value;
+        final baseKey = site.originalMarkerId ?? site.sourceMarkerId ?? site.parentMarkerId ?? id;
+        if (globalOriginalKeys.contains(baseKey)) continue;
         final group = team.groups.firstWhere(
           (g) => g.name == site.group.name,
           orElse: () => site.group,
         );
 
         if (group.isVisible) {
-          markers.add(_siteToMarkerJson('${team.teamName}_$id', site, group));
+          if (renderedKeys.add('${teamDocId}_$baseKey')) {
+            final scope = site.originalMarkerId != null || site.sourceMarkerId != null || site.parentMarkerId != null || group.name.contains('/') ? 'shared' : 'own';
+            debugPrint('MARKER_RENDER markerId=${teamDocId}_$id groupName=${group.name} groupKey=${group.name} scope=$scope originalMarkerId=${site.originalMarkerId} sourceMarkerId=${site.sourceMarkerId} updateTarget=$teamDocId|${group.name}|${site.id}');
+            markers.add(_siteToMarkerJson('${teamDocId}_$id', site, group, scope: scope, teamName: teamDocId));
+          }
         }
       }
     }
@@ -863,6 +1271,7 @@ Future<void> _renderMarkersOnKakaoMap() async {
 
   try {
     await controller.runJavaScript('renderMarkers(${jsonEncode(_buildMarkerJsonList())});');
+    await _setMarkerMoveModeOnKakaoMap(_isMoveMode);
   } catch (e) {
     debugPrint('renderMarkers failed: $e');
   }
@@ -2027,6 +2436,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
               backgroundColor: _isMoveMode ? Colors.orange : Colors.white, 
               onPressed: () {
                 setState(() { _isMoveMode = !_isMoveMode; });
+                _setMarkerMoveModeOnKakaoMap(_isMoveMode);
                 _updateMarkers(); 
               }, 
               child: Icon(Icons.open_with, color: _isMoveMode ? Colors.white : Colors.black)
@@ -4354,7 +4764,8 @@ Future<void> _distributeAiDataToTeams(List<String> targetTeams, String aiGroupNa
         .where((m) => m.group.name == group.name)
         .map((m) {
           final markerJson = m.toJson();
-          markerJson['id'] = '${widget.teamName}_${m.id}';
+          markerJson['id'] = m.id;
+          markerJson['originalMarkerId'] ??= m.id;
           markerJson['group'] = targetGroup.toJson();
           return markerJson;
         })
@@ -4451,15 +4862,24 @@ Future<void> _distributeAiDataToTeams(List<String> targetTeams, String aiGroupNa
           // 2. 마커 복사해서 밀어 넣기
           for (int i = 0; i < markersToSend.length; i++) {
             var m = markersToSend[i];
-            
-            // 💡 [중요] 받는 쪽에서 마커 ID가 겹치지 않게 새로운 고유 ID를 발급해줍니다.
-            String newId = "Sent_${widget.teamName}_${DateTime.now().millisecondsSinceEpoch}_$i";
-            
             var markerJson = m.toJson();
-            markerJson['id'] = newId; // 발급한 새 ID 교체
-            markerJson['isChecked'] = false; // 보낼 때는 기본 상태(False)로 초기화해서 보냄
+            markerJson['id'] = m.id;
+            markerJson['originalMarkerId'] ??= m.id;
 
-            markers.add(markerJson);
+            int idx = markers.indexWhere((item) =>
+                item is Map &&
+                item['group'] is Map &&
+                item['group']['name'] == group.name &&
+                (item['id'] == m.id ||
+                    item['originalMarkerId'] == m.id ||
+                    item['sourceMarkerId'] == m.id ||
+                    item['parentMarkerId'] == m.id));
+
+            if (idx != -1) {
+              markers[idx] = markerJson;
+            } else {
+              markers.add(markerJson);
+            }
           }
 
           // 3. 서버에 최종 덮어쓰기
