@@ -1,4 +1,4 @@
-package com.example.field_manager_app
+package com.example.field_manager_app.v2
 // ⚠️ 맨 윗줄의 package com.example... 부분은 절대 지우지 말고 본인 것을 유지하세요!
 
 import android.content.Context

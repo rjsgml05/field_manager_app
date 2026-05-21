@@ -514,6 +514,8 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
   String? _lastSelectedGroupName; // ✅ 마지막으로 선택한 그룹 이름 저장
+  String? _quickSelectedGroupName;
+  int _quickGroupMode = 0; // 0 none, 1 selected, 2 quick create
 
 Future<String> _getKoreanAddress(double lat, double lng) async {
     try {
@@ -812,6 +814,150 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
         (sourceMarkerId.isNotEmpty && markerId.endsWith(sourceMarkerId));
   }
 
+  String _syncOriginalMarkerId(String markerId, SiteData site) {
+    return site.originalMarkerId ?? site.sourceMarkerId ?? site.parentMarkerId ?? markerId;
+  }
+
+  bool _isOriginalMarkerForSharedSync(SiteData site) {
+    return site.originalMarkerId == null && site.sourceMarkerId == null && site.parentMarkerId == null;
+  }
+
+  bool _matchesSharedMarkerJson(Map marker, String markerId, String originalMarkerId) {
+    if (markerId.isEmpty && originalMarkerId.isEmpty) return false;
+
+    final id = marker['id']?.toString() ?? '';
+    final markerJsonId = marker['markerId']?.toString() ?? '';
+    final markerOriginalId = marker['originalMarkerId']?.toString() ?? '';
+    final sourceMarkerId = marker['sourceMarkerId']?.toString() ?? '';
+    final parentMarkerId = marker['parentMarkerId']?.toString() ?? '';
+
+    if (markerId.isNotEmpty &&
+        (id == markerId ||
+            markerJsonId == markerId ||
+            markerOriginalId == markerId ||
+            sourceMarkerId == markerId ||
+            parentMarkerId == markerId)) {
+      return true;
+    }
+
+    if (originalMarkerId.isEmpty) return false;
+
+    return id == originalMarkerId ||
+        markerJsonId == originalMarkerId ||
+        markerOriginalId == originalMarkerId ||
+        markerJsonId.endsWith(originalMarkerId);
+  }
+
+  void _setMarkerCheckFields(Map<String, dynamic> marker, bool isChecked) {
+    marker['isChecked'] = isChecked;
+    if (marker.containsKey('checked')) marker['checked'] = isChecked;
+    if (marker.containsKey('isOn')) marker['isOn'] = isChecked;
+  }
+
+  Future<bool> _updateSharedMarkerCopies({
+    required String sourceTeamName,
+    required String markerId,
+    required String originalMarkerId,
+    LatLng? point,
+    bool? isChecked,
+  }) async {
+    bool updatedAny = false;
+    final QuerySnapshot<Map<String, dynamic>> teamsSnapshot;
+
+    try {
+      teamsSnapshot = await FirebaseFirestore.instance.collection('teams').get();
+    } catch (e) {
+      debugPrint('[SYNC_SHARED_MARKER_NOT_FOUND] markerId=$markerId originalMarkerId=$originalMarkerId error=$e');
+      return false;
+    }
+
+    for (final doc in teamsSnapshot.docs) {
+      if (doc.id == sourceTeamName) continue;
+
+      bool updatedDoc = false;
+      try {
+        await FirebaseFirestore.instance.runTransaction((transaction) async {
+          final snapshot = await transaction.get(doc.reference);
+          if (!snapshot.exists || snapshot.data() == null) return;
+
+          final data = snapshot.data()!;
+          final markers = List<dynamic>.from(data['markers'] ?? []);
+          bool changed = false;
+
+          for (int i = 0; i < markers.length; i++) {
+            if (markers[i] is! Map) continue;
+
+            final marker = Map<String, dynamic>.from(markers[i] as Map);
+            if (!_matchesSharedMarkerJson(marker, markerId, originalMarkerId)) continue;
+
+            if (point != null) {
+              marker['lat'] = point.latitude;
+              marker['lng'] = point.longitude;
+            }
+            if (isChecked != null) {
+              _setMarkerCheckFields(marker, isChecked);
+            }
+
+            markers[i] = marker;
+            changed = true;
+          }
+
+          if (!changed) return;
+
+          transaction.update(doc.reference, {'markers': markers});
+          updatedDoc = true;
+        });
+      } catch (e) {
+        debugPrint('[SYNC_SHARED_MARKER_NOT_FOUND] team=${doc.id} markerId=$markerId originalMarkerId=$originalMarkerId error=$e');
+        continue;
+      }
+
+      if (updatedDoc) {
+        updatedAny = true;
+        if (point != null) {
+          debugPrint('[SYNC_SHARED_MARKER_MOVE_UPDATED] team=${doc.id} markerId=$markerId originalMarkerId=$originalMarkerId');
+        }
+        if (isChecked != null) {
+          debugPrint('[SYNC_SHARED_MARKER_CHECK_UPDATED] team=${doc.id} markerId=$markerId originalMarkerId=$originalMarkerId');
+        }
+      }
+    }
+
+    if (!updatedAny) {
+      debugPrint('[SYNC_SHARED_MARKER_NOT_FOUND] markerId=$markerId originalMarkerId=$originalMarkerId');
+    }
+
+    return updatedAny;
+  }
+
+  Future<bool> _saveMarkerCheckToTeamDoc(String teamName, String markerId, String originalMarkerId, bool isChecked, {String? groupName}) async {
+    final docRef = FirebaseFirestore.instance.collection('teams').doc(teamName);
+    bool updated = false;
+
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final snapshot = await transaction.get(docRef);
+      if (!snapshot.exists || snapshot.data() == null) return;
+
+      final data = snapshot.data()!;
+      final markers = List<dynamic>.from(data['markers'] ?? []);
+      final markerIndex = markers.indexWhere((m) =>
+          m is Map &&
+          (groupName == null ||
+              (m['group'] is Map && m['group']['name'] == groupName)) &&
+          _matchesSharedMarkerJson(Map<String, dynamic>.from(m), markerId, originalMarkerId));
+      if (markerIndex == -1) return;
+
+      final marker = Map<String, dynamic>.from(markers[markerIndex] as Map);
+      _setMarkerCheckFields(marker, isChecked);
+      markers[markerIndex] = marker;
+
+      transaction.update(docRef, {'markers': markers});
+      updated = true;
+    });
+
+    return updated;
+  }
+
   Future<bool> _updateMovedMarkerByPath(String teamName, String? groupName, List<String> markerIds, LatLng point, {bool sharedMove = false}) async {
     if (markerIds.isEmpty) return false;
 
@@ -832,6 +978,14 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
         }
       });
       final saved = await _saveMovedMarkerToTeamDoc(teamName, actualId, point, groupName: site.group.name, markerIds: markerIds);
+      if (saved && !sharedMove && _isOriginalMarkerForSharedSync(site)) {
+        await _updateSharedMarkerCopies(
+          sourceTeamName: teamName,
+          markerId: actualId,
+          originalMarkerId: _syncOriginalMarkerId(actualId, site),
+          point: point,
+        );
+      }
       return saved;
     }
 
@@ -854,6 +1008,14 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
       }
     });
     final saved = await _saveMovedMarkerToTeamDoc(teamName, actualId, point, groupName: site.group.name, markerIds: markerIds);
+    if (saved && !sharedMove && _isOriginalMarkerForSharedSync(site)) {
+      await _updateSharedMarkerCopies(
+        sourceTeamName: teamName,
+        markerId: actualId,
+        originalMarkerId: _syncOriginalMarkerId(actualId, site),
+        point: point,
+      );
+    }
     return saved;
   }
 
@@ -982,6 +1144,14 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
         });
         final saved = await _saveMovedMarkerToTeamDoc(widget.teamName, actualId, point, groupName: ownMarker.group.name, markerIds: candidates);
         if (saved) {
+          if (_isOriginalMarkerForSharedSync(ownMarker)) {
+            await _updateSharedMarkerCopies(
+              sourceTeamName: widget.teamName,
+              markerId: actualId,
+              originalMarkerId: _syncOriginalMarkerId(actualId, ownMarker),
+              point: point,
+            );
+          }
           _updateMarkers();
           debugPrint('[KAKAO_MOVE_FOUND] scope=$scope markerId=$markerId originalMarkerId=$originalMarkerId');
         } else {
@@ -1026,6 +1196,14 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
         });
         final saved = await _saveMovedMarkerToTeamDoc(entry.key, actualId, point, groupName: site.group.name, markerIds: candidates);
         if (saved) {
+          if (_isOriginalMarkerForSharedSync(site)) {
+            await _updateSharedMarkerCopies(
+              sourceTeamName: entry.key,
+              markerId: actualId,
+              originalMarkerId: _syncOriginalMarkerId(actualId, site),
+              point: point,
+            );
+          }
           _updateMarkers();
           debugPrint('[KAKAO_MOVE_FOUND] scope=$scope markerId=$markerId originalMarkerId=$originalMarkerId');
         } else {
@@ -1060,7 +1238,7 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
     return null;
   }
 
-  void _handleKakaoMapTap(String message) {
+  Future<void> _handleKakaoMapTap(String message) async {
     if (_isModalOpen || !_isMapControlActive) return;
 
     final point = _parseKakaoMapTapPoint(message);
@@ -1069,7 +1247,9 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
       return;
     }
 
-    if (_isTappingMode) {
+    if (_canQuickSlotCreateMarker) {
+      await _quickCreateMarkerAt(point);
+    } else if (_isTappingMode) {
       _showInputSheet(newPoint: point);
     } else if (_isFreeLineMode) {
       _setStateAndRefreshMap(() => _tempFreeLinePoints.add(point));
@@ -1723,6 +1903,80 @@ Future<void> _loadData() async {
     return (maxNumber + 1).toString();
   }
 
+  String? _defaultMarkerGroupName() {
+    if (isAdmin && _quickGroupMode > 0 && _quickSelectedGroupName != null && _userGroups.any((g) => g.name == _quickSelectedGroupName)) {
+      return _quickSelectedGroupName;
+    }
+    if (_lastSelectedGroupName != null && _userGroups.any((g) => g.name == _lastSelectedGroupName)) {
+      return _lastSelectedGroupName;
+    }
+    return _userGroups.isNotEmpty ? _userGroups.first.name : null;
+  }
+
+  void _setQuickSelectedGroupName(String groupName) {
+    _quickSelectedGroupName = groupName;
+    _quickGroupMode = 1;
+    _lastSelectedGroupName = groupName;
+  }
+
+  void _cycleQuickGroupMode(String groupName) {
+    if (_quickSelectedGroupName != groupName || _quickGroupMode == 0) {
+      _quickSelectedGroupName = groupName;
+      _quickGroupMode = 1;
+      _lastSelectedGroupName = groupName;
+      return;
+    }
+
+    if (_quickGroupMode == 1) {
+      _quickGroupMode = 2;
+      _lastSelectedGroupName = groupName;
+      return;
+    }
+
+    _quickSelectedGroupName = null;
+    _quickGroupMode = 0;
+  }
+
+  bool get _canQuickSlotCreateMarker {
+    return isAdmin &&
+        _quickGroupMode == 2 &&
+        _quickSelectedGroupName != null &&
+        _userGroups.any((g) => g.name == _quickSelectedGroupName) &&
+        !_isMoveMode &&
+        !_isLineMode &&
+        !_isFreeLineMode &&
+        !_isLineDeleteMode;
+  }
+
+  Future<void> _quickCreateMarkerAt(LatLng point) async {
+    final groupName = _quickSelectedGroupName;
+    if (groupName == null) return;
+
+    final group = _userGroups.firstWhere((g) => g.name == groupName);
+    final marker = SiteData(
+      id: DateTime.now().toString(),
+      lat: point.latitude,
+      lng: point.longitude,
+      title: _nextMarkerTitleForGroup(groupName),
+      description: "",
+      address: await _getKoreanAddress(point.latitude, point.longitude),
+      group: group,
+      photos: const [],
+    );
+
+    setState(() {
+      _lastSelectedGroupName = groupName;
+      _markerDataMap[marker.id] = marker;
+    });
+
+    await _saveData();
+    _updateMarkers();
+
+    if (_spreadsheetEnabled) {
+      await _uploadToSpreadsheet(marker);
+    }
+  }
+
   Set<String> _renumberGroupNames(Iterable<String?> groupNames) {
     return groupNames
         .where((name) => name != null && name.isNotEmpty)
@@ -1790,11 +2044,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
     if (existingData != null) {
       selectedGroupName = existingData.group.name;
     } else {
-      if (_lastSelectedGroupName != null && _userGroups.any((g) => g.name == _lastSelectedGroupName)) {
-        selectedGroupName = _lastSelectedGroupName;
-      } else {
-        selectedGroupName = _userGroups.isNotEmpty ? _userGroups.first.name : null;
-      }
+      selectedGroupName = _defaultMarkerGroupName();
     }
 
     // ✅ 2. 맨홀 번호 스마트 자동 채번 (Max + 1)
@@ -1871,7 +2121,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                                 }
                               }
                               // 수동으로 바꿔도 기억하기
-                              if (v != null) _lastSelectedGroupName = v.name; 
+                              if (v != null) _setQuickSelectedGroupName(v.name);
                             })
                           ),
                         ),
@@ -1885,7 +2135,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                                 if (_userGroups.isNotEmpty) {
                                   // ✅ 여기서도 즉시 반영 및 기억
                                   selectedGroupName = _userGroups.last.name;
-                                  _lastSelectedGroupName = _userGroups.last.name;
+                                  _setQuickSelectedGroupName(_userGroups.last.name);
                                   tCtrl.text = _nextMarkerTitleForGroup(_userGroups.last.name, excludeMarkerId: existingData?.id);
                                 }
                               });
@@ -2114,7 +2364,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
 
           // 로컬 화면(UI) 즉시 반영
           setState(() {
-            _lastSelectedGroupName = selectedGroupForSave.name;
+            _setQuickSelectedGroupName(selectedGroupForSave.name);
             _markerDataMap[id] = newData;
             if (shouldRenumberMarkerGroups) {
               _renumberOwnMarkersForGroups(renumberGroupNames);
@@ -2416,7 +2666,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                   setState(() {
                     // 슬라이드바에서 그룹을 만들어도, 마커 생성 시 이 그룹이 기본값이 됨
                     if (_userGroups.isNotEmpty) {
-                      _lastSelectedGroupName = _userGroups.last.name;
+                      _setQuickSelectedGroupName(_userGroups.last.name);
                     }
                   });
                 });
@@ -2493,6 +2743,77 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
       ),
     );
   }
+
+  Widget _buildAdminGroupQuickSlots() {
+    if (!isAdmin || _userGroups.isEmpty || _isModalOpen || !_isMapControlActive || _isLineMode || _isFreeLineMode) {
+      return const SizedBox.shrink();
+    }
+
+    return Positioned(
+      top: 10,
+      left: 10,
+      right: 10,
+      child: SafeArea(
+        bottom: false,
+        child: _uiBlocker(
+          Container(
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.92),
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: const [
+                BoxShadow(color: Colors.black26, blurRadius: 5, offset: Offset(0, 2)),
+              ],
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: _userGroups.map((group) {
+                  final quickMode = group.name == _quickSelectedGroupName ? _quickGroupMode : 0;
+                  final selected = quickMode > 0;
+                  final quickCreate = quickMode == 2;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () {
+                        setState(() {
+                          _cycleQuickGroupMode(group.name);
+                        });
+                      },
+                      child: Container(
+                        constraints: const BoxConstraints(maxWidth: 110),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: quickCreate ? Colors.black87 : (selected ? group.color : Colors.white),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: selected ? group.color : group.color.withOpacity(0.7),
+                            width: quickCreate ? 2.5 : 1,
+                          ),
+                        ),
+                        child: Text(
+                          group.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: selected ? Colors.white : group.color,
+                            fontSize: 12,
+                            fontWeight: quickCreate ? FontWeight.w900 : (selected ? FontWeight.bold : FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
   
   
   @override
@@ -2562,6 +2883,8 @@ body: Stack(
           ),
         ),
       ),
+
+          _buildAdminGroupQuickSlots(),
 
             
 if (_isFreeLineMode) 
@@ -2722,24 +3045,33 @@ void _showMarkerDetails(String mid, {TeamData? fromOtherTeam}) {
                           activeColor: Colors.orangeAccent,
                           onChanged: (val) async {
                   setModalState(() => d.isChecked = val);
-                  
+                  final originalMarkerId = _syncOriginalMarkerId(d.id, d);
+                   
                   // 1. 서버/로컬 데이터 저장
                   if (isAdmin && targetTeamName != null) {
-                    var docRef = FirebaseFirestore.instance.collection('teams').doc(targetTeamName);
-                    var snap = await docRef.get();
-                    if (snap.exists) {
-                      var data = snap.data()!;
-                      List<dynamic> markers = List.from(data['markers'] ?? []);
-                      int idx = markers.indexWhere((m) => m['id'] == d.id);
-                      if (idx != -1) {
-                        markers[idx]['isChecked'] = val;
-                        await docRef.update({'markers': markers});
-                      }
+                    final saved = await _saveMarkerCheckToTeamDoc(targetTeamName, d.id, originalMarkerId, val, groupName: d.group.name);
+                    if (saved && _isOriginalMarkerForSharedSync(d)) {
+                      await _updateSharedMarkerCopies(
+                        sourceTeamName: targetTeamName,
+                        markerId: d.id,
+                        originalMarkerId: originalMarkerId,
+                        isChecked: val,
+                      );
+                    } else if (!saved) {
+                      debugPrint('[SYNC_SHARED_MARKER_NOT_FOUND] markerId=${d.id} originalMarkerId=$originalMarkerId');
                     }
                     // ✅ [추가] 관리자 모드 시트 동기화
                     await _syncToGoogleSheetAdmin(d, targetTeamName); 
                   } else {
                     await _saveData();
+                    if (_isOriginalMarkerForSharedSync(d)) {
+                      await _updateSharedMarkerCopies(
+                        sourceTeamName: widget.teamName,
+                        markerId: d.id,
+                        originalMarkerId: originalMarkerId,
+                        isChecked: val,
+                      );
+                    }
                     // ✅ [추가] 내 팀 시트 동기화
                     await _syncToGoogleSheet(d); 
                   }

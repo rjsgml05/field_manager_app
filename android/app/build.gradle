@@ -23,7 +23,7 @@ if (flutterVersionName == null) {
 }
 
 android {
-    namespace "com.example.field_manager_app"
+    namespace "com.example.field_manager_app.v2"
     compileSdk 36
     
     ndkVersion flutter.ndkVersion
@@ -42,7 +42,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.example.field_manager_app"
+        applicationId "com.example.field_manager_app.v2"
         minSdkVersion flutter.minSdkVersion
         targetSdk 36
         versionCode flutterVersionCode.toInteger()
