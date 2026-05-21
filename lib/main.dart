@@ -1703,6 +1703,75 @@ Future<void> _loadData() async {
     );
   }
 
+  int _markerTitleNumber(String? title) {
+    final match = RegExp(r'\d+').firstMatch(title ?? '');
+    return match == null ? 1 << 30 : int.parse(match.group(0)!);
+  }
+
+  String _nextMarkerTitleForGroup(String groupName, {String? excludeMarkerId}) {
+    int maxNumber = 0;
+    final groupMarkers = _markerDataMap.values.where((m) => m.group.name == groupName && m.id != excludeMarkerId);
+
+    for (var m in groupMarkers) {
+      final match = RegExp(r'\d+').firstMatch(m.title);
+      if (match != null) {
+        final number = int.parse(match.group(0)!);
+        if (number > maxNumber) maxNumber = number;
+      }
+    }
+
+    return (maxNumber + 1).toString();
+  }
+
+  Set<String> _renumberGroupNames(Iterable<String?> groupNames) {
+    return groupNames
+        .where((name) => name != null && name.isNotEmpty)
+        .map((name) => name!)
+        .toSet();
+  }
+
+  void _renumberOwnMarkersForGroups(Iterable<String?> groupNames) {
+    for (final groupName in _renumberGroupNames(groupNames)) {
+      final entries = _markerDataMap.entries.where((entry) => entry.value.group.name == groupName).toList();
+      entries.sort((a, b) {
+        final numberCompare = _markerTitleNumber(a.value.title).compareTo(_markerTitleNumber(b.value.title));
+        if (numberCompare != 0) return numberCompare;
+        return a.key.compareTo(b.key);
+      });
+
+      for (var i = 0; i < entries.length; i++) {
+        entries[i].value.title = '${i + 1}';
+      }
+    }
+  }
+
+  void _renumberMarkerJsonListForGroups(List<dynamic> markers, Iterable<String?> groupNames) {
+    for (final groupName in _renumberGroupNames(groupNames)) {
+      final entries = <MapEntry<int, Map<String, dynamic>>>[];
+
+      for (var i = 0; i < markers.length; i++) {
+        final item = markers[i];
+        if (item is! Map) continue;
+        final marker = Map<String, dynamic>.from(item);
+        if (marker['group'] is Map && marker['group']['name'] == groupName) {
+          entries.add(MapEntry(i, marker));
+        }
+      }
+
+      entries.sort((a, b) {
+        final numberCompare = _markerTitleNumber(a.value['title']?.toString()).compareTo(_markerTitleNumber(b.value['title']?.toString()));
+        if (numberCompare != 0) return numberCompare;
+        return a.key.compareTo(b.key);
+      });
+
+      for (var i = 0; i < entries.length; i++) {
+        final marker = entries[i].value;
+        marker['title'] = '${i + 1}';
+        markers[entries[i].key] = marker;
+      }
+    }
+  }
+
 Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? targetTeamName}) async {
     setState(() {
       _isTappingMode = false;
@@ -1734,19 +1803,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
       defaultTitle = existingData.title; // 기존 데이터 수정 시 그대로 유지
     } else {
       String targetGroup = selectedGroupName ?? "";
-      int maxNumber = 0;
-      
-      // 내 마커들 중에서 현재 선택된 그룹의 마커만 필터링
-      List<SiteData> groupMarkers = _markerDataMap.values.where((m) => m.group.name == targetGroup).toList();
-      
-      for (var m in groupMarkers) {
-        final match = RegExp(r'\d+').firstMatch(m.title); // "맨홀 3", "3" 등에서 숫자만 추출
-        if (match != null) {
-          int num = int.parse(match.group(0)!);
-          if (num > maxNumber) maxNumber = num;
-        }
-      }
-      defaultTitle = (maxNumber + 1).toString(); // 가장 큰 수 + 1
+      defaultTitle = _nextMarkerTitleForGroup(targetGroup); // 가장 큰 수 + 1
     }
 
     // 3. 텍스트 컨트롤러 초기화 (자동 채번된 번호를 입력창에 꽂아줌)
@@ -1804,8 +1861,15 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                             hint: const Text("그룹 선택"), 
                             value: selG, 
                             items: _userGroups.map((g) => DropdownMenuItem(value: g, child: Text(g.name, style: TextStyle(color: g.color)))).toList(), 
-                            onChanged: (v) => setMS(() { 
-                              selectedGroupName = v?.name; 
+                            onChanged: (v) => setMS(() {
+                              selectedGroupName = v?.name;
+                              if (v != null) {
+                                if (existingData != null && v.name == existingData.group.name) {
+                                  tCtrl.text = existingData.title;
+                                } else {
+                                  tCtrl.text = _nextMarkerTitleForGroup(v.name, excludeMarkerId: existingData?.id);
+                                }
+                              }
                               // 수동으로 바꿔도 기억하기
                               if (v != null) _lastSelectedGroupName = v.name; 
                             })
@@ -1822,6 +1886,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                                   // ✅ 여기서도 즉시 반영 및 기억
                                   selectedGroupName = _userGroups.last.name;
                                   _lastSelectedGroupName = _userGroups.last.name;
+                                  tCtrl.text = _nextMarkerTitleForGroup(_userGroups.last.name, excludeMarkerId: existingData?.id);
                                 }
                               });
                             });
@@ -1976,10 +2041,18 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
         List<PhotoItem> serverPhotos = await _uploadPhotos(photos, uploadTeamName);
 
         final id = existingData?.id ?? DateTime.now().toString();
+        final previousGroupName = existingData?.group.name;
+        final selectedGroupForSave = selG!;
+        final shouldRenumberMarkerGroups =
+            existingData != null && targetTeamName == null && previousGroupName != selectedGroupForSave.name;
+        final renumberGroupNames = [previousGroupName, selectedGroupForSave.name];
         SiteData newData = SiteData(
           id: id, lat: pos.latitude, lng: pos.longitude,
           title: tCtrl.text, description: dCtrl.text, address: aCtrl.text,
-          group: selG!, photos: serverPhotos,
+          group: selectedGroupForSave, photos: serverPhotos,
+          originalMarkerId: existingData?.originalMarkerId,
+          sourceMarkerId: existingData?.sourceMarkerId,
+          parentMarkerId: existingData?.parentMarkerId,
         );
 
         if (isAdmin && targetTeamName != null) {
@@ -2025,11 +2098,14 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
               } else {
                 markers.add(newData.toJson()); // 새 마커 추가
               }
+              if (shouldRenumberMarkerGroups) {
+                _renumberMarkerJsonListForGroups(markers, renumberGroupNames);
+              }
 
               // 2. 만약 그룹이 새로 만들어진 거라면 그룹 리스트도 덮어쓰지 않고 추가
               List<dynamic> groups = List.from(data['groups'] ?? []);
-              if (!groups.any((g) => g['name'] == selG!.name)) {
-                groups.add(selG!.toJson());
+              if (!groups.any((g) => g['name'] == selectedGroupForSave.name)) {
+                groups.add(selectedGroupForSave.toJson());
               }
 
               transaction.update(docRef, {'markers': markers, 'groups': groups});
@@ -2038,15 +2114,23 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
 
           // 로컬 화면(UI) 즉시 반영
           setState(() {
-            _lastSelectedGroupName = selG!.name;
+            _lastSelectedGroupName = selectedGroupForSave.name;
             _markerDataMap[id] = newData;
+            if (shouldRenumberMarkerGroups) {
+              _renumberOwnMarkersForGroups(renumberGroupNames);
+            }
           });
-          _updateMarkers();
-          
-          // 기존 _saveData()는 전체를 덮어씌우므로 제외하고, 비상용 로컬 폰 저장만 수행
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('${widget.teamName}_${widget.teamPw}_m', jsonEncode(_markerDataMap.values.map((m) => m.toJson()).toList()));
-          await prefs.setString('${widget.teamName}_${widget.teamPw}_g', jsonEncode(_userGroups.map((g) => g.toJson()).toList()));
+          if (shouldRenumberMarkerGroups) {
+            await _saveData();
+            _updateMarkers();
+          } else {
+            _updateMarkers();
+
+            // 기존 _saveData()는 전체를 덮어씌우므로 제외하고, 비상용 로컬 폰 저장만 수행
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('${widget.teamName}_${widget.teamPw}_m', jsonEncode(_markerDataMap.values.map((m) => m.toJson()).toList()));
+            await prefs.setString('${widget.teamName}_${widget.teamPw}_g', jsonEncode(_userGroups.map((g) => g.toJson()).toList()));
+          }
           
           final shouldUpload = isAdmin ? _spreadsheetEnabled : true;
           if (shouldUpload) {
