@@ -1030,6 +1030,7 @@
     var suppressNextMapClick = false;
     var focusedMarkerId = null;
     var markerEditState = { marker: null, saving: false };
+    var markerDeleteState = { marker: null, deleting: false };
     var pendingMarkerMutations = {};
     var markerMutationSequence = 0;
     var unsubscribeTeamsSnapshot = null;
@@ -1968,6 +1969,58 @@
       return Array.from(new Set(values));
     }
 
+    function markerIdentityIds(rawMarker) {
+      return Array.from(new Set(markerOwnIds(rawMarker).concat(markerLinkIds(rawMarker))));
+    }
+
+    function removeDeletedMarkerPointsFromLines(lines, deletedMarkerIds) {
+      var deleted = {};
+      (deletedMarkerIds || []).forEach(function(id) {
+        var cleaned = cleanMarkerId(id);
+        if (cleaned) deleted[cleaned] = true;
+      });
+
+      var changed = false;
+      var changedLineCount = 0;
+      var nextLines = [];
+
+      (Array.isArray(lines) ? lines : []).forEach(function(rawLine) {
+        if (!rawLine || typeof rawLine !== "object") {
+          nextLines.push(rawLine);
+          return;
+        }
+
+        var line = Object.assign({}, rawLine);
+        var markerIds = Array.isArray(line.markerIds) ? line.markerIds.slice() : [];
+        var points = Array.isArray(line.points) ? line.points.slice() : [];
+        var lineChanged = false;
+
+        for (var i = markerIds.length - 1; i >= 0; i -= 1) {
+          if (deleted[cleanMarkerId(markerIds[i])]) {
+            markerIds.splice(i, 1);
+            if (i < points.length) points.splice(i, 1);
+            lineChanged = true;
+          }
+        }
+
+        if (!lineChanged) {
+          nextLines.push(rawLine);
+          return;
+        }
+
+        changed = true;
+        changedLineCount += 1;
+
+        if (markerIds.length < 2) return;
+
+        line.markerIds = markerIds;
+        line.points = points;
+        nextLines.push(line);
+      });
+
+      return { lines: nextLines, changed: changed, changedLineCount: changedLineCount };
+    }
+
     function buildMarkerIdentityGraph(source) {
       var docs = [];
       if (source && typeof source.forEach === "function") {
@@ -2621,6 +2674,108 @@
       return true;
     }
 
+    async function commitCanonicalMarkerDeletion(args) {
+      var initiatingMarker = args && args.initiatingMarker;
+      if (!db || !initiatingMarker) {
+        setAdminMessage("삭제할 마커를 찾을 수 없습니다.");
+        return false;
+      }
+
+      try {
+        var snapshot = await db.collection("teams").get();
+        var component = resolveMarkerComponent(snapshot, initiatingMarker, initiatingMarker.teamName);
+        if (!component.ok) {
+          setAdminMessage(component.reason === "ambiguous"
+            ? "공유 마커 연결이 모호하여 삭제하지 못했습니다."
+            : "삭제할 마커를 찾을 수 없습니다.");
+          return false;
+        }
+
+        var targetByDoc = {};
+        component.nodes.forEach(function(node) {
+          if (!targetByDoc[node.docId]) targetByDoc[node.docId] = { doc: node.doc, markerIndexes: [] };
+          if (targetByDoc[node.docId].markerIndexes.indexOf(node.index) === -1) {
+            targetByDoc[node.docId].markerIndexes.push(node.index);
+          }
+        });
+
+        var targets = Object.keys(targetByDoc).map(function(key) { return targetByDoc[key]; });
+        if (!targets.length) {
+          setAdminMessage("삭제할 마커를 찾을 수 없습니다.");
+          return false;
+        }
+        if (targets.length > 450) {
+          setAdminMessage("동기화 대상이 너무 많아 삭제를 중단했습니다.");
+          console.error("[ADMIN_V2_DELETE] too many documents", targets.length);
+          return false;
+        }
+
+        var batch = db.batch();
+        var removedCount = 0;
+        var changedLineCount = 0;
+        var affectedDocIds = [];
+        var componentIds = Array.isArray(component.ids) ? component.ids.map(cleanMarkerId).filter(Boolean) : [];
+        targets.forEach(function(target) {
+          var data = target.doc.data() || {};
+          var markers = Array.isArray(data.markers) ? data.markers.slice() : [];
+          var lines = Array.isArray(data.lines) ? data.lines.slice() : [];
+          var indexes = target.markerIndexes.slice().sort(function(a, b) { return b - a; });
+          var deletedIdMap = {};
+          var deletedIds = [];
+          var changed = false;
+
+          indexes.forEach(function(index) {
+            if (index < 0 || index >= markers.length) return;
+            markerIdentityIds(markers[index]).forEach(function(id) {
+              if (deletedIdMap[id]) return;
+              deletedIdMap[id] = true;
+              deletedIds.push(id);
+            });
+            markers.splice(index, 1);
+            removedCount += 1;
+            changed = true;
+          });
+
+          if (!changed) return;
+          lines.forEach(function(line) {
+            var lineMarkerIds = Array.isArray(line && line.markerIds) ? line.markerIds : [];
+            lineMarkerIds.forEach(function(lineMarkerId) {
+              var cleaned = cleanMarkerId(lineMarkerId);
+              if (!cleaned || deletedIdMap[cleaned] || componentIds.indexOf(cleaned) === -1) return;
+              deletedIdMap[cleaned] = true;
+              deletedIds.push(cleaned);
+            });
+          });
+
+          var lineResult = removeDeletedMarkerPointsFromLines(lines, deletedIds);
+          if (lineResult.changed) changedLineCount += lineResult.changedLineCount;
+
+          affectedDocIds.push(target.doc.id);
+          var updatePayload = { markers: markers };
+          if (lineResult.changed) updatePayload.lines = lineResult.lines;
+          batch.update(target.doc.ref, updatePayload);
+        });
+
+        if (!removedCount) {
+          setAdminMessage("삭제할 마커를 찾을 수 없습니다.");
+          return false;
+        }
+
+        console.log("[ADMIN_V2_DELETE] component", {
+          documents: affectedDocIds,
+          markersRemoved: removedCount,
+          linesChanged: changedLineCount
+        });
+        await batch.commit();
+        console.log("[ADMIN_V2_DELETE] committed");
+        return true;
+      } catch (error) {
+        console.error("[ADMIN_V2_DELETE] failed", error);
+        setAdminMessage("마커 삭제에 실패했습니다.");
+        return false;
+      }
+    }
+
     async function saveMovedMarkerPosition(marker, lat, lng) {
       if (!db) return false;
       setAdminMessage("마커 위치 저장 중...");
@@ -2948,7 +3103,7 @@
       actions.appendChild(makeMarkerAction("이동", function() { focusMarker(marker); }));
       actions.appendChild(makeMarkerAction("ON/OFF", function() { updateMarkerCheck(marker, !marker.isChecked); }));
       actions.appendChild(makeMarkerAction("수정", function() { openMarkerEditModal(marker); }));
-      actions.appendChild(makeMarkerAction("삭제", function() { handlePlaceholderAction("marker delete"); }));
+      actions.appendChild(makeMarkerAction("삭제", function() { confirmAndDeleteMarker(marker); }));
       actions.appendChild(makeMarkerAction("전송", function() { handlePlaceholderAction("marker share"); }));
       head.appendChild(actions);
 
@@ -3066,6 +3221,132 @@
       if (overlay) overlay.remove();
     }
 
+    function confirmAndDeleteMarker(marker) {
+      if (!marker) {
+        setAdminMessage("삭제할 마커를 찾을 수 없습니다.");
+        return;
+      }
+
+      closeMarkerDeleteModal();
+      markerDeleteState = { marker: marker, deleting: false };
+
+      var overlay = document.createElement("div");
+      overlay.id = "markerDeleteOverlay";
+      overlay.className = "marker-edit-overlay";
+      overlay.addEventListener("click", function(event) {
+        if (event.target === overlay && !markerDeleteState.deleting) closeMarkerDeleteModal();
+      });
+
+      var dialog = document.createElement("div");
+      dialog.className = "marker-edit-dialog";
+      dialog.setAttribute("role", "dialog");
+      dialog.setAttribute("aria-modal", "true");
+      dialog.addEventListener("click", function(event) {
+        event.stopPropagation();
+      });
+      overlay.appendChild(dialog);
+
+      var heading = document.createElement("h2");
+      heading.className = "marker-edit-title";
+      heading.textContent = "마커 삭제";
+      dialog.appendChild(heading);
+
+      var message = document.createElement("div");
+      message.className = "marker-description";
+      message.textContent = "이 마커를 삭제하면 공유된 모든 화면에서도 함께 삭제됩니다. 삭제하시겠습니까?";
+      dialog.appendChild(message);
+
+      var actions = document.createElement("div");
+      actions.className = "marker-edit-actions";
+      var cancelButton = document.createElement("button");
+      cancelButton.type = "button";
+      cancelButton.className = "marker-edit-button";
+      cancelButton.textContent = "취소";
+      cancelButton.addEventListener("click", closeMarkerDeleteModal);
+      actions.appendChild(cancelButton);
+
+      var deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.id = "markerDeleteSubmit";
+      deleteButton.className = "marker-edit-button primary";
+      deleteButton.textContent = "삭제";
+      deleteButton.addEventListener("click", async function() {
+        if (markerDeleteState.deleting) return;
+        markerDeleteState.deleting = true;
+        deleteButton.disabled = true;
+        cancelButton.disabled = true;
+        deleteButton.textContent = "삭제 중...";
+        setAdminMessage("마커 삭제 중...");
+
+        var deleted = await commitCanonicalMarkerDeletion({ initiatingMarker: marker });
+        if (deleted) {
+          applyMarkerDeletionLocally(marker);
+          closeMarkerDeleteModal();
+          closeMarkerInfo();
+          setAdminMessage("마커가 삭제되었습니다.");
+          return;
+        }
+
+        markerDeleteState.deleting = false;
+        deleteButton.disabled = false;
+        cancelButton.disabled = false;
+        deleteButton.textContent = "삭제";
+      });
+      actions.appendChild(deleteButton);
+      dialog.appendChild(actions);
+
+      document.body.appendChild(overlay);
+    }
+
+    function closeMarkerDeleteModal() {
+      var overlay = document.getElementById("markerDeleteOverlay");
+      if (overlay) overlay.remove();
+      markerDeleteState = { marker: null, deleting: false };
+    }
+
+    function applyMarkerDeletionLocally(marker) {
+      var localDocs = [];
+      if (ownTeam) {
+        localDocs.push({
+          id: ownTeam.docId || ADMIN_TEAM_DOC_ID,
+          data: { markers: ownTeam.markers, lines: ownTeam.lines }
+        });
+      }
+      allTeams.forEach(function(team) {
+        if (ownTeam && cleanMarkerId(team.docId) === cleanMarkerId(ownTeam.docId)) return;
+        localDocs.push({
+          id: team.docId,
+          data: { markers: team.markers, lines: team.lines }
+        });
+      });
+
+      var component = resolveMarkerComponent(localDocs, marker, marker && marker.teamName);
+      if (component.ok) {
+        var byDoc = {};
+        component.nodes.forEach(function(node) {
+          if (!byDoc[node.docId]) byDoc[node.docId] = [];
+          byDoc[node.docId].push(node.index);
+        });
+        localDocs.forEach(function(doc) {
+          var indexes = (byDoc[doc.id] || []).sort(function(a, b) { return b - a; });
+          indexes.forEach(function(index) {
+            if (index >= 0 && index < doc.data.markers.length) doc.data.markers.splice(index, 1);
+          });
+        });
+      } else if (ownTeam) {
+        for (var i = ownTeam.markers.length - 1; i >= 0; i -= 1) {
+          if (normalizedMarkerMatches(ownTeam.markers[i], marker)) ownTeam.markers.splice(i, 1);
+        }
+      }
+
+      renderMyData();
+      renderTeams();
+      renderLines();
+      renderMarkers(getVisibleMarkers(), { fitBounds: false, preserveViewport: true });
+      renderMapLines(getVisibleLines());
+      setMarkerCount(getVisibleMarkers().length);
+    }
+
     function findEditableOwnMarker(marker) {
       if (!marker) return null;
 
@@ -3101,7 +3382,7 @@
     function openMarkerEditModal(marker) {
       var editableMarker = findEditableOwnMarker(marker);
       if (!editableMarker) {
-        setAdminMessage("현재 단계에서는 내 데이터 마커만 수정할 수 있습니다.");
+        setAdminMessage("연결된 수정 대상 마커를 찾을 수 없습니다.");
         return;
       }
 
@@ -3449,7 +3730,6 @@
 
     function handlePlaceholderAction(actionName) {
       var messages = {
-        "marker delete": "삭제 기능은 준비 중입니다",
         "marker share": "전송 기능은 준비 중입니다",
         "team edit": "수정 기능은 준비 중입니다",
         "team delete": "삭제 기능은 준비 중입니다",
@@ -3510,7 +3790,10 @@
         this.textContent = hidden ? "-" : "+";
       });
       document.addEventListener("keydown", function(event) {
-        if (event.key === "Escape") closePhotoLightbox();
+        if (event.key === "Escape") {
+          closePhotoLightbox();
+          closeMarkerDeleteModal();
+        }
       });
     }
 

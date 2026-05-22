@@ -1236,10 +1236,11 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
     final nodes = <Map<String, dynamic>>[];
     final ownIdToNodes = <String, List<Map<String, dynamic>>>{};
 
-    void addMarker(String teamName, SiteData marker, Map<String, LineData> lines) {
+    void addMarker(String teamName, String markerKey, SiteData marker, Map<String, LineData> lines) {
       final node = <String, dynamic>{
         'key': '$teamName#${nodes.length}',
         'teamName': teamName,
+        'markerKey': markerKey,
         'marker': marker,
         'lines': lines,
         'ownIds': _markerOwnIdsFromJson(marker),
@@ -1252,9 +1253,9 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
       }
     }
 
-    _markerDataMap.values.forEach((marker) => addMarker(widget.teamName, marker, _lineDataMap));
+    _markerDataMap.forEach((key, marker) => addMarker(widget.teamName, key, marker, _lineDataMap));
     _allTeamsMap.forEach((teamName, team) {
-      team.markers.values.forEach((marker) => addMarker(teamName, marker, team.lines));
+      team.markers.forEach((key, marker) => addMarker(teamName, key, marker, team.lines));
     });
 
     for (final node in nodes) {
@@ -1401,6 +1402,84 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
     return changed;
   }
 
+  Map<String, dynamic> _removeDeletedMarkerPointsFromLinesJson(
+    List<dynamic> rawLines,
+    Set<String> deletedMarkerIds,
+  ) {
+    final deletedIds = deletedMarkerIds.map(_cleanMarkerId).where((id) => id.isNotEmpty).toSet();
+    final nextLines = <dynamic>[];
+    var changed = false;
+    var changedLineCount = 0;
+
+    for (final rawLine in rawLines) {
+      if (rawLine is! Map) {
+        nextLines.add(rawLine);
+        continue;
+      }
+
+      final line = Map<String, dynamic>.from(rawLine);
+      final markerIds = List<dynamic>.from(line['markerIds'] ?? const []);
+      final points = List<dynamic>.from(line['points'] ?? const []);
+      var lineChanged = false;
+
+      for (var i = markerIds.length - 1; i >= 0; i--) {
+        if (deletedIds.contains(_cleanMarkerId(markerIds[i]))) {
+          markerIds.removeAt(i);
+          if (i < points.length) points.removeAt(i);
+          lineChanged = true;
+        }
+      }
+
+      if (!lineChanged) {
+        nextLines.add(rawLine);
+        continue;
+      }
+
+      changed = true;
+      changedLineCount++;
+      if (markerIds.length < 2) continue;
+
+      line['markerIds'] = markerIds;
+      line['points'] = points;
+      nextLines.add(line);
+    }
+
+    return {
+      'lines': nextLines,
+      'changed': changed,
+      'changedLineCount': changedLineCount,
+    };
+  }
+
+  int _removeDeletedMarkerPointsFromLineMap(
+    Map<String, LineData> lines,
+    Set<String> deletedMarkerIds,
+  ) {
+    final deletedIds = deletedMarkerIds.map(_cleanMarkerId).where((id) => id.isNotEmpty).toSet();
+    var changedLineCount = 0;
+
+    for (final entry in lines.entries.toList()) {
+      final line = entry.value;
+      var lineChanged = false;
+
+      for (var i = line.markerIds.length - 1; i >= 0; i--) {
+        if (deletedIds.contains(_cleanMarkerId(line.markerIds[i]))) {
+          line.markerIds.removeAt(i);
+          if (i < line.points.length) line.points.removeAt(i);
+          lineChanged = true;
+        }
+      }
+
+      if (!lineChanged) continue;
+      changedLineCount++;
+      if (line.markerIds.length < 2) {
+        lines.remove(entry.key);
+      }
+    }
+
+    return changedLineCount;
+  }
+
   void _applyCanonicalMarkerMutationLocally({
     required SiteData initiatingMarker,
     required Map<String, dynamic> canonicalFields,
@@ -1513,6 +1592,207 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
     await batch.commit();
     debugPrint('[CANONICAL_MARKER_MUTATION_COMMIT] type=$mutationType docs=$writes');
     return true;
+  }
+
+  Future<bool> _commitCanonicalMarkerDeletion({
+    required SiteData initiatingMarker,
+    String? initiatingTeamName,
+  }) async {
+    final sourceTeamName = initiatingTeamName ?? widget.teamName;
+
+    try {
+      final snapshot = await FirebaseFirestore.instance.collection('teams').get();
+      final component = _resolveMarkerComponent(snapshot, initiatingMarker, sourceTeamName);
+      if (component['ok'] != true) {
+        final reason = component['reason']?.toString();
+        debugPrint('[KAKAO_DELETE_COMPONENT] ${reason == 'ambiguous' ? 'ambiguous' : 'not_found'} marker=${initiatingMarker.id}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(reason == 'ambiguous' ? '공유 마커 연결이 모호하여 삭제하지 못했습니다.' : '삭제할 마커를 찾을 수 없습니다.')),
+          );
+        }
+        return false;
+      }
+
+      final componentNodes = List<Map<String, dynamic>>.from(component['nodes'] as List);
+      final targets = <String, Map<String, dynamic>>{};
+      for (final node in componentNodes) {
+        final doc = node['doc'] as QueryDocumentSnapshot<Map<String, dynamic>>;
+        final index = node['index'] as int;
+        targets.putIfAbsent(doc.id, () => {
+          'doc': doc,
+          'indexes': <int>{},
+        });
+        (targets[doc.id]!['indexes'] as Set<int>).add(index);
+      }
+
+      if (targets.isEmpty) return false;
+      if (targets.length > 450) {
+        debugPrint('[KAKAO_DELETE_COMPONENT] too_many_documents count=${targets.length}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('동기화 대상이 너무 많아 삭제를 중단했습니다.')));
+        }
+        return false;
+      }
+
+      debugPrint('[KAKAO_DELETE_COMPONENT] resolved documents=${targets.keys.join(',')} markers=${componentNodes.length}');
+      final WriteBatch batch = FirebaseFirestore.instance.batch();
+      var writes = 0;
+      var removedCount = 0;
+      var changedLineCount = 0;
+      final componentIds = List<String>.from(component['ids'] as List)
+          .map(_cleanMarkerId)
+          .where((id) => id.isNotEmpty)
+          .toSet();
+
+      for (final target in targets.values) {
+        final doc = target['doc'] as QueryDocumentSnapshot<Map<String, dynamic>>;
+        final indexes = List<int>.from(target['indexes'] as Set<int>)..sort((a, b) => b.compareTo(a));
+        final data = doc.data();
+        final markers = List<dynamic>.from(data['markers'] ?? const []);
+        final lines = List<dynamic>.from(data['lines'] ?? const []);
+        final deletedIds = <String>{};
+        var changed = false;
+
+        for (final index in indexes) {
+          if (index < 0 || index >= markers.length) continue;
+          deletedIds.addAll(_markerOwnIdsFromJson(markers[index]));
+          deletedIds.addAll(_markerLinkIdsFromJson(markers[index]));
+          markers.removeAt(index);
+          removedCount++;
+          changed = true;
+        }
+
+        if (!changed) continue;
+        for (final rawLine in lines) {
+          if (rawLine is! Map) continue;
+          final markerIds = List<dynamic>.from(rawLine['markerIds'] ?? const []);
+          for (final markerId in markerIds) {
+            final cleaned = _cleanMarkerId(markerId);
+            if (cleaned.isNotEmpty && componentIds.contains(cleaned)) {
+              deletedIds.add(cleaned);
+            }
+          }
+        }
+
+        final lineResult = _removeDeletedMarkerPointsFromLinesJson(lines, deletedIds);
+        if (lineResult['changed'] == true) {
+          changedLineCount += (lineResult['changedLineCount'] as int? ?? 0);
+        }
+
+        final payload = <String, dynamic>{'markers': markers};
+        if (lineResult['changed'] == true) payload['lines'] = lineResult['lines'];
+        batch.update(doc.reference, payload);
+        writes++;
+      }
+
+      if (writes == 0 || removedCount == 0) return false;
+      await batch.commit();
+      debugPrint('[KAKAO_DELETE_COMPONENT] committed documents=$writes markers=$removedCount lines=$changedLineCount');
+      return true;
+    } catch (e) {
+      debugPrint('[KAKAO_DELETE_COMPONENT] failed $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('마커 삭제에 실패했습니다.')));
+      }
+      return false;
+    }
+  }
+
+  void _applyCanonicalMarkerDeletionLocally({
+    required SiteData initiatingMarker,
+    String? initiatingTeamName,
+  }) {
+    final sourceTeamName = initiatingTeamName ?? widget.teamName;
+    final component = _resolveLocalMarkerComponent(initiatingMarker, sourceTeamName);
+    if (component['ok'] != true) return;
+    final nodes = List<Map<String, dynamic>>.from(component['nodes'] as List);
+    final componentIds = List<String>.from(component['ids'] as List)
+        .map(_cleanMarkerId)
+        .where((id) => id.isNotEmpty)
+        .toSet();
+
+    setState(() {
+      final deletedIdsByTeam = <String, Set<String>>{};
+
+      for (final node in nodes) {
+        final teamName = node['teamName']?.toString() ?? '';
+        final markerKey = node['markerKey']?.toString() ?? '';
+        final marker = node['marker'] as SiteData;
+        deletedIdsByTeam.putIfAbsent(teamName, () => <String>{})
+          ..addAll(_markerOwnIds(marker))
+          ..addAll(_markerLinkIds(marker))
+          ..add(_cleanMarkerId(markerKey));
+        if (teamName == widget.teamName) {
+          _markerDataMap.remove(markerKey);
+          _markerDataMap.remove(marker.id);
+        } else {
+          final team = _allTeamsMap[teamName];
+          if (team != null) {
+            team.markers.remove(markerKey);
+            team.markers.remove(marker.id);
+          }
+        }
+      }
+
+      deletedIdsByTeam.forEach((teamName, deletedIds) {
+        final lines = teamName == widget.teamName ? _lineDataMap : _allTeamsMap[teamName]?.lines;
+        if (lines == null) return;
+        for (final line in lines.values) {
+          for (final markerId in line.markerIds) {
+            final cleaned = _cleanMarkerId(markerId);
+            if (cleaned.isNotEmpty && componentIds.contains(cleaned)) {
+              deletedIds.add(cleaned);
+            }
+          }
+        }
+        _removeDeletedMarkerPointsFromLineMap(lines, deletedIds);
+      });
+    });
+
+    _invalidateMarkerRenderHash();
+    _invalidateLineRenderHash();
+    _scheduleMarkerUpdate(ms: 0);
+  }
+
+  Future<void> _confirmAndDeleteMarker(
+    SiteData marker, {
+    String? initiatingTeamName,
+    BuildContext? detailContext,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (confirmCtx) => AlertDialog(
+        title: const Text('마커 삭제'),
+        content: const Text('이 마커를 삭제하면 공유된 모든 화면에서도 함께 삭제됩니다. 삭제하시겠습니까?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(confirmCtx, false), child: const Text('취소')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(confirmCtx, true),
+            child: const Text('삭제', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final teamName = initiatingTeamName ?? widget.teamName;
+    final deleted = await _commitCanonicalMarkerDeletion(
+      initiatingMarker: marker,
+      initiatingTeamName: teamName,
+    );
+    if (!deleted || !mounted) return;
+
+    _applyCanonicalMarkerDeletionLocally(
+      initiatingMarker: marker,
+      initiatingTeamName: teamName,
+    );
+    if (detailContext != null && detailContext.mounted) {
+      Navigator.pop(detailContext);
+    }
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('마커가 삭제되었습니다.')));
   }
 
   Future<bool> _saveMarkerCheckToTeamDoc(String teamName, String markerId, String originalMarkerId, bool isChecked, {String? groupName}) async {
@@ -4246,92 +4526,10 @@ if (isAdmin)
                         IconButton(
                           icon: const Icon(Icons.delete, color: Colors.red),
                           onPressed: () {
-                            showDialog(
-                              context: context,
-                              builder: (confirmCtx) => AlertDialog(
-                                title: const Text("마커 삭제"),
-                                content: const Text("정말 삭제하시겠습니까?\n(팀장 앱과 구글 시트에서도 삭제됩니다)"),
-                                actions: [
-                                  TextButton(onPressed: () => Navigator.pop(confirmCtx), child: const Text("취소")),
-                                  ElevatedButton(
-                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                                    onPressed: () async {
-                                      if (!mounted) return;
-                                      Navigator.pop(confirmCtx);
-                                      Navigator.pop(context);
-
-                                      // 삭제 로직
-if (isAdmin && targetTeamName != null) {
-  // 1. [관리자 모드] 서버에서 직접 삭제 및 그룹 정리
-  try {
-    var docRef = FirebaseFirestore.instance.collection('teams').doc(targetTeamName);
-    
-    // 트랜잭션으로 안전하게 처리 (동시 수정 방지)
-    await FirebaseFirestore.instance.runTransaction((transaction) async {
-      var snapshot = await transaction.get(docRef);
-      if (!snapshot.exists) return;
-
-      var data = snapshot.data()!;
-      List<dynamic> markers = List.from(data['markers'] ?? []);
-      List<dynamic> groups = List.from(data['groups'] ?? []); // 그룹 목록도 가져옴
-
-      // (1) 마커 삭제
-      markers.removeWhere((m) => m['id'] == d.id);
-
-      // (2) 해당 그룹에 남은 마커가 있는지 검사
-      // 주의: d.group.name은 삭제하려는 마커의 그룹명
-      bool hasRemainingMarkers = markers.any((m) => 
-          (m['group'] is Map) && m['group']['name'] == d.group.name
-      );
-
-      // (3) 남은 마커가 없다면 그룹도 삭제
-      if (!hasRemainingMarkers) {
-        groups.removeWhere((g) => g['name'] == d.group.name);
-      }
-
-      // (4) DB 업데이트 (마커와 그룹 모두)
-      transaction.update(docRef, {
-        'markers': markers,
-        'groups': groups
-      });
-    });
-
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("삭제 완료 (빈 그룹 정리됨)")));
-    
-  } catch (e) { debugPrint("삭제 오류: $e"); }
-
-} else {
-  // 2. [일반 모드] 내 폰 데이터 삭제 및 그룹 정리
-  setState(() {
-    if (_markerDataMap.containsKey(mid)) {
-      // 삭제할 마커의 그룹 이름 기억
-      String targetGroupName = _markerDataMap[mid]!.group.name;
-
-      // (1) 마커 삭제
-      _markerDataMap.remove(mid);
-
-      // (2) 해당 그룹에 남은 마커가 있는지 확인
-      bool hasRemaining = _markerDataMap.values.any((m) => m.group.name == targetGroupName);
-
-      // (3) 남은 마커가 없으면 그룹 리스트에서 삭제
-      if (!hasRemaining) {
-        _userGroups.removeWhere((g) => g.name == targetGroupName);
-        
-        // (선택사항) 사용자에게 알림
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("'$targetGroupName' 그룹이 비어 있어 삭제되었습니다."))
-        );
-      }
-    }
-  });
-  await _saveData();
-  _scheduleMarkerUpdate(ms: 0);
-}
-                                    },
-                                    child: const Text("삭제", style: TextStyle(color: Colors.white)),
-                                  ),
-                                ],
-                              ),
+                            _confirmAndDeleteMarker(
+                              d,
+                              initiatingTeamName: targetTeamName ?? widget.teamName,
+                              detailContext: ctx,
                             );
                           },
                         ),
