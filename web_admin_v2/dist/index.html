@@ -713,6 +713,49 @@
       border: 1px solid #d7deea;
       border-radius: 8px;
       background: #f1f5f9;
+      cursor: zoom-in;
+    }
+
+    .photo-lightbox {
+      position: fixed;
+      inset: 0;
+      z-index: 90;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 12px;
+      padding: 18px;
+      background: rgba(0, 0, 0, 0.86);
+    }
+
+    .photo-lightbox-close {
+      justify-self: end;
+      width: 38px;
+      height: 38px;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.5);
+      color: #fff;
+      font-size: 24px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .photo-lightbox-image {
+      align-self: center;
+      justify-self: center;
+      max-width: min(100%, 1120px);
+      max-height: calc(100vh - 130px);
+      object-fit: contain;
+    }
+
+    .photo-lightbox-caption {
+      justify-self: center;
+      max-width: min(100%, 840px);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 800;
+      text-align: center;
+      overflow-wrap: anywhere;
     }
 
     .photo-error {
@@ -730,6 +773,125 @@
       font-weight: 800;
       text-align: center;
       padding: 6px;
+    }
+
+    .marker-description {
+      padding: 8px;
+      border: 1px solid #e5eaf2;
+      border-radius: 8px;
+      background: #fff;
+      color: #334155;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .marker-edit-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgba(15, 23, 42, 0.42);
+    }
+
+    .marker-edit-dialog {
+      width: min(520px, 100%);
+      max-height: min(720px, calc(100vh - 36px));
+      display: grid;
+      gap: 12px;
+      overflow: auto;
+      padding: 18px;
+      border: 1px solid rgba(217, 222, 231, 0.95);
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: var(--shadow);
+    }
+
+    .marker-edit-title {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 900;
+      color: #111827;
+    }
+
+    .marker-edit-form {
+      display: grid;
+      gap: 11px;
+    }
+
+    .marker-edit-field {
+      display: grid;
+      gap: 5px;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .marker-edit-input,
+    .marker-edit-textarea {
+      width: 100%;
+      min-width: 0;
+      border: 1px solid #d7deea;
+      border-radius: 7px;
+      background: #fbfcff;
+      color: #111827;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .marker-edit-input {
+      height: 38px;
+      padding: 0 10px;
+    }
+
+    .marker-edit-textarea {
+      min-height: 82px;
+      padding: 9px 10px;
+      resize: vertical;
+    }
+
+    .marker-edit-photo-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .marker-edit-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding-top: 2px;
+    }
+
+    .marker-edit-button {
+      min-width: 84px;
+      height: 36px;
+      padding: 0 12px;
+      border: 1px solid #d7deea;
+      border-radius: 7px;
+      background: #fff;
+      color: #334155;
+      font-size: 13px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .marker-edit-button.primary {
+      border-color: var(--blue);
+      background: var(--blue);
+      color: #fff;
+    }
+
+    .marker-edit-button:disabled {
+      cursor: wait;
+      opacity: 0.64;
     }
 
     @media (max-width: 820px) {
@@ -867,6 +1029,10 @@
     var markerMoveMode = false;
     var suppressNextMapClick = false;
     var focusedMarkerId = null;
+    var markerEditState = { marker: null, saving: false };
+    var pendingMarkerMutations = {};
+    var markerMutationSequence = 0;
+    var unsubscribeTeamsSnapshot = null;
 
     // TODO(Admin V2): marker create/edit/delete, line create/edit/delete,
     // data share, Spreadsheet upload, AI import, cadastral overlay, and PDF/JPG drawing overlay.
@@ -936,7 +1102,7 @@
               closeMarkerInfo();
               closeSidebar();
             });
-            loadAdminMarkers();
+            subscribeAdminTeamsRealtime();
           } catch (error) {
             setMapStatus("Map error");
             console.error("[ADMIN_V2] kakao map init failed", error);
@@ -1079,29 +1245,7 @@
 
       try {
         var snapshot = await db.collection("teams").get();
-        var teams = [];
-        var adminTeam = null;
-
-        snapshot.forEach(function(doc) {
-          var team = normalizeTeam(doc.id, doc.data() || {});
-          if (doc.id === ADMIN_TEAM_DOC_ID) {
-            adminTeam = team;
-          } else {
-            teams.push(team);
-          }
-        });
-
-        ownTeam = adminTeam || normalizeTeam(ADMIN_TEAM_DOC_ID, {});
-        allTeams = teams;
-        syncVisibilityState();
-        renderTeams();
-        renderMyData();
-        renderLines();
-        renderMarkers(getVisibleMarkers(), { fitBounds: !initialAutoFitDone });
-        renderMapLines(getVisibleLines());
-        if (!initialAutoFitDone) initialAutoFitDone = true;
-        setMarkerCount(getVisibleMarkers().length);
-        setTeamCount(allTeams.length);
+        applyTeamsSnapshot(snapshot, { fitBounds: !initialAutoFitDone });
         setFirebaseStatus("Ready");
         setAdminMessage("Read-only data refreshed.");
         console.log("[ADMIN_V2] markers loaded", ownTeam.markers.length);
@@ -1111,6 +1255,57 @@
       } finally {
         setRefreshEnabled(true);
       }
+    }
+
+    function applyTeamsSnapshot(snapshot, options) {
+      options = options || {};
+      var teams = [];
+      var adminTeam = null;
+
+      snapshot.forEach(function(doc) {
+        var team = normalizeTeam(doc.id, doc.data() || {});
+        if (doc.id === ADMIN_TEAM_DOC_ID) {
+          adminTeam = team;
+        } else {
+          teams.push(team);
+        }
+      });
+
+      ownTeam = adminTeam || normalizeTeam(ADMIN_TEAM_DOC_ID, {});
+      allTeams = teams;
+      syncVisibilityState();
+      applyPendingMarkerMutationsToLocalState();
+      renderTeams();
+      renderMyData();
+      renderLines();
+      renderMarkers(getVisibleMarkers(), { fitBounds: options.fitBounds === true, preserveViewport: options.fitBounds !== true });
+      renderMapLines(getVisibleLines());
+      if (options.fitBounds === true && !initialAutoFitDone) initialAutoFitDone = true;
+      setMarkerCount(getVisibleMarkers().length);
+      setTeamCount(allTeams.length);
+    }
+
+    function subscribeAdminTeamsRealtime() {
+      if (!db || !map) return;
+      if (unsubscribeTeamsSnapshot) unsubscribeTeamsSnapshot();
+      setRefreshEnabled(false);
+      setFirebaseStatus("Loading");
+
+      unsubscribeTeamsSnapshot = db.collection("teams").onSnapshot(function(snapshot) {
+        console.log("[ADMIN_V2_REALTIME] teams snapshot", snapshot.size);
+        var shouldFit = !initialAutoFitDone;
+        applyTeamsSnapshot(snapshot, { fitBounds: shouldFit });
+        setFirebaseStatus("Ready");
+        setRefreshEnabled(true);
+        if (shouldFit) {
+          setAdminMessage("실시간 데이터 연결됨.");
+        }
+      }, function(error) {
+        console.error("[ADMIN_V2_REALTIME] teams snapshot failed", error);
+        setFirebaseStatus("Error");
+        setRefreshEnabled(true);
+        setAdminMessage("실시간 데이터 연결에 실패했습니다.");
+      });
     }
 
     function syncVisibilityState() {
@@ -1716,69 +1911,758 @@
       setAdminMessage("Line selected: " + line.title);
     }
 
-    async function saveMovedMarkerPosition(marker, lat, lng) {
-      if (!db) return false;
-      setAdminMessage("마커 위치 저장 중...");
-
-      try {
-        var docRef = db.collection("teams").doc(ADMIN_TEAM_DOC_ID);
-        var snapshot = await docRef.get();
-        if (!snapshot.exists) {
-          console.warn("[ADMIN_V2_MARKER_MOVE] marker not found", marker.markerId || marker.rawId || marker.id);
-          setAdminMessage("이동할 마커를 찾을 수 없습니다.");
-          renderMarkers(getVisibleMarkers(), { fitBounds: false, preserveViewport: true });
-          return false;
-        }
-
-        var data = snapshot.data() || {};
-        var markers = Array.isArray(data.markers) ? data.markers.slice() : [];
-        var markerIndex = markers.findIndex(function(item) {
-          return markerMatches(item, marker);
-        });
-
-        if (markerIndex === -1) {
-          console.warn("[ADMIN_V2_MARKER_MOVE] marker not found", marker.markerId || marker.rawId || marker.id);
-          setAdminMessage("이동할 마커를 찾을 수 없습니다.");
-          renderMarkers(getVisibleMarkers(), { fitBounds: false, preserveViewport: true });
-          return false;
-        }
-
-        var updated = Object.assign({}, markers[markerIndex]);
-        updated.lat = lat;
-        updated.lng = lng;
-        markers[markerIndex] = updated;
-        await docRef.update({ markers: markers });
-
-        applyMarkerMoveLocally(marker, lat, lng);
-        console.log("[ADMIN_V2_MARKER_MOVE] updated", marker.markerId || marker.rawId || marker.id, lat, lng);
-        return true;
-      } catch (error) {
-        console.error("[ADMIN_V2_MARKER_MOVE] update failed", error);
-        setAdminMessage("마커 위치 저장 실패");
-        renderMarkers(getVisibleMarkers(), { fitBounds: false, preserveViewport: true });
-        return false;
-      }
+    function cleanMarkerId(value) {
+      return String(value || "").trim();
     }
 
-    function applyMarkerMoveLocally(marker, lat, lng) {
-      var updatedMarker = null;
-      if (ownTeam) {
-        ownTeam.markers.forEach(function(item) {
-          if (normalizedMarkerMatches(item, marker)) {
-            item.lat = lat;
-            item.lng = lng;
-            updatedMarker = item;
+    function originalMarkerSyncKey(marker) {
+      return initiatingMarkerCanonicalId(marker);
+    }
+
+    function ownedMarkerCanonicalId(rawOwnedMarker) {
+      if (!rawOwnedMarker) return "";
+      return cleanMarkerId(rawOwnedMarker.rawId || rawOwnedMarker.id || rawOwnedMarker.markerId);
+    }
+
+    function sharedMarkerCanonicalId(rawMarker) {
+      if (!rawMarker) return "";
+      return cleanMarkerId(
+        rawMarker.originalMarkerId ||
+        rawMarker.sourceMarkerId ||
+        rawMarker.parentMarkerId ||
+        ""
+      );
+    }
+
+    function initiatingMarkerCanonicalId(marker) {
+      return sharedMarkerCanonicalId(marker) || ownedMarkerCanonicalId(marker);
+    }
+
+    function isLinkedSharedCopy(rawMarker, sourceMarkerId) {
+      if (!rawMarker || !sourceMarkerId) return false;
+
+      var original = cleanMarkerId(rawMarker.originalMarkerId);
+      var source = cleanMarkerId(rawMarker.sourceMarkerId);
+      var parent = cleanMarkerId(rawMarker.parentMarkerId);
+
+      return original === sourceMarkerId ||
+             source === sourceMarkerId ||
+             parent === sourceMarkerId;
+    }
+
+    function markerOwnIds(rawMarker) {
+      var values = [
+        rawMarker && rawMarker.id,
+        rawMarker && rawMarker.markerId,
+        rawMarker && rawMarker.rawId
+      ].map(cleanMarkerId).filter(Boolean);
+      return Array.from(new Set(values));
+    }
+
+    function markerLinkIds(rawMarker) {
+      var values = [
+        rawMarker && rawMarker.originalMarkerId,
+        rawMarker && rawMarker.sourceMarkerId,
+        rawMarker && rawMarker.parentMarkerId
+      ].map(cleanMarkerId).filter(Boolean);
+      return Array.from(new Set(values));
+    }
+
+    function buildMarkerIdentityGraph(source) {
+      var docs = [];
+      if (source && typeof source.forEach === "function") {
+        source.forEach(function(doc) { docs.push(doc); });
+      } else if (Array.isArray(source)) {
+        docs = source;
+      }
+
+      var nodes = [];
+      var ownIdToNodes = {};
+      docs.forEach(function(doc) {
+        var data = typeof doc.data === "function" ? (doc.data() || {}) : (doc.data || {});
+        var docId = cleanMarkerId(doc.id || doc.docId);
+        var markers = Array.isArray(data.markers) ? data.markers : [];
+        markers.forEach(function(rawMarker, index) {
+          if (!rawMarker) return;
+          var node = {
+            key: docId + "#" + index,
+            doc: doc,
+            docId: docId,
+            index: index,
+            marker: rawMarker,
+            ownIds: markerOwnIds(rawMarker),
+            linkIds: markerLinkIds(rawMarker),
+            edges: {}
+          };
+          nodes.push(node);
+          node.ownIds.forEach(function(id) {
+            if (!ownIdToNodes[id]) ownIdToNodes[id] = [];
+            ownIdToNodes[id].push(node);
+          });
+        });
+      });
+
+      var ambiguous = [];
+      var unlinked = [];
+      nodes.forEach(function(node) {
+        node.linkIds.forEach(function(linkId) {
+          var linkedNodes = ownIdToNodes[linkId] || [];
+          if (!linkedNodes.length) {
+            unlinked.push({ docId: node.docId, index: node.index, linkId: linkId });
+            return;
           }
+          var linkedOwnSignatures = Array.from(new Set(linkedNodes.map(function(match) {
+            return match.ownIds.slice().sort().join("|");
+          })));
+          if (linkedOwnSignatures.length > 1) {
+            ambiguous.push({
+              docId: node.docId,
+              index: node.index,
+              linkId: linkId,
+              matches: linkedNodes.map(function(match) {
+                return { docId: match.docId, index: match.index, ownIds: match.ownIds };
+              })
+            });
+          }
+          linkedNodes.forEach(function(match) {
+            node.edges[match.key] = true;
+            match.edges[node.key] = true;
+          });
+        });
+      });
+
+      return { docs: docs, nodes: nodes, ownIdToNodes: ownIdToNodes, ambiguous: ambiguous, unlinked: unlinked };
+    }
+
+    function markerMatchesNode(rawMarker, initiatingMarker) {
+      if (!rawMarker || !initiatingMarker) return false;
+      var rawOwnIds = markerOwnIds(rawMarker);
+      var rawLinks = markerLinkIds(rawMarker);
+      var initiatingIds = markerIdCandidates(initiatingMarker);
+      if (initiatingIds.some(function(id) { return rawOwnIds.indexOf(id) !== -1; })) return true;
+      if (rawOwnIds.some(function(id) { return markerOwnIds(initiatingMarker).indexOf(id) !== -1; })) return true;
+      if (rawLinks.some(function(id) { return markerLinkIds(initiatingMarker).indexOf(id) !== -1; })) return true;
+      return normalizedMarkerMatches(rawMarker, initiatingMarker);
+    }
+
+    function resolveMarkerComponent(source, initiatingMarker, initiatingDocId) {
+      var graph = buildMarkerIdentityGraph(source);
+      var docId = cleanMarkerId(initiatingDocId || (initiatingMarker && initiatingMarker.teamName));
+      var start = null;
+
+      graph.nodes.some(function(node) {
+        if (docId && node.docId !== docId) return false;
+        if (!markerMatchesNode(node.marker, initiatingMarker)) return false;
+        start = node;
+        return true;
+      });
+
+      if (!start) {
+        graph.nodes.some(function(node) {
+          if (!markerMatchesNode(node.marker, initiatingMarker)) return false;
+          start = node;
+          return true;
+        });
+      }
+
+      if (!start) {
+        console.warn("[ADMIN_V2_COMPONENT] unlinked legacy marker", {
+          initiatingDoc: docId,
+          marker: initiatingMarker && (initiatingMarker.id || initiatingMarker.markerId || initiatingMarker.rawId)
+        });
+        return { ok: false, reason: "not-found", graph: graph, nodes: [], ids: [] };
+      }
+
+      var visited = {};
+      var queue = [start];
+      visited[start.key] = true;
+      while (queue.length) {
+        var current = queue.shift();
+        Object.keys(current.edges).forEach(function(key) {
+          if (visited[key]) return;
+          var next = graph.nodes.find(function(node) { return node.key === key; });
+          if (!next) return;
+          visited[key] = true;
+          queue.push(next);
+        });
+      }
+
+      var componentNodes = graph.nodes.filter(function(node) { return visited[node.key]; });
+      var componentKeys = {};
+      componentNodes.forEach(function(node) { componentKeys[node.key] = true; });
+      var ambiguousInside = graph.ambiguous.filter(function(item) {
+        return componentKeys[item.docId + "#" + item.index];
+      });
+      if (ambiguousInside.length) {
+        console.warn("[ADMIN_V2_COMPONENT] ambiguous", ambiguousInside);
+        return { ok: false, reason: "ambiguous", graph: graph, nodes: [], ids: [] };
+      }
+      graph.unlinked.forEach(function(item) {
+        if (componentKeys[item.docId + "#" + item.index]) {
+          console.warn("[ADMIN_V2_COMPONENT] unlinked legacy marker", item);
+        }
+      });
+
+      var ids = [];
+      componentNodes.forEach(function(node) {
+        ids = ids.concat(node.ownIds, node.linkIds);
+      });
+      ids = Array.from(new Set(ids.map(cleanMarkerId).filter(Boolean)));
+      console.log("[ADMIN_V2_COMPONENT] resolved", {
+        initiatingDoc: docId,
+        marker: initiatingMarker && (initiatingMarker.id || initiatingMarker.markerId || initiatingMarker.rawId),
+        documents: Array.from(new Set(componentNodes.map(function(node) { return node.docId; }))),
+        markerCount: componentNodes.length
+      });
+
+      return { ok: true, graph: graph, nodes: componentNodes, ids: ids, start: start };
+    }
+
+    function rawMarkerPrimaryId(marker) {
+      return cleanMarkerId(marker && (marker.id || marker.markerId || marker.rawId));
+    }
+
+    function markerIdCandidates(marker) {
+      var values = [
+        marker && marker.id,
+        marker && marker.rawId,
+        marker && marker.markerId,
+        marker && marker.originalMarkerId,
+        marker && marker.sourceMarkerId,
+        marker && marker.parentMarkerId
+      ].map(cleanMarkerId).filter(Boolean);
+      return Array.from(new Set(values));
+    }
+
+    function findAdminOriginalMarkerIndex(markers, marker) {
+      if (!Array.isArray(markers) || !marker) return -1;
+      if (cleanMarkerId(marker.teamName) && cleanMarkerId(marker.teamName) !== ADMIN_TEAM_DOC_ID) return -1;
+
+      var targets = markerIdCandidates(marker);
+      if (!targets.length) return -1;
+
+      for (var i = 0; i < markers.length; i += 1) {
+        var item = markers[i] || {};
+        var itemIds = [item.id, item.markerId].map(cleanMarkerId).filter(Boolean);
+        if (targets.some(function(target) { return itemIds.indexOf(target) !== -1; })) {
+          return i;
+        }
+      }
+
+      for (var j = 0; j < markers.length; j += 1) {
+        var candidate = markers[j] || {};
+        var hasLinkMetadata = cleanMarkerId(candidate.originalMarkerId) ||
+          cleanMarkerId(candidate.sourceMarkerId) ||
+          cleanMarkerId(candidate.parentMarkerId);
+        if (!hasLinkMetadata && normalizedMarkerMatches(candidate, marker) && rawMarkerPrimaryId(candidate)) {
+          return j;
+        }
+      }
+
+      return -1;
+    }
+
+    function setMarkerCheckFields(marker, isChecked) {
+      marker.isChecked = isChecked === true;
+      if (Object.prototype.hasOwnProperty.call(marker, "checked")) marker.checked = isChecked === true;
+      if (Object.prototype.hasOwnProperty.call(marker, "isOn")) marker.isOn = isChecked === true;
+    }
+
+    function canonicalMarkerFields(sourceMarker, fallbackMarker) {
+      var source = sourceMarker || {};
+      var fallback = fallbackMarker || {};
+      var fields = {
+        lat: Number(source.lat !== undefined ? source.lat : fallback.lat),
+        lng: Number(source.lng !== undefined ? source.lng : fallback.lng),
+        title: source.title !== undefined ? source.title : fallback.title,
+        isChecked: markerImageChecked(Object.assign({}, fallback, source))
+      };
+
+      if (!Number.isFinite(fields.lat)) delete fields.lat;
+      if (!Number.isFinite(fields.lng)) delete fields.lng;
+      if (fields.title === undefined) delete fields.title;
+      if (Object.prototype.hasOwnProperty.call(source, "description")) fields.description = source.description || "";
+      if (Object.prototype.hasOwnProperty.call(source, "address")) fields.address = source.address || "";
+      return fields;
+    }
+
+    function applyMarkerFields(target, fields) {
+      var changed = false;
+      ["lat", "lng", "title", "description", "address"].forEach(function(key) {
+        if (!Object.prototype.hasOwnProperty.call(fields, key)) return;
+        if (target[key] !== fields[key]) {
+          target[key] = fields[key];
+          changed = true;
+        }
+      });
+
+      if (Object.prototype.hasOwnProperty.call(fields, "isChecked")) {
+        var nextChecked = fields.isChecked === true;
+        if (target.isChecked !== nextChecked ||
+            (Object.prototype.hasOwnProperty.call(target, "checked") && target.checked !== nextChecked) ||
+            (Object.prototype.hasOwnProperty.call(target, "isOn") && target.isOn !== nextChecked)) {
+          setMarkerCheckFields(target, nextChecked);
+          changed = true;
+        }
+      }
+
+      return changed;
+    }
+
+    function updateConnectedLinePoints(lines, markerIds, point, contextLabel) {
+      if (!Array.isArray(lines) || !markerIds || !markerIds.length || !point) return false;
+      var idLookup = {};
+      markerIds.map(cleanMarkerId).filter(Boolean).forEach(function(id) {
+        idLookup[id] = true;
+      });
+
+      var changed = false;
+      lines.forEach(function(line) {
+        if (!line) return;
+        var lineMarkerIds = Array.isArray(line.markerIds) ? line.markerIds : [];
+        var points = Array.isArray(line.points) ? line.points.slice() : [];
+        if (!lineMarkerIds.length) return;
+        if (points.length < lineMarkerIds.length) {
+          console.warn("[ADMIN_V2_SYNC] updateConnectedLine skip unclear", contextLabel || "", line.id || line.lineId || "");
+          return;
+        }
+
+        var lineChanged = false;
+        for (var i = 0; i < lineMarkerIds.length && i < points.length; i += 1) {
+          if (!idLookup[cleanMarkerId(lineMarkerIds[i])]) continue;
+          var current = points[i] || {};
+          if (Number(current.lat) !== Number(point.lat) || Number(current.lng) !== Number(point.lng)) {
+            points[i] = Object.assign({}, current, { lat: point.lat, lng: point.lng });
+            lineChanged = true;
+          }
+        }
+
+        if (lineChanged) {
+          line.points = points;
+          changed = true;
+        }
+      });
+      return changed;
+    }
+
+    async function syncSharedMarkerCopiesFromAdmin(sourceMarker, changedFields, options) {
+      options = options || {};
+      console.warn("[ADMIN_V2_SYNC] deprecated syncSharedMarkerCopiesFromAdmin ignored; use commitCanonicalMarkerMutation");
+      return { documents: 0, markers: 0 };
+      var sourceMarkerId = originalMarkerSyncKey(sourceMarker);
+      console.log("[ADMIN_V2_SYNC] source", sourceMarkerId);
+      if (!db || !sourceMarkerId) {
+        console.warn("[ADMIN_V2_SYNC] linked copy not found", sourceMarkerId);
+        return { documents: 0, markers: 0 };
+      }
+
+      var snapshot = await db.collection("teams").get();
+      var batch = db.batch();
+      var batchWrites = 0;
+      var updatedDocCount = 0;
+      var updatedMarkerCount = 0;
+      var commitBatch = async function() {
+        if (!batchWrites) return;
+        await batch.commit();
+        batch = db.batch();
+        batchWrites = 0;
+      };
+
+      for (var docIndex = 0; docIndex < snapshot.docs.length; docIndex += 1) {
+        var doc = snapshot.docs[docIndex];
+        if (doc.id === ADMIN_TEAM_DOC_ID) continue;
+
+        var data = doc.data() || {};
+        var markers = Array.isArray(data.markers) ? data.markers.slice() : [];
+        var lines = Array.isArray(data.lines) ? data.lines.slice() : [];
+        var matchedMarkers = [];
+        var documentChanged = false;
+
+        for (var markerIndex = 0; markerIndex < markers.length; markerIndex += 1) {
+          var rawMarker = markers[markerIndex];
+          if (!isLinkedSharedCopy(rawMarker, sourceMarkerId)) continue;
+
+          var updatedMarker = Object.assign({}, rawMarker);
+          if (applyMarkerFields(updatedMarker, changedFields)) documentChanged = true;
+          markers[markerIndex] = updatedMarker;
+          matchedMarkers.push(updatedMarker);
+          updatedMarkerCount += 1;
+        }
+
+        if (matchedMarkers.length > 1) {
+          console.warn("[ADMIN_V2_SYNC] duplicate linked copies", {
+            team: doc.id,
+            source: sourceMarkerId,
+            count: matchedMarkers.length
+          });
+        }
+
+        if (options.updateConnectedLines === true &&
+            Object.prototype.hasOwnProperty.call(changedFields, "lat") &&
+            Object.prototype.hasOwnProperty.call(changedFields, "lng")) {
+          matchedMarkers.forEach(function(sharedMarker) {
+            var lineIds = markerIdCandidates(sharedMarker).concat([sourceMarkerId]);
+            if (updateConnectedLinePoints(lines, lineIds, { lat: changedFields.lat, lng: changedFields.lng }, doc.id)) {
+              documentChanged = true;
+            }
+          });
+        }
+
+        if (!documentChanged) continue;
+
+        var updatePayload = { markers: markers };
+        if (options.updateConnectedLines === true) updatePayload.lines = lines;
+        batch.update(doc.ref, updatePayload);
+        batchWrites += 1;
+        updatedDocCount += 1;
+        if (batchWrites >= 450) await commitBatch();
+      }
+
+      await commitBatch();
+
+      if (!updatedMarkerCount) console.warn("[ADMIN_V2_SYNC] linked copy not found", sourceMarkerId);
+      console.log("[ADMIN_V2_SYNC] updated copies", { documents: updatedDocCount, markers: updatedMarkerCount });
+      return { documents: updatedDocCount, markers: updatedMarkerCount };
+    }
+
+    function applyCanonicalSyncLocally(sourceMarker, fields, options, message) {
+      options = options || {};
+      var updatedMarker = null;
+      var point = Object.prototype.hasOwnProperty.call(fields, "lat") &&
+        Object.prototype.hasOwnProperty.call(fields, "lng")
+        ? { lat: fields.lat, lng: fields.lng }
+        : null;
+      var localDocs = [];
+      if (ownTeam) {
+        localDocs.push({
+          id: ownTeam.docId || ADMIN_TEAM_DOC_ID,
+          data: { markers: ownTeam.markers, lines: ownTeam.lines }
+        });
+      }
+      allTeams.forEach(function(team) {
+        if (ownTeam && cleanMarkerId(team.docId) === cleanMarkerId(ownTeam.docId)) return;
+        localDocs.push({
+          id: team.docId,
+          data: { markers: team.markers, lines: team.lines }
+        });
+      });
+      var component = resolveMarkerComponent(localDocs, sourceMarker, sourceMarker && sourceMarker.teamName);
+
+      if (component.ok) {
+        component.nodes.forEach(function(node) {
+          applyMarkerFields(node.marker, fields);
+          updatedMarker = node.marker;
+          if (point && options.updateConnectedLines === true) {
+            var data = typeof node.doc.data === "function" ? (node.doc.data() || {}) : (node.doc.data || {});
+            updateConnectedLinePoints(data.lines, markerIdCandidates(node.marker).concat(component.ids), point, node.docId);
+          }
+        });
+      } else if (ownTeam) {
+        ownTeam.markers.forEach(function(item) {
+          if (!normalizedMarkerMatches(item, sourceMarker)) return;
+          applyMarkerFields(item, fields);
+          updatedMarker = item;
         });
       }
 
       renderMyData();
       renderTeams();
+      renderLines();
       renderMarkers(getVisibleMarkers(), { fitBounds: false, preserveViewport: true });
+      renderMapLines(getVisibleLines());
+      setMarkerCount(getVisibleMarkers().length);
       if (updatedMarker && !document.getElementById("infoCard").classList.contains("hidden")) {
         showMarkerInfo(updatedMarker);
       }
-      setAdminMessage("마커 위치가 저장되었습니다.");
+      if (message) setAdminMessage(message);
+      return updatedMarker;
+    }
+
+    function applyPendingMarkerMutationsToLocalState() {
+      Object.keys(pendingMarkerMutations).forEach(function(key) {
+        var pending = pendingMarkerMutations[key];
+        if (!pending) return;
+        applyCanonicalSyncLocally(
+          pending.initiatingMarker || { rawId: key },
+          pending.fields || {},
+          { updateConnectedLines: pending.updateConnectedLines === true, silent: true },
+          ""
+        );
+      });
+    }
+
+    function findRawMarkerIndexByCanonical(markers, canonicalId) {
+      if (!Array.isArray(markers) || !canonicalId) return -1;
+      for (var i = 0; i < markers.length; i += 1) {
+        var item = markers[i] || {};
+        if (ownedMarkerCanonicalId(item) === canonicalId) return i;
+      }
+      return -1;
+    }
+
+    function findRawMarkerIndexForInitiating(markers, initiatingMarker) {
+      if (!Array.isArray(markers) || !initiatingMarker) return -1;
+      var targets = markerIdCandidates(initiatingMarker);
+      for (var i = 0; i < markers.length; i += 1) {
+        var item = markers[i] || {};
+        var itemIds = [item.id, item.markerId].map(cleanMarkerId).filter(Boolean);
+        if (targets.some(function(target) { return itemIds.indexOf(target) !== -1; })) return i;
+      }
+      return -1;
+    }
+
+    function buildCanonicalFieldsFromSource(sourceMarker, changedState) {
+      var fields = canonicalMarkerFields(sourceMarker, {});
+      Object.keys(changedState || {}).forEach(function(key) {
+        if (["lat", "lng", "title", "description", "address", "isChecked"].indexOf(key) === -1) return;
+        if ((key === "description" || key === "address") &&
+            !Object.prototype.hasOwnProperty.call(sourceMarker || {}, key) &&
+            !Object.prototype.hasOwnProperty.call(changedState || {}, key)) return;
+        fields[key] = changedState[key];
+      });
+      return fields;
+    }
+
+    async function commitCanonicalMarkerMutation(args) {
+      var initiatingMarker = args.initiatingMarker;
+      var changedState = args.changedState || {};
+      var updateConnectedLines = args.updateConnectedLines === true;
+      var mutationType = args.mutationType || "marker";
+      if (!db || !initiatingMarker) {
+        setAdminMessage("연결된 마커 식별자를 찾을 수 없습니다.");
+        return false;
+      }
+
+      var componentSnapshot = await db.collection("teams").get();
+      var component = resolveMarkerComponent(componentSnapshot, initiatingMarker, initiatingMarker.teamName);
+      if (!component.ok) {
+        setAdminMessage(component.reason === "ambiguous" ? "공유 마커 연결이 모호하여 저장하지 못했습니다." : "수정할 마커를 찾을 수 없습니다.");
+        return false;
+      }
+
+      var componentTargetByDoc = {};
+      component.nodes.forEach(function(node) {
+        if (!componentTargetByDoc[node.docId]) {
+          componentTargetByDoc[node.docId] = { doc: node.doc, markerIndexes: [] };
+        }
+        if (componentTargetByDoc[node.docId].markerIndexes.indexOf(node.index) === -1) {
+          componentTargetByDoc[node.docId].markerIndexes.push(node.index);
+        }
+      });
+
+      var componentTargets = Object.keys(componentTargetByDoc).map(function(key) {
+        return componentTargetByDoc[key];
+      });
+      if (!componentTargets.length) {
+        setAdminMessage("수정할 마커를 찾을 수 없습니다.");
+        return false;
+      }
+      if (componentTargets.length > 450) {
+        setAdminMessage("동기화 대상이 너무 많아 저장을 중단했습니다.");
+        console.error("[ADMIN_V2_MUTATION] too many documents", componentTargets.length);
+        return false;
+      }
+
+      var componentSource = Object.assign({}, component.start ? component.start.marker : initiatingMarker, changedState);
+      var componentFields = buildCanonicalFieldsFromSource(componentSource, changedState);
+      console.log("[ADMIN_V2_MUTATION]", mutationType, component.ids[0] || "", componentFields);
+
+      var componentBatch = db.batch();
+      var componentWrites = 0;
+      componentTargets.forEach(function(target) {
+        var data = target.doc.data() || {};
+        var markers = Array.isArray(data.markers) ? data.markers.slice() : [];
+        var lines = Array.isArray(data.lines) ? data.lines.slice() : [];
+        var documentChanged = false;
+
+        target.markerIndexes.forEach(function(markerIndex) {
+          var rawMarker = Object.assign({}, markers[markerIndex] || {});
+          if (applyMarkerFields(rawMarker, componentFields)) documentChanged = true;
+          markers[markerIndex] = rawMarker;
+
+          if (updateConnectedLines &&
+              Object.prototype.hasOwnProperty.call(componentFields, "lat") &&
+              Object.prototype.hasOwnProperty.call(componentFields, "lng")) {
+            var ids = markerIdCandidates(rawMarker).concat(component.ids);
+            if (updateConnectedLinePoints(lines, ids, { lat: componentFields.lat, lng: componentFields.lng }, target.doc.id)) {
+              documentChanged = true;
+            }
+          }
+        });
+
+        if (!documentChanged) return;
+        var payload = { markers: markers };
+        if (updateConnectedLines) payload.lines = lines;
+        componentBatch.update(target.doc.ref, payload);
+        componentWrites += 1;
+      });
+
+      if (!componentWrites) return true;
+      await componentBatch.commit();
+      return true;
+
+      var canonicalId = initiatingMarkerCanonicalId(initiatingMarker);
+
+      if (!db || !canonicalId) {
+        setAdminMessage("연결된 마커 식별자를 찾을 수 없습니다.");
+        return false;
+      }
+
+      var snapshot = await db.collection("teams").get();
+      var docs = [];
+      snapshot.forEach(function(doc) {
+        docs.push(doc);
+      });
+
+      var ownerDoc = null;
+      var ownerMarkerIndex = -1;
+      var initiatingDoc = null;
+      var initiatingMarkerIndex = -1;
+      var linkedTargets = [];
+      var isSharedInitiator = !!sharedMarkerCanonicalId(initiatingMarker);
+
+      docs.forEach(function(doc) {
+        var data = doc.data() || {};
+        var markers = Array.isArray(data.markers) ? data.markers : [];
+        var ownedIndex = findRawMarkerIndexByCanonical(markers, canonicalId);
+        if (ownedIndex !== -1 && !ownerDoc &&
+            (isSharedInitiator || cleanMarkerId(doc.id) === cleanMarkerId(initiatingMarker.teamName))) {
+          ownerDoc = doc;
+          ownerMarkerIndex = ownedIndex;
+        }
+
+        if (cleanMarkerId(doc.id) === cleanMarkerId(initiatingMarker.teamName)) {
+          initiatingDoc = doc;
+          initiatingMarkerIndex = findRawMarkerIndexForInitiating(markers, initiatingMarker);
+        }
+
+        markers.forEach(function(rawMarker, index) {
+          if (isLinkedSharedCopy(rawMarker, canonicalId)) {
+            linkedTargets.push({ doc: doc, index: index });
+          }
+        });
+      });
+
+      if (isSharedInitiator && !ownerDoc) {
+        setAdminMessage("연결된 원본 마커를 찾을 수 없습니다.");
+        console.warn("[ADMIN_V2_MUTATION] source owner not found", canonicalId);
+        return false;
+      }
+
+      var targetByDoc = {};
+      var addTarget = function(doc, index) {
+        if (!doc || index < 0) return;
+        if (!targetByDoc[doc.id]) targetByDoc[doc.id] = { doc: doc, markerIndexes: [] };
+        if (targetByDoc[doc.id].markerIndexes.indexOf(index) === -1) {
+          targetByDoc[doc.id].markerIndexes.push(index);
+        }
+      };
+
+      if (ownerDoc) addTarget(ownerDoc, ownerMarkerIndex);
+      linkedTargets.forEach(function(target) {
+        addTarget(target.doc, target.index);
+      });
+
+      if (!ownerDoc && !linkedTargets.length && initiatingDoc && initiatingMarkerIndex !== -1) {
+        addTarget(initiatingDoc, initiatingMarkerIndex);
+      }
+
+      var targets = Object.keys(targetByDoc).map(function(key) { return targetByDoc[key]; });
+      if (!targets.length) {
+        setAdminMessage("수정할 마커를 찾을 수 없습니다.");
+        return false;
+      }
+      if (targets.length > 450) {
+        setAdminMessage("동기화 대상이 너무 많아 저장을 중단했습니다.");
+        console.error("[ADMIN_V2_MUTATION] too many documents", targets.length);
+        return false;
+      }
+
+      var ownerData = ownerDoc ? (ownerDoc.data() || {}) : (initiatingDoc ? (initiatingDoc.data() || {}) : {});
+      var ownerMarkers = Array.isArray(ownerData.markers) ? ownerData.markers : [];
+      var canonicalSource = ownerDoc && ownerMarkerIndex !== -1
+        ? Object.assign({}, ownerMarkers[ownerMarkerIndex])
+        : Object.assign({}, initiatingMarker);
+      var canonicalFields = buildCanonicalFieldsFromSource(Object.assign({}, canonicalSource, changedState), changedState);
+      console.log("[ADMIN_V2_MUTATION]", mutationType, canonicalId, canonicalFields);
+
+      var batch = db.batch();
+      var writes = 0;
+      targets.forEach(function(target) {
+        var data = target.doc.data() || {};
+        var markers = Array.isArray(data.markers) ? data.markers.slice() : [];
+        var lines = Array.isArray(data.lines) ? data.lines.slice() : [];
+        var documentChanged = false;
+
+        target.markerIndexes.forEach(function(markerIndex) {
+          var rawMarker = Object.assign({}, markers[markerIndex] || {});
+          if (applyMarkerFields(rawMarker, canonicalFields)) documentChanged = true;
+          markers[markerIndex] = rawMarker;
+
+          if (updateConnectedLines &&
+              Object.prototype.hasOwnProperty.call(canonicalFields, "lat") &&
+              Object.prototype.hasOwnProperty.call(canonicalFields, "lng")) {
+            var ids = markerIdCandidates(rawMarker).concat([canonicalId]);
+            if (updateConnectedLinePoints(lines, ids, { lat: canonicalFields.lat, lng: canonicalFields.lng }, target.doc.id)) {
+              documentChanged = true;
+            }
+          }
+        });
+
+        if (!documentChanged) return;
+        var payload = { markers: markers };
+        if (updateConnectedLines) payload.lines = lines;
+        batch.update(target.doc.ref, payload);
+        writes += 1;
+      });
+
+      if (!writes) return true;
+      await batch.commit();
+      return true;
+    }
+
+    async function saveMovedMarkerPosition(marker, lat, lng) {
+      if (!db) return false;
+      setAdminMessage("마커 위치 저장 중...");
+      var canonicalId = initiatingMarkerCanonicalId(marker);
+      var sequence = ++markerMutationSequence;
+      var fields = canonicalMarkerFields(Object.assign({}, marker, { lat: lat, lng: lng }), marker);
+      pendingMarkerMutations[canonicalId] = {
+        seq: sequence,
+        initiatingMarker: marker,
+        fields: fields,
+        updateConnectedLines: true
+      };
+      applyCanonicalSyncLocally(marker, fields, { updateConnectedLines: true }, "마커 위치 저장 중...");
+
+      try {
+        var saved = await commitCanonicalMarkerMutation({
+          initiatingMarker: marker,
+          changedState: { lat: lat, lng: lng },
+          updateConnectedLines: true,
+          mutationType: "move"
+        });
+        if (!saved) throw new Error("marker move target not found");
+        if (pendingMarkerMutations[canonicalId] && pendingMarkerMutations[canonicalId].seq === sequence) {
+          delete pendingMarkerMutations[canonicalId];
+        }
+        setAdminMessage("마커 위치가 저장되었습니다.");
+        console.log("[ADMIN_V2_MARKER_MOVE] updated", marker.markerId || marker.rawId || marker.id, lat, lng);
+        return true;
+      } catch (error) {
+        console.error("[ADMIN_V2_MARKER_MOVE] update failed", error);
+        if (pendingMarkerMutations[canonicalId] && pendingMarkerMutations[canonicalId].seq === sequence) {
+          delete pendingMarkerMutations[canonicalId];
+          loadAdminMarkers();
+        }
+        setAdminMessage("마커 위치 저장 실패");
+        return false;
+      }
+    }
+
+    function applyMarkerMoveLocally(marker, lat, lng) {
+      var fields = canonicalMarkerFields(Object.assign({}, marker, { lat: lat, lng: lng }), marker);
+      return applyCanonicalSyncLocally(marker, fields, { updateConnectedLines: true }, "마커 위치가 저장되었습니다.");
     }
 
     function countMarkersByGroup(markers) {
@@ -2063,7 +2947,7 @@
       actions.className = "marker-card-actions";
       actions.appendChild(makeMarkerAction("이동", function() { focusMarker(marker); }));
       actions.appendChild(makeMarkerAction("ON/OFF", function() { updateMarkerCheck(marker, !marker.isChecked); }));
-      actions.appendChild(makeMarkerAction("수정", function() { handlePlaceholderAction("marker edit"); }));
+      actions.appendChild(makeMarkerAction("수정", function() { openMarkerEditModal(marker); }));
       actions.appendChild(makeMarkerAction("삭제", function() { handlePlaceholderAction("marker delete"); }));
       actions.appendChild(makeMarkerAction("전송", function() { handlePlaceholderAction("marker share"); }));
       head.appendChild(actions);
@@ -2077,6 +2961,13 @@
       address.className = "marker-address";
       address.textContent = "📍 " + (marker.address || "주소 정보 없음");
       root.appendChild(address);
+
+      if (marker.description) {
+        var description = document.createElement("div");
+        description.className = "marker-description";
+        description.textContent = marker.description;
+        root.appendChild(description);
+      }
 
       renderMarkerPhotos(root, marker.photos || []);
     }
@@ -2119,6 +3010,11 @@
         img.src = photo.url;
         img.alt = photo.comment || "marker photo";
         img.loading = "lazy";
+        img.addEventListener("click", function(event) {
+          event.preventDefault();
+          event.stopPropagation();
+          openPhotoLightbox(photo.url, photo.comment || "");
+        });
         img.addEventListener("error", function() {
           var fallback = document.createElement("div");
           fallback.className = "photo-error";
@@ -2129,39 +3025,329 @@
       });
     }
 
-    async function updateMarkerCheck(marker, nextValue) {
-      if (!db) return;
+    function openPhotoLightbox(photoUrl, comment) {
+      if (!photoUrl) return;
+      closePhotoLightbox();
+
+      var overlay = document.createElement("div");
+      overlay.id = "photoLightbox";
+      overlay.className = "photo-lightbox";
+      overlay.addEventListener("click", function(event) {
+        if (event.target === overlay) closePhotoLightbox();
+      });
+
+      var closeButton = document.createElement("button");
+      closeButton.type = "button";
+      closeButton.className = "photo-lightbox-close";
+      closeButton.setAttribute("aria-label", "Close photo");
+      closeButton.textContent = "×";
+      closeButton.addEventListener("click", closePhotoLightbox);
+      overlay.appendChild(closeButton);
+
+      var image = document.createElement("img");
+      image.className = "photo-lightbox-image";
+      image.src = photoUrl;
+      image.alt = comment || "marker photo";
+      image.addEventListener("click", function(event) {
+        event.stopPropagation();
+      });
+      overlay.appendChild(image);
+
+      var caption = document.createElement("div");
+      caption.className = "photo-lightbox-caption";
+      caption.textContent = comment || "";
+      overlay.appendChild(caption);
+
+      document.body.appendChild(overlay);
+    }
+
+    function closePhotoLightbox() {
+      var overlay = document.getElementById("photoLightbox");
+      if (overlay) overlay.remove();
+    }
+
+    function findEditableOwnMarker(marker) {
+      if (!marker) return null;
+
+      if (ownTeam) {
+        for (var i = 0; i < ownTeam.markers.length; i += 1) {
+          if (normalizedMarkerMatches(ownTeam.markers[i], marker)) {
+            return ownTeam.markers[i];
+          }
+        }
+      }
+      for (var teamIndex = 0; teamIndex < allTeams.length; teamIndex += 1) {
+        var team = allTeams[teamIndex];
+        if (cleanMarkerId(marker.teamName) && cleanMarkerId(marker.teamName) !== cleanMarkerId(team.docId)) continue;
+        for (var markerIndex = 0; markerIndex < team.markers.length; markerIndex += 1) {
+          if (normalizedMarkerMatches(team.markers[markerIndex], marker)) {
+            return team.markers[markerIndex];
+          }
+        }
+      }
+      return null;
+    }
+
+    function makeMarkerEditField(labelText, control) {
+      var label = document.createElement("label");
+      label.className = "marker-edit-field";
+      var span = document.createElement("span");
+      span.textContent = labelText;
+      label.appendChild(span);
+      label.appendChild(control);
+      return label;
+    }
+
+    function openMarkerEditModal(marker) {
+      var editableMarker = findEditableOwnMarker(marker);
+      if (!editableMarker) {
+        setAdminMessage("현재 단계에서는 내 데이터 마커만 수정할 수 있습니다.");
+        return;
+      }
+
+      console.log("[ADMIN_V2_MARKER_EDIT] open", editableMarker.markerId || editableMarker.rawId || editableMarker.id);
+      closeMarkerEditModal();
+      markerEditState = { marker: editableMarker, saving: false };
+
+      var overlay = document.createElement("div");
+      overlay.id = "markerEditOverlay";
+      overlay.className = "marker-edit-overlay";
+      overlay.addEventListener("click", function(event) {
+        if (event.target === overlay && !markerEditState.saving) closeMarkerEditModal();
+      });
+
+      var dialog = document.createElement("div");
+      dialog.className = "marker-edit-dialog";
+      dialog.setAttribute("role", "dialog");
+      dialog.setAttribute("aria-modal", "true");
+      dialog.setAttribute("aria-labelledby", "markerEditTitleText");
+      dialog.addEventListener("click", function(event) {
+        event.stopPropagation();
+      });
+      overlay.appendChild(dialog);
+
+      var heading = document.createElement("h2");
+      heading.id = "markerEditTitleText";
+      heading.className = "marker-edit-title";
+      heading.textContent = "마커 수정";
+      dialog.appendChild(heading);
+
+      var form = document.createElement("form");
+      form.className = "marker-edit-form";
+      form.addEventListener("submit", function(event) {
+        event.preventDefault();
+        submitMarkerEdit(editableMarker);
+      });
+      dialog.appendChild(form);
+
+      var titleInput = document.createElement("input");
+      titleInput.id = "markerEditTitle";
+      titleInput.className = "marker-edit-input";
+      titleInput.type = "text";
+      titleInput.value = editableMarker.title || "";
+      form.appendChild(makeMarkerEditField("제목 또는 번호/이름", titleInput));
+
+      var descriptionInput = document.createElement("textarea");
+      descriptionInput.id = "markerEditDescription";
+      descriptionInput.className = "marker-edit-textarea";
+      descriptionInput.value = editableMarker.description || "";
+      form.appendChild(makeMarkerEditField("메모 또는 설명", descriptionInput));
+
+      var addressInput = document.createElement("input");
+      addressInput.id = "markerEditAddress";
+      addressInput.className = "marker-edit-input";
+      addressInput.type = "text";
+      addressInput.value = editableMarker.address || "";
+      form.appendChild(makeMarkerEditField("주소", addressInput));
+
+      if (editableMarker.photos && editableMarker.photos.length) {
+        var photoNote = document.createElement("p");
+        photoNote.className = "marker-edit-photo-note";
+        photoNote.textContent = "사진";
+        form.appendChild(photoNote);
+        renderMarkerPhotos(form, editableMarker.photos);
+      }
+
+      var actions = document.createElement("div");
+      actions.className = "marker-edit-actions";
+      var cancelButton = document.createElement("button");
+      cancelButton.type = "button";
+      cancelButton.className = "marker-edit-button";
+      cancelButton.textContent = "취소";
+      cancelButton.addEventListener("click", closeMarkerEditModal);
+      actions.appendChild(cancelButton);
+
+      var submitButton = document.createElement("button");
+      submitButton.type = "submit";
+      submitButton.id = "markerEditSubmit";
+      submitButton.className = "marker-edit-button primary";
+      submitButton.textContent = "수정 완료";
+      actions.appendChild(submitButton);
+      form.appendChild(actions);
+
+      document.body.appendChild(overlay);
+      titleInput.focus();
+
+      if ((editableMarker.duplicateCount || 1) > 1) {
+        setAdminMessage("공유본 동기화는 후속 단계에서 적용됩니다. 관리자 원본 1개만 수정합니다.");
+      }
+    }
+
+    function closeMarkerEditModal() {
+      var overlay = document.getElementById("markerEditOverlay");
+      if (overlay) overlay.remove();
+      markerEditState = { marker: null, saving: false };
+    }
+
+    async function submitMarkerEdit(marker) {
+      if (markerEditState.saving) return;
+      var overlay = document.getElementById("markerEditOverlay");
+      if (!overlay) return;
+
+      var submitButton = document.getElementById("markerEditSubmit");
+      var titleInput = document.getElementById("markerEditTitle");
+      var descriptionInput = document.getElementById("markerEditDescription");
+      var addressInput = document.getElementById("markerEditAddress");
+
+      markerEditState.saving = true;
+      if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = "저장 중...";
+      }
+      [titleInput, descriptionInput, addressInput].forEach(function(control) {
+        if (control) control.disabled = true;
+      });
+      setAdminMessage("마커 정보 저장 중...");
+
+      var updates = {
+        title: titleInput ? titleInput.value : ""
+      };
+      if (descriptionInput) updates.description = descriptionInput.value;
+      if (addressInput) updates.address = addressInput.value;
+
+      var saved = await updateMarkerDetails(marker, updates);
+      if (saved) {
+        closeMarkerEditModal();
+        return;
+      }
+
+      markerEditState.saving = false;
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.textContent = "수정 완료";
+      }
+      [titleInput, descriptionInput, addressInput].forEach(function(control) {
+        if (control) control.disabled = false;
+      });
+    }
+
+    async function updateMarkerDetails(marker, updates) {
+      if (!db) return false;
+
+      var editableMarker = findEditableOwnMarker(marker);
+      if (!editableMarker) {
+        setAdminMessage("수정할 마커를 찾을 수 없습니다.");
+        return false;
+      }
+      var canonicalId = initiatingMarkerCanonicalId(editableMarker);
+      var sequence = ++markerMutationSequence;
+      var optimisticFields = canonicalMarkerFields(Object.assign({}, editableMarker, updates), editableMarker);
+      pendingMarkerMutations[canonicalId] = {
+        seq: sequence,
+        initiatingMarker: editableMarker,
+        fields: optimisticFields,
+        updateConnectedLines: true
+      };
+      applyCanonicalSyncLocally(editableMarker, optimisticFields, { updateConnectedLines: true }, "마커 정보 저장 중...");
 
       try {
-        var docRef = db.collection("teams").doc(ADMIN_TEAM_DOC_ID);
-        var snapshot = await docRef.get();
-        if (!snapshot.exists) {
-          console.warn("[ADMIN_V2_MARKER_CHECK] marker not found", marker.markerId || marker.rawId || marker.id);
-          setAdminMessage("마커를 찾을 수 없습니다.");
-          return;
-        }
-
-        var data = snapshot.data() || {};
-        var markers = Array.isArray(data.markers) ? data.markers.slice() : [];
-        var markerIndex = markers.findIndex(function(item) {
-          return markerMatches(item, marker);
+        var saved = await commitCanonicalMarkerMutation({
+          initiatingMarker: editableMarker,
+          changedState: updates,
+          updateConnectedLines: true,
+          mutationType: "details"
         });
-
-        if (markerIndex === -1) {
-          console.warn("[ADMIN_V2_MARKER_CHECK] marker not found", marker.markerId || marker.rawId || marker.id);
-          setAdminMessage("마커를 찾을 수 없습니다.");
-          return;
+        if (!saved) throw new Error("marker edit target not found");
+        if (pendingMarkerMutations[canonicalId] && pendingMarkerMutations[canonicalId].seq === sequence) {
+          delete pendingMarkerMutations[canonicalId];
         }
+        setAdminMessage("마커 정보가 수정되었습니다.");
+        console.log("[ADMIN_V2_MARKER_EDIT] updated", editableMarker.markerId || editableMarker.rawId || editableMarker.id);
+        return true;
+      } catch (error) {
+        console.error("[ADMIN_V2_MARKER_EDIT] update failed", error);
+        if (pendingMarkerMutations[canonicalId] && pendingMarkerMutations[canonicalId].seq === sequence) {
+          delete pendingMarkerMutations[canonicalId];
+          loadAdminMarkers();
+        }
+        setAdminMessage("마커 정보 수정에 실패했습니다.");
+        return false;
+      }
+    }
 
-        var updated = Object.assign({}, markers[markerIndex]);
-        updated.isChecked = nextValue === true;
-        markers[markerIndex] = updated;
-        await docRef.update({ markers: markers });
+    function applyMarkerEditLocally(marker, updated) {
+      var updatedMarker = null;
+      if (ownTeam) {
+        ownTeam.markers.forEach(function(item) {
+          if (normalizedMarkerMatches(item, marker)) {
+            if (Object.prototype.hasOwnProperty.call(updated, "title")) {
+              item.title = updated.title || "Untitled";
+            }
+            if (Object.prototype.hasOwnProperty.call(updated, "description")) {
+              item.description = updated.description || "";
+            }
+            if (Object.prototype.hasOwnProperty.call(updated, "address")) {
+              item.address = updated.address || "";
+            }
+            updatedMarker = item;
+          }
+        });
+      }
 
+      renderMyData();
+      renderTeams();
+      renderMarkers(getVisibleMarkers(), { fitBounds: false, preserveViewport: true });
+      setMarkerCount(getVisibleMarkers().length);
+      if (updatedMarker && !document.getElementById("infoCard").classList.contains("hidden")) {
+        showMarkerInfo(updatedMarker);
+      }
+      setAdminMessage("마커 정보가 수정되었습니다.");
+      return updatedMarker;
+    }
+
+    async function updateMarkerCheck(marker, nextValue) {
+      if (!db) return;
+      var canonicalId = initiatingMarkerCanonicalId(marker);
+      var sequence = ++markerMutationSequence;
+      var optimisticFields = canonicalMarkerFields(Object.assign({}, marker, { isChecked: nextValue === true }), marker);
+      optimisticFields.isChecked = nextValue === true;
+      pendingMarkerMutations[canonicalId] = {
+        seq: sequence,
+        initiatingMarker: marker,
+        fields: optimisticFields,
+        updateConnectedLines: true
+      };
+      applyCanonicalSyncLocally(marker, optimisticFields, { updateConnectedLines: true }, "마커 ON/OFF 저장 중...");
+
+      try {
+        var saved = await commitCanonicalMarkerMutation({
+          initiatingMarker: marker,
+          changedState: { isChecked: nextValue === true },
+          updateConnectedLines: true,
+          mutationType: "check"
+        });
+        if (!saved) throw new Error("marker check target not found");
+        if (pendingMarkerMutations[canonicalId] && pendingMarkerMutations[canonicalId].seq === sequence) {
+          delete pendingMarkerMutations[canonicalId];
+        }
         console.log("[ADMIN_V2_MARKER_CHECK] updated", marker.markerId || marker.rawId || marker.id, nextValue === true);
-        applyMarkerCheckLocally(marker, nextValue === true);
+        setAdminMessage("마커 ON/OFF가 업데이트되었습니다.");
       } catch (error) {
         console.error("[ADMIN_V2_MARKER_CHECK] update failed", error);
+        if (pendingMarkerMutations[canonicalId] && pendingMarkerMutations[canonicalId].seq === sequence) {
+          delete pendingMarkerMutations[canonicalId];
+          loadAdminMarkers();
+        }
         setAdminMessage("ON/OFF 업데이트 실패");
       }
     }
@@ -2263,7 +3449,6 @@
 
     function handlePlaceholderAction(actionName) {
       var messages = {
-        "marker edit": "수정 기능은 준비 중입니다",
         "marker delete": "삭제 기능은 준비 중입니다",
         "marker share": "전송 기능은 준비 중입니다",
         "team edit": "수정 기능은 준비 중입니다",
@@ -2301,7 +3486,7 @@
         event.stopPropagation();
         toggleSidebar();
       });
-      document.getElementById("refreshButton").addEventListener("click", loadAdminMarkers);
+      document.getElementById("refreshButton").addEventListener("click", subscribeAdminTeamsRealtime);
       document.getElementById("fitBoundsButton").addEventListener("click", fitBoundsToVisibleItems);
       document.getElementById("markerMoveButton").addEventListener("click", toggleMarkerMoveMode);
       document.getElementById("cadastralButton").addEventListener("click", function() {
@@ -2323,6 +3508,9 @@
         var hidden = body.style.display === "none";
         body.style.display = hidden ? "grid" : "none";
         this.textContent = hidden ? "-" : "+";
+      });
+      document.addEventListener("keydown", function(event) {
+        if (event.key === "Escape") closePhotoLightbox();
       });
     }
 

@@ -1063,6 +1063,458 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
     return updatedAny;
   }
 
+  String _cleanMarkerId(dynamic value) => value?.toString().trim() ?? '';
+
+  String canonicalMarkerIdForOwnedMarker(dynamic marker) {
+    if (marker is SiteData) return _cleanMarkerId(marker.id);
+    if (marker is Map) return _cleanMarkerId(marker['id'] ?? marker['markerId']);
+    return '';
+  }
+
+  String canonicalMarkerIdForSharedCopy(dynamic marker) {
+    if (marker is SiteData) {
+      return _cleanMarkerId(marker.originalMarkerId ?? marker.sourceMarkerId ?? marker.parentMarkerId);
+    }
+    if (marker is Map) {
+      return _cleanMarkerId(marker['originalMarkerId'] ?? marker['sourceMarkerId'] ?? marker['parentMarkerId']);
+    }
+    return '';
+  }
+
+  bool isLinkedSharedCopy(dynamic marker, String canonicalSourceId) {
+    if (canonicalSourceId.isEmpty) return false;
+    if (marker is SiteData) {
+      return _cleanMarkerId(marker.originalMarkerId) == canonicalSourceId ||
+          _cleanMarkerId(marker.sourceMarkerId) == canonicalSourceId ||
+          _cleanMarkerId(marker.parentMarkerId) == canonicalSourceId;
+    }
+    if (marker is Map) {
+      return _cleanMarkerId(marker['originalMarkerId']) == canonicalSourceId ||
+          _cleanMarkerId(marker['sourceMarkerId']) == canonicalSourceId ||
+          _cleanMarkerId(marker['parentMarkerId']) == canonicalSourceId;
+    }
+    return false;
+  }
+
+  List<String> _markerOwnIds(dynamic marker) => _markerOwnIdsFromJson(marker);
+
+  List<String> _markerLinkIds(dynamic marker) => _markerLinkIdsFromJson(marker);
+
+  List<String> _markerOwnIdsFromJson(dynamic marker) {
+    final values = <dynamic>[];
+    if (marker is SiteData) {
+      values.addAll([marker.id]);
+    } else if (marker is Map) {
+      values.addAll([marker['id'], marker['markerId']]);
+    }
+    return values.map(_cleanMarkerId).where((id) => id.isNotEmpty).toSet().toList();
+  }
+
+  List<String> _markerLinkIdsFromJson(dynamic marker) {
+    final values = <dynamic>[];
+    if (marker is SiteData) {
+      values.addAll([marker.originalMarkerId, marker.sourceMarkerId, marker.parentMarkerId]);
+    } else if (marker is Map) {
+      values.addAll([marker['originalMarkerId'], marker['sourceMarkerId'], marker['parentMarkerId']]);
+    }
+    return values.map(_cleanMarkerId).where((id) => id.isNotEmpty).toSet().toList();
+  }
+
+  bool _rawMarkerMatchesSite(Map<String, dynamic> marker, SiteData site) {
+    final rawOwnIds = _markerOwnIdsFromJson(marker);
+    final rawLinkIds = _markerLinkIdsFromJson(marker);
+    final siteOwnIds = _markerOwnIdsFromJson(site);
+    final siteLinkIds = _markerLinkIdsFromJson(site);
+    final siteIds = <String>{
+      ...siteOwnIds,
+      ...siteLinkIds,
+      site.id,
+    }.map(_cleanMarkerId).where((id) => id.isNotEmpty).toSet();
+
+    return rawOwnIds.any(siteIds.contains) ||
+        rawLinkIds.any(siteLinkIds.contains) ||
+        _matchesMoveMarkerJson(marker, site.id);
+  }
+
+  Map<String, dynamic> _resolveMarkerComponent(
+    QuerySnapshot<Map<String, dynamic>> snapshot,
+    SiteData initiatingMarker,
+    String initiatingDocId,
+  ) {
+    final nodes = <Map<String, dynamic>>[];
+    final ownIdToNodes = <String, List<Map<String, dynamic>>>{};
+
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      final markers = List<dynamic>.from(data['markers'] ?? const []);
+      for (var i = 0; i < markers.length; i++) {
+        if (markers[i] is! Map) continue;
+        final marker = Map<String, dynamic>.from(markers[i] as Map);
+        final node = <String, dynamic>{
+          'key': '${doc.id}#$i',
+          'doc': doc,
+          'docId': doc.id,
+          'index': i,
+          'marker': marker,
+          'ownIds': _markerOwnIdsFromJson(marker),
+          'linkIds': _markerLinkIdsFromJson(marker),
+          'edges': <String>{},
+        };
+        nodes.add(node);
+        for (final id in node['ownIds'] as List<String>) {
+          ownIdToNodes.putIfAbsent(id, () => <Map<String, dynamic>>[]).add(node);
+        }
+      }
+    }
+
+    for (final node in nodes) {
+      for (final linkId in node['linkIds'] as List<String>) {
+        final linkedNodes = ownIdToNodes[linkId] ?? const <Map<String, dynamic>>[];
+        if (linkedNodes.isEmpty) {
+          debugPrint('[KAKAO_COMPONENT] unlinked legacy marker doc=${node['docId']} index=${node['index']} linkId=$linkId');
+          continue;
+        }
+        final linkedOwnSignatures = linkedNodes
+            .map((n) => List<String>.from(n['ownIds'] as List)..sort())
+            .map((ids) => ids.join('|'))
+            .toSet();
+        if (linkedOwnSignatures.length > 1) {
+          debugPrint('[KAKAO_COMPONENT] ambiguous linkId=$linkId matches=${linkedNodes.map((n) => '${n['docId']}#${n['index']}').join(',')}');
+          return {'ok': false, 'reason': 'ambiguous', 'nodes': <Map<String, dynamic>>[], 'ids': <String>[]};
+        }
+        for (final linked in linkedNodes) {
+          (node['edges'] as Set<String>).add(linked['key'] as String);
+          (linked['edges'] as Set<String>).add(node['key'] as String);
+        }
+      }
+    }
+
+    Map<String, dynamic>? start;
+    for (final node in nodes) {
+      if (node['docId'] != initiatingDocId) continue;
+      if (_rawMarkerMatchesSite(Map<String, dynamic>.from(node['marker'] as Map), initiatingMarker)) {
+        start = node;
+        break;
+      }
+    }
+    if (start == null) {
+      for (final node in nodes) {
+        if (_rawMarkerMatchesSite(Map<String, dynamic>.from(node['marker'] as Map), initiatingMarker)) {
+          start = node;
+          break;
+        }
+      }
+    }
+
+    if (start == null) {
+      debugPrint('[KAKAO_COMPONENT] unlinked legacy marker initiatingDoc=$initiatingDocId marker=${initiatingMarker.id}');
+      return {'ok': false, 'nodes': <Map<String, dynamic>>[], 'ids': <String>[]};
+    }
+
+    final visited = <String>{start['key'] as String};
+    final queue = <Map<String, dynamic>>[start];
+    while (queue.isNotEmpty) {
+      final current = queue.removeAt(0);
+      for (final edge in current['edges'] as Set<String>) {
+        if (!visited.add(edge)) continue;
+        final next = nodes.firstWhere((node) => node['key'] == edge);
+        queue.add(next);
+      }
+    }
+
+    final componentNodes = nodes.where((node) => visited.contains(node['key'])).toList();
+    final ids = <String>{};
+    for (final node in componentNodes) {
+      ids.addAll(node['ownIds'] as List<String>);
+      ids.addAll(node['linkIds'] as List<String>);
+    }
+    debugPrint('[KAKAO_COMPONENT] resolved initiatingDoc=$initiatingDocId marker=${initiatingMarker.id} documents=${componentNodes.map((n) => n['docId']).toSet().join(',')} markerCount=${componentNodes.length}');
+    return {'ok': true, 'nodes': componentNodes, 'ids': ids.toList(), 'start': start};
+  }
+
+  Map<String, dynamic> _resolveLocalMarkerComponent(SiteData initiatingMarker, String initiatingTeamName) {
+    final nodes = <Map<String, dynamic>>[];
+    final ownIdToNodes = <String, List<Map<String, dynamic>>>{};
+
+    void addMarker(String teamName, SiteData marker, Map<String, LineData> lines) {
+      final node = <String, dynamic>{
+        'key': '$teamName#${nodes.length}',
+        'teamName': teamName,
+        'marker': marker,
+        'lines': lines,
+        'ownIds': _markerOwnIdsFromJson(marker),
+        'linkIds': _markerLinkIdsFromJson(marker),
+        'edges': <String>{},
+      };
+      nodes.add(node);
+      for (final id in node['ownIds'] as List<String>) {
+        ownIdToNodes.putIfAbsent(id, () => <Map<String, dynamic>>[]).add(node);
+      }
+    }
+
+    _markerDataMap.values.forEach((marker) => addMarker(widget.teamName, marker, _lineDataMap));
+    _allTeamsMap.forEach((teamName, team) {
+      team.markers.values.forEach((marker) => addMarker(teamName, marker, team.lines));
+    });
+
+    for (final node in nodes) {
+      for (final linkId in node['linkIds'] as List<String>) {
+        final linkedNodes = ownIdToNodes[linkId] ?? const <Map<String, dynamic>>[];
+        for (final linked in linkedNodes) {
+          (node['edges'] as Set<String>).add(linked['key'] as String);
+          (linked['edges'] as Set<String>).add(node['key'] as String);
+        }
+      }
+    }
+
+    Map<String, dynamic>? start;
+    for (final node in nodes) {
+      if (node['teamName'] != initiatingTeamName) continue;
+      final marker = node['marker'] as SiteData;
+      if (marker.id == initiatingMarker.id ||
+          _markerOwnIdsFromJson(marker).any(_markerOwnIdsFromJson(initiatingMarker).contains) ||
+          _markerLinkIdsFromJson(marker).any(_markerLinkIdsFromJson(initiatingMarker).contains)) {
+        start = node;
+        break;
+      }
+    }
+    if (start == null) {
+      for (final node in nodes) {
+        if ((node['marker'] as SiteData).id == initiatingMarker.id) {
+          start = node;
+          break;
+        }
+      }
+    }
+    if (start == null) return {'ok': false, 'nodes': <Map<String, dynamic>>[], 'ids': <String>[]};
+
+    final visited = <String>{start['key'] as String};
+    final queue = <Map<String, dynamic>>[start];
+    while (queue.isNotEmpty) {
+      final current = queue.removeAt(0);
+      for (final edge in current['edges'] as Set<String>) {
+        if (!visited.add(edge)) continue;
+        final next = nodes.firstWhere((node) => node['key'] == edge);
+        queue.add(next);
+      }
+    }
+
+    final componentNodes = nodes.where((node) => visited.contains(node['key'])).toList();
+    final ids = <String>{};
+    for (final node in componentNodes) {
+      ids.addAll(node['ownIds'] as List<String>);
+      ids.addAll(node['linkIds'] as List<String>);
+    }
+    return {'ok': true, 'nodes': componentNodes, 'ids': ids.toList(), 'start': start};
+  }
+
+  String _canonicalIdForMutation(SiteData marker) {
+    final shared = canonicalMarkerIdForSharedCopy(marker);
+    if (shared.isNotEmpty) return shared;
+    return canonicalMarkerIdForOwnedMarker(marker);
+  }
+
+  List<String> _markerIdCandidatesForRaw(Map marker, String canonicalId) {
+    return [
+      marker['id'],
+      marker['markerId'],
+      marker['originalMarkerId'],
+      marker['sourceMarkerId'],
+      marker['parentMarkerId'],
+      canonicalId,
+    ].map(_cleanMarkerId).where((id) => id.isNotEmpty).toSet().toList();
+  }
+
+  Map<String, dynamic> _canonicalFieldsFromSite(SiteData marker, Map<String, dynamic> overrides) {
+    final fields = <String, dynamic>{
+      'lat': overrides['lat'] ?? marker.lat,
+      'lng': overrides['lng'] ?? marker.lng,
+      'title': overrides['title'] ?? marker.title,
+      'description': overrides['description'] ?? marker.description,
+      'address': overrides['address'] ?? marker.address,
+      'isChecked': overrides.containsKey('isChecked') ? overrides['isChecked'] == true : marker.isChecked,
+    };
+    return fields;
+  }
+
+  void _applyCanonicalFieldsToSite(SiteData marker, Map<String, dynamic> fields) {
+    if (fields.containsKey('lat') && fields.containsKey('lng')) {
+      marker.lat = (fields['lat'] as num).toDouble();
+      marker.lng = (fields['lng'] as num).toDouble();
+    }
+    if (fields.containsKey('title')) marker.title = fields['title']?.toString() ?? marker.title;
+    if (fields.containsKey('description')) marker.description = fields['description']?.toString() ?? marker.description;
+    if (fields.containsKey('address')) marker.address = fields['address']?.toString() ?? marker.address;
+    if (fields.containsKey('isChecked')) marker.isChecked = fields['isChecked'] == true;
+  }
+
+  bool _applyCanonicalFieldsToRawMarker(Map<String, dynamic> marker, Map<String, dynamic> fields) {
+    bool changed = false;
+    for (final key in ['lat', 'lng', 'title', 'description', 'address']) {
+      if (!fields.containsKey(key)) continue;
+      if (marker[key] != fields[key]) {
+        marker[key] = fields[key];
+        changed = true;
+      }
+    }
+    if (fields.containsKey('isChecked')) {
+      final next = fields['isChecked'] == true;
+      if (marker['isChecked'] != next ||
+          (marker.containsKey('checked') && marker['checked'] != next) ||
+          (marker.containsKey('isOn') && marker['isOn'] != next)) {
+        marker['isChecked'] = next;
+        if (marker.containsKey('checked')) marker['checked'] = next;
+        if (marker.containsKey('isOn')) marker['isOn'] = next;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  bool _updateConnectedLinePointsJson(List<dynamic> lines, Iterable<String> markerIds, LatLng point) {
+    final ids = markerIds.map(_cleanMarkerId).where((id) => id.isNotEmpty).toSet();
+    if (ids.isEmpty) return false;
+
+    bool changed = false;
+    for (final rawLine in lines) {
+      if (rawLine is! Map) continue;
+      final markerIdsJson = List<dynamic>.from(rawLine['markerIds'] ?? const []);
+      final points = List<dynamic>.from(rawLine['points'] ?? const []);
+      if (markerIdsJson.isEmpty || points.length < markerIdsJson.length) continue;
+
+      bool lineChanged = false;
+      for (var i = 0; i < markerIdsJson.length && i < points.length; i++) {
+        if (!ids.contains(_cleanMarkerId(markerIdsJson[i]))) continue;
+        final current = points[i] is Map ? Map<String, dynamic>.from(points[i] as Map) : <String, dynamic>{};
+        if ((current['lat'] as num?)?.toDouble() != point.latitude ||
+            (current['lng'] as num?)?.toDouble() != point.longitude) {
+          points[i] = {...current, 'lat': point.latitude, 'lng': point.longitude};
+          lineChanged = true;
+        }
+      }
+
+      if (lineChanged) {
+        rawLine['points'] = points;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  void _applyCanonicalMarkerMutationLocally({
+    required SiteData initiatingMarker,
+    required Map<String, dynamic> canonicalFields,
+    required bool updateConnectedLines,
+    String? initiatingTeamName,
+  }) {
+    final sourceTeamName = initiatingTeamName ?? widget.teamName;
+    final point = canonicalFields.containsKey('lat') && canonicalFields.containsKey('lng')
+        ? LatLng((canonicalFields['lat'] as num).toDouble(), (canonicalFields['lng'] as num).toDouble())
+        : null;
+
+    if (!mounted) return;
+    final component = _resolveLocalMarkerComponent(initiatingMarker, sourceTeamName);
+    if (component['ok'] != true) return;
+    final componentIds = List<String>.from(component['ids'] as List);
+    final componentNodes = List<Map<String, dynamic>>.from(component['nodes'] as List);
+
+    setState(() {
+      for (final node in componentNodes) {
+        final marker = node['marker'] as SiteData;
+        _applyCanonicalFieldsToSite(marker, canonicalFields);
+        if (point != null && updateConnectedLines) {
+          final lines = node['lines'] as Map<String, LineData>;
+          for (final markerId in <String>{marker.id, ...componentIds}) {
+            _updateConnectedLinePoints(lines, markerId, point);
+          }
+        }
+      }
+    });
+
+    _invalidateMarkerRenderHash();
+    _scheduleMarkerUpdate(ms: 0);
+  }
+
+  Future<bool> _commitCanonicalMarkerMutation({
+    required SiteData initiatingMarker,
+    required Map<String, dynamic> canonicalFields,
+    required bool updateConnectedLines,
+    required String mutationType,
+    String? initiatingTeamName,
+  }) async {
+    final sourceTeamName = initiatingTeamName ?? widget.teamName;
+
+    final snapshot = await FirebaseFirestore.instance.collection('teams').get();
+    final component = _resolveMarkerComponent(snapshot, initiatingMarker, sourceTeamName);
+    if (component['ok'] != true) return false;
+    final componentNodes = List<Map<String, dynamic>>.from(component['nodes'] as List);
+    final componentIds = List<String>.from(component['ids'] as List);
+    final targets = <String, Map<String, dynamic>>{};
+
+    void addTarget(QueryDocumentSnapshot<Map<String, dynamic>> doc, int index) {
+      if (index < 0) return;
+      targets.putIfAbsent(doc.id, () => {
+        'doc': doc,
+        'indexes': <int>{},
+      });
+      (targets[doc.id]!['indexes'] as Set<int>).add(index);
+    }
+
+    for (final node in componentNodes) {
+      addTarget(
+        node['doc'] as QueryDocumentSnapshot<Map<String, dynamic>>,
+        node['index'] as int,
+      );
+    }
+
+    if (targets.isEmpty) return false;
+    if (targets.length > 450) {
+      debugPrint('[CANONICAL_MARKER_MUTATION_TOO_MANY_DOCS] count=${targets.length}');
+      return false;
+    }
+
+    final WriteBatch batch = FirebaseFirestore.instance.batch();
+    var writes = 0;
+
+    for (final target in targets.values) {
+      final doc = target['doc'] as QueryDocumentSnapshot<Map<String, dynamic>>;
+      final indexes = target['indexes'] as Set<int>;
+      final data = doc.data();
+      final markers = List<dynamic>.from(data['markers'] ?? const []);
+      final lines = List<dynamic>.from(data['lines'] ?? const []);
+      var changed = false;
+
+      for (final index in indexes) {
+        if (index < 0 || index >= markers.length || markers[index] is! Map) continue;
+        final marker = Map<String, dynamic>.from(markers[index] as Map);
+        if (_applyCanonicalFieldsToRawMarker(marker, canonicalFields)) changed = true;
+        markers[index] = marker;
+
+        if (updateConnectedLines && canonicalFields.containsKey('lat') && canonicalFields.containsKey('lng')) {
+          final point = LatLng((canonicalFields['lat'] as num).toDouble(), (canonicalFields['lng'] as num).toDouble());
+          final ids = <String>{
+            ..._markerIdCandidatesForRaw(marker, ''),
+            ...componentIds,
+          };
+          if (_updateConnectedLinePointsJson(lines, ids, point)) {
+            changed = true;
+          }
+        }
+      }
+
+      if (!changed) continue;
+      final payload = <String, dynamic>{'markers': markers};
+      if (updateConnectedLines) payload['lines'] = lines;
+      batch.update(doc.reference, payload);
+      writes++;
+    }
+
+    if (writes == 0) return true;
+    await batch.commit();
+    debugPrint('[CANONICAL_MARKER_MUTATION_COMMIT] type=$mutationType docs=$writes');
+    return true;
+  }
+
   Future<bool> _saveMarkerCheckToTeamDoc(String teamName, String markerId, String originalMarkerId, bool isChecked, {String? groupName}) async {
     final docRef = FirebaseFirestore.instance.collection('teams').doc(teamName);
     bool updated = false;
@@ -1110,15 +1562,20 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
           _updateConnectedLinePoints(_lineDataMap, markerId, point);
         }
       });
-      final saved = await _saveMovedMarkerToTeamDoc(teamName, actualId, point, groupName: site.group.name, markerIds: markerIds);
-      if (saved && !sharedMove && _isOriginalMarkerForSharedSync(site)) {
-        await _updateSharedMarkerCopies(
-          sourceTeamName: teamName,
-          markerId: actualId,
-          originalMarkerId: _syncOriginalMarkerId(actualId, site),
-          point: point,
-        );
-      }
+      final fields = _canonicalFieldsFromSite(site, {'lat': point.latitude, 'lng': point.longitude});
+      _applyCanonicalMarkerMutationLocally(
+        initiatingMarker: site,
+        canonicalFields: fields,
+        updateConnectedLines: true,
+        initiatingTeamName: teamName,
+      );
+      final saved = await _commitCanonicalMarkerMutation(
+        initiatingMarker: site,
+        canonicalFields: fields,
+        updateConnectedLines: true,
+        mutationType: 'move',
+        initiatingTeamName: teamName,
+      );
       return saved;
     }
 
@@ -1140,15 +1597,20 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
         _updateConnectedLinePoints(team.lines, markerId, point);
       }
     });
-    final saved = await _saveMovedMarkerToTeamDoc(teamName, actualId, point, groupName: site.group.name, markerIds: markerIds);
-    if (saved && !sharedMove && _isOriginalMarkerForSharedSync(site)) {
-      await _updateSharedMarkerCopies(
-        sourceTeamName: teamName,
-        markerId: actualId,
-        originalMarkerId: _syncOriginalMarkerId(actualId, site),
-        point: point,
-      );
-    }
+    final fields = _canonicalFieldsFromSite(site, {'lat': point.latitude, 'lng': point.longitude});
+    _applyCanonicalMarkerMutationLocally(
+      initiatingMarker: site,
+      canonicalFields: fields,
+      updateConnectedLines: true,
+      initiatingTeamName: teamName,
+    );
+    final saved = await _commitCanonicalMarkerMutation(
+      initiatingMarker: site,
+      canonicalFields: fields,
+      updateConnectedLines: true,
+      mutationType: 'move',
+      initiatingTeamName: teamName,
+    );
     return saved;
   }
 
@@ -1277,16 +1739,21 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
           _updateConnectedLinePoints(_lineDataMap, actualId, point);
           if (actualId != markerId) _updateConnectedLinePoints(_lineDataMap, markerId, point);
         });
-        final saved = await _saveMovedMarkerToTeamDoc(widget.teamName, actualId, point, groupName: ownMarker.group.name, markerIds: candidates);
-        if (saved) {
-          if (_isOriginalMarkerForSharedSync(ownMarker)) {
-            await _updateSharedMarkerCopies(
-              sourceTeamName: widget.teamName,
-              markerId: actualId,
-              originalMarkerId: _syncOriginalMarkerId(actualId, ownMarker),
-              point: point,
-            );
-          }
+        final fields = _canonicalFieldsFromSite(ownMarker, {'lat': point.latitude, 'lng': point.longitude});
+        _applyCanonicalMarkerMutationLocally(
+          initiatingMarker: ownMarker,
+          canonicalFields: fields,
+          updateConnectedLines: true,
+          initiatingTeamName: widget.teamName,
+        );
+        final canonicalSaved = await _commitCanonicalMarkerMutation(
+          initiatingMarker: ownMarker,
+          canonicalFields: fields,
+          updateConnectedLines: true,
+          mutationType: 'move',
+          initiatingTeamName: widget.teamName,
+        );
+        if (canonicalSaved) {
           _invalidateMarkerRenderHash();
           _scheduleMarkerUpdate(ms: 0);
           if (_verboseMapDebug) debugPrint('[KAKAO_MOVE_FOUND] scope=$scope markerId=$markerId originalMarkerId=$originalMarkerId');
@@ -1330,16 +1797,21 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
           _updateConnectedLinePoints(entry.value.lines, actualId, point);
           if (actualId != localId) _updateConnectedLinePoints(entry.value.lines, localId, point);
         });
-        final saved = await _saveMovedMarkerToTeamDoc(entry.key, actualId, point, groupName: site.group.name, markerIds: candidates);
-        if (saved) {
-          if (_isOriginalMarkerForSharedSync(site)) {
-            await _updateSharedMarkerCopies(
-              sourceTeamName: entry.key,
-              markerId: actualId,
-              originalMarkerId: _syncOriginalMarkerId(actualId, site),
-              point: point,
-            );
-          }
+        final fields = _canonicalFieldsFromSite(site, {'lat': point.latitude, 'lng': point.longitude});
+        _applyCanonicalMarkerMutationLocally(
+          initiatingMarker: site,
+          canonicalFields: fields,
+          updateConnectedLines: true,
+          initiatingTeamName: entry.key,
+        );
+        final canonicalSaved = await _commitCanonicalMarkerMutation(
+          initiatingMarker: site,
+          canonicalFields: fields,
+          updateConnectedLines: true,
+          mutationType: 'move',
+          initiatingTeamName: entry.key,
+        );
+        if (canonicalSaved) {
           _invalidateMarkerRenderHash();
           _scheduleMarkerUpdate(ms: 0);
           if (_verboseMapDebug) debugPrint('[KAKAO_MOVE_FOUND] scope=$scope markerId=$markerId originalMarkerId=$originalMarkerId');
@@ -1478,6 +1950,10 @@ void _flushPendingMarkerUpdateAfterMapIdle() {
 
 void _invalidateMarkerRenderHash() {
   _lastSentMarkersHash = null;
+  _lastSentLinesHash = null;
+}
+
+void _invalidateLineRenderHash() {
   _lastSentLinesHash = null;
 }
 
@@ -1656,7 +2132,9 @@ void _applyLineRenderKey(Map<String, dynamic> line) {
     line['displayKey'] ?? '',
     line['title'] ?? line['name'] ?? '',
     line['color'] ?? '',
+    line['colorValue'] ?? '',
     line['pathHash'] ?? '',
+    line['isVisible'] ?? true,
     line['duplicateCount'] ?? 1,
   ].join('|');
 }
@@ -1671,6 +2149,7 @@ Map<String, dynamic> _lineToJson(String id, LineData line, {required String owne
     'title': line.title,
     'description': line.description,
     'color': color,
+    'colorValue': line.colorValue,
     'isVisible': line.isVisible,
     'markerIds': line.markerIds,
     'points': points,
@@ -2056,6 +2535,7 @@ Future<void> _loadData() async {
         });
 
         // 화면에 마커 아이콘 다시 그리기
+        _invalidateMarkerRenderHash();
         _scheduleMarkerUpdate(ms: 200);
       } else if (!doc.exists && mounted) {
         // 📍 2. 관리자가 파이어베이스에서 팀 폴더(문서)를 아예 삭제했을 때
@@ -2065,6 +2545,7 @@ Future<void> _loadData() async {
           _lineDataMap.clear();   // 선 데이터 비우기
         });
         // 화면에서 마커/선 싹 지우기
+        _invalidateMarkerRenderHash();
         _scheduleMarkerUpdate(ms: 200);
 
         // (선택 사항) 사용자에게 알려주기
@@ -2114,6 +2595,7 @@ Future<void> _loadData() async {
             );
           }
         });
+        _invalidateMarkerRenderHash();
         _scheduleMarkerUpdate(ms: 200); // 화면 갱신
       });
     }
@@ -2742,14 +3224,17 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                                 var p = categoryPhotos[i];
                                 return Stack(
                                   children: [
-                                    Container(
-                                      margin: const EdgeInsets.only(right: 10, top: 10),
-                                      width: 80, height: 80,
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: (kIsWeb || p.filePath.startsWith('http')) 
-                                            ? Image.network(p.filePath, fit: BoxFit.cover, errorBuilder: (c,e,s)=>const Icon(Icons.error)) 
-                                            : Image.file(File(p.filePath), fit: BoxFit.cover),
+                                    GestureDetector(
+                                      onTap: () => _showEnlargedPhoto(p.filePath, p.comment),
+                                      child: Container(
+                                        margin: const EdgeInsets.only(right: 10, top: 10),
+                                        width: 80, height: 80,
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: (kIsWeb || p.filePath.startsWith('http'))
+                                              ? Image.network(p.filePath, fit: BoxFit.cover, errorBuilder: (c,e,s)=>const Icon(Icons.error))
+                                              : Image.file(File(p.filePath), fit: BoxFit.cover),
+                                        ),
                                       ),
                                     ),
                                     Positioned(
@@ -2831,6 +3316,42 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
           sourceMarkerId: existingData?.sourceMarkerId,
           parentMarkerId: existingData?.parentMarkerId,
         );
+
+        if (!isNewMarker) {
+          final mutationTeamName = targetTeamName ?? widget.teamName;
+          final fields = _canonicalFieldsFromSite(newData, {
+            'title': newData.title,
+            'description': newData.description,
+            'address': newData.address,
+            'lat': newData.lat,
+            'lng': newData.lng,
+            'isChecked': existingData?.isChecked == true,
+          });
+          _applyCanonicalMarkerMutationLocally(
+            initiatingMarker: newData,
+            canonicalFields: fields,
+            updateConnectedLines: true,
+            initiatingTeamName: mutationTeamName,
+          );
+          final saved = await _commitCanonicalMarkerMutation(
+            initiatingMarker: newData,
+            canonicalFields: fields,
+            updateConnectedLines: true,
+            mutationType: 'details',
+            initiatingTeamName: mutationTeamName,
+          );
+          if (!saved) throw Exception('marker canonical mutation target not found');
+
+          final shouldUpload = isAdmin ? _spreadsheetEnabled : true;
+          if (shouldUpload) {
+            if (targetTeamName != null) {
+              await _uploadToSpreadsheet(newData, targetTeamName: targetTeamName);
+            } else {
+              await _uploadToSpreadsheet(newData);
+            }
+          }
+          return;
+        }
 
         if (isAdmin && targetTeamName != null) {
            // 관리자 모드 저장 로직
@@ -3579,33 +4100,32 @@ void _showMarkerDetails(String mid, {TeamData? fromOtherTeam}) {
                           activeColor: Colors.orangeAccent,
                           onChanged: (val) async {
                   setModalState(() => d.isChecked = val);
-                  final originalMarkerId = _syncOriginalMarkerId(d.id, d);
+                  _applyCanonicalMarkerMutationLocally(
+                    initiatingMarker: d,
+                    canonicalFields: _canonicalFieldsFromSite(d, {'isChecked': val}),
+                    updateConnectedLines: false,
+                    initiatingTeamName: targetTeamName ?? widget.teamName,
+                  );
                    
                   // 1. 서버/로컬 데이터 저장
                   if (isAdmin && targetTeamName != null) {
-                    final saved = await _saveMarkerCheckToTeamDoc(targetTeamName, d.id, originalMarkerId, val, groupName: d.group.name);
-                    if (saved && _isOriginalMarkerForSharedSync(d)) {
-                      await _updateSharedMarkerCopies(
-                        sourceTeamName: targetTeamName,
-                        markerId: d.id,
-                        originalMarkerId: originalMarkerId,
-                        isChecked: val,
-                      );
-                    } else if (!saved) {
-                      debugPrint('[SYNC_SHARED_MARKER_NOT_FOUND] markerId=${d.id} originalMarkerId=$originalMarkerId');
-                    }
+                    await _commitCanonicalMarkerMutation(
+                      initiatingMarker: d,
+                      canonicalFields: _canonicalFieldsFromSite(d, {'isChecked': val}),
+                      updateConnectedLines: false,
+                      mutationType: 'check',
+                      initiatingTeamName: targetTeamName,
+                    );
                     // ✅ [추가] 관리자 모드 시트 동기화
                     await _syncToGoogleSheetAdmin(d, targetTeamName); 
                   } else {
-                    await _saveData();
-                    if (_isOriginalMarkerForSharedSync(d)) {
-                      await _updateSharedMarkerCopies(
-                        sourceTeamName: widget.teamName,
-                        markerId: d.id,
-                        originalMarkerId: originalMarkerId,
-                        isChecked: val,
-                      );
-                    }
+                    await _commitCanonicalMarkerMutation(
+                      initiatingMarker: d,
+                      canonicalFields: _canonicalFieldsFromSite(d, {'isChecked': val}),
+                      updateConnectedLines: false,
+                      mutationType: 'check',
+                      initiatingTeamName: widget.teamName,
+                    );
                     // ✅ [추가] 내 팀 시트 동기화
                     await _syncToGoogleSheet(d); 
                   }
@@ -4150,6 +4670,7 @@ void _showCreateMenu() {
                         for (String targetTeam in selectedTargetTeams) {
                           if (targetTeam == widget.teamName) {
                             setState(() { _lineDataMap[id] = newLine; });
+                            _invalidateLineRenderHash();
                             _scheduleMarkerUpdate(ms: 0);
                             _saveData();
                           } else {
@@ -4189,6 +4710,7 @@ void _showCreateMenu() {
                           _tempLineMarkerIds.clear();
                           _tempFreeLinePoints.clear();
                         });
+                        _invalidateLineRenderHash();
                         _scheduleMarkerUpdate(ms: 0);
                         await _saveData();
                         if (isAdmin && existingLine != null) {
@@ -4238,6 +4760,7 @@ const SizedBox(height: 5),
                   icon: const Icon(Icons.delete, color: Colors.red),
                   onPressed: () {
                     setState(() => _lineDataMap.remove(lid));
+                    _invalidateLineRenderHash();
                     _scheduleMarkerUpdate(ms: 0);
                     _saveData();
                     Navigator.pop(context);
@@ -5262,6 +5785,7 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
             activeColor: Color(line.colorValue),
             onChanged: (val) async {
               setState(() { line.isVisible = val; });
+              _invalidateLineRenderHash();
               _scheduleMarkerUpdate();
               
               if (isMyLine) {
@@ -5313,6 +5837,7 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
                         
                         if (isMyLine) {
                           setState(() => _lineDataMap.remove(line.id));
+                          _invalidateLineRenderHash();
                           _scheduleMarkerUpdate();
                           _saveData();
                         } else if (teamName != null) {
