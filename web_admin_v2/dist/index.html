@@ -3684,21 +3684,34 @@
       document.getElementById("infoCard").classList.add("hidden");
     }
 
+    function resetSidebarExpandedState() {
+  renderTeams();
+  renderMyData();
+}
+
     function toggleSidebar() {
       var app = document.getElementById("app");
       var closed = app.classList.toggle("sidebar-closed");
       app.classList.toggle("sidebar-open", !closed);
-      setTimeout(relayoutMap, 240);
-    }
 
-    function closeSidebar() {
-      var app = document.getElementById("app");
-      if (!app.classList.contains("sidebar-closed")) {
-        app.classList.add("sidebar-closed");
-        app.classList.remove("sidebar-open");
-        setTimeout(relayoutMap, 240);
-      }
-    }
+     if (closed) {
+        resetSidebarExpandedState();
+   }
+
+     setTimeout(relayoutMap, 240);
+}
+
+function closeSidebar() {
+  var app = document.getElementById("app");
+  if (!app.classList.contains("sidebar-closed")) {
+    app.classList.add("sidebar-closed");
+    app.classList.remove("sidebar-open");
+
+    resetSidebarExpandedState();
+
+    setTimeout(relayoutMap, 240);
+  }
+}
 
     function toggleMarkerMoveMode() {
       markerMoveMode = !markerMoveMode;
