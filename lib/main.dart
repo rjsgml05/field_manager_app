@@ -394,13 +394,14 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   String? _lastSentMarkersHash;
   String? _lastSentLinesHash;
   bool? _lastSentMarkerMoveMode;
-  bool _isTappingMode = false, _isMoveMode = false, _isLineMode = false;
+    bool _isTappingMode = false, _isMoveMode = false, _isLineMode = false;
   bool _isMapControlActive = true;
   bool _dedupeMapRenderItems = true;
   bool _isFreeLineMode = false;
   bool _isModalOpen = false;
   bool _isHoveringUI = false;
   bool _spreadsheetEnabled = false;
+  bool _isAdminQuickSlotsVisible = false;
   bool _isLineDeleteMode = false;
   Set<String> _selectedLineIds = {};
   List<LatLng> _tempFreeLinePoints = [];
@@ -2189,7 +2190,15 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
 
     if (_canQuickSlotCreateMarker) {
       await _quickCreateMarkerAt(point);
-    } else if (isAdmin && _quickGroupMode == 1 && _quickSelectedGroupName != null && !_isLineMode && !_isFreeLineMode && !_isLineDeleteMode) {
+    } else if (
+      isAdmin &&
+      _isAdminQuickSlotsVisible &&
+      _quickGroupMode == 1 &&
+      _quickSelectedGroupName != null &&
+      !_isLineMode &&
+      !_isFreeLineMode &&
+      !_isLineDeleteMode
+    ) {
       _showInputSheet(newPoint: point);
     } else if (_isTappingMode) {
       _showInputSheet(newPoint: point);
@@ -3269,8 +3278,9 @@ Future<void> _loadData() async {
     _quickGroupMode = 0;
   }
 
-  bool get _canQuickSlotCreateMarker {
+    bool get _canQuickSlotCreateMarker {
     return isAdmin &&
+        _isAdminQuickSlotsVisible &&
         _quickGroupMode == 2 &&
         _quickSelectedGroupName != null &&
         _userGroups.any((g) => g.name == _quickSelectedGroupName) &&
@@ -4129,8 +4139,16 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
     );
   }
 
-  Widget _buildAdminGroupQuickSlots() {
-    if (!isAdmin || _userGroups.isEmpty || _isModalOpen || !_isMapControlActive || _isLineMode || _isFreeLineMode) {
+    Widget _buildAdminGroupQuickSlots() {
+    if (
+      !isAdmin ||
+      !_isAdminQuickSlotsVisible ||
+      _userGroups.isEmpty ||
+      _isModalOpen ||
+      !_isMapControlActive ||
+      _isLineMode ||
+      _isFreeLineMode
+    ) {
       return const SizedBox.shrink();
     }
 
@@ -4206,12 +4224,19 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
     // 2. 화면 구성 시작
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      appBar: AppBar(
+        appBar: AppBar(
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Expanded(child: Text('${widget.teamName} ($_roleLabel)-지도')),
-            const Text("제작자 : 박건희", style: TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Colors.white70)),
+            const Text(
+              "제작자 : 박건희",
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.normal,
+                color: Colors.white70,
+              ),
+            ),
           ],
         ),
         backgroundColor: isAdmin ? Colors.blueAccent : Colors.green,
@@ -4219,22 +4244,61 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
       drawer: _buildDrawer(),
       floatingActionButton: _uiBlocker(
         Column(
-          mainAxisAlignment: MainAxisAlignment.end, 
+          mainAxisAlignment: MainAxisAlignment.end,
           children: [
+            if (isAdmin) ...[
+              FloatingActionButton(
+                heroTag: "quickSlots",
+                tooltip: _isAdminQuickSlotsVisible
+                    ? "퀵상태바 끄기"
+                    : "퀵상태바 켜기",
+                backgroundColor: _isAdminQuickSlotsVisible
+                    ? Colors.blueAccent
+                    : Colors.white,
+                onPressed: () {
+                  setState(() {
+                    _isAdminQuickSlotsVisible =
+                        !_isAdminQuickSlotsVisible;
+
+                    if (!_isAdminQuickSlotsVisible) {
+                      _quickSelectedGroupName = null;
+                      _quickGroupMode = 0;
+                    }
+                  });
+                },
+                child: Icon(
+                  _isAdminQuickSlotsVisible
+                      ? Icons.visibility_off
+                      : Icons.view_stream,
+                  color: _isAdminQuickSlotsVisible
+                      ? Colors.white
+                      : Colors.blueAccent,
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+
             FloatingActionButton(
-              heroTag: "move", 
-              backgroundColor: _isMoveMode ? Colors.orange : Colors.white, 
+              heroTag: "move",
+              backgroundColor: _isMoveMode ? Colors.orange : Colors.white,
               onPressed: () {
-                setState(() { _isMoveMode = !_isMoveMode; });
+                setState(() {
+                  _isMoveMode = !_isMoveMode;
+                });
                 _setMarkerMoveModeOnKakaoMap(_isMoveMode);
                 _scheduleMarkerUpdate();
-              }, 
-              child: Icon(Icons.open_with, color: _isMoveMode ? Colors.white : Colors.black)
+              },
+              child: Icon(
+                Icons.open_with,
+                color: _isMoveMode ? Colors.white : Colors.black,
+              ),
             ),
+
             const SizedBox(height: 10),
+
             Padding(
-              padding: const EdgeInsets.only(bottom: 100), 
-                            child: FloatingActionButton(
+              padding: const EdgeInsets.only(bottom: 100),
+              child: FloatingActionButton(
                 heroTag: "gps",
                 onPressed: () async {
                   try {
