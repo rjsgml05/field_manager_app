@@ -599,22 +599,21 @@
     }
 
     .line-label {
-      max-width: 160px;
-      padding: 3px 8px;
-      border: 1px solid rgba(15, 23, 42, 0.16);
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.92);
-      box-shadow: none;
-      color: #111827;
-      font-size: 12px;
-      font-weight: 800;
-      line-height: 1.2;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      box-shadow: 0 2px 7px rgba(15, 23, 42, 0.18);
-      pointer-events: none;
-    }
+  max-width: 160px;
+  padding: 4px 9px;
+  border: 3px solid rgba(15, 23, 42, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #111827;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.18);
+  pointer-events: none;
+}
 
     .marker-card {
       display: grid;
@@ -890,27 +889,762 @@
     }
 
     .marker-edit-button:disabled {
-      cursor: wait;
-      opacity: 0.64;
-    }
+  cursor: wait;
+  opacity: 0.64;
+}
+.drawing-queue-panel {
+  position: absolute;
+  top: 62px;
+  right: 12px;
+  z-index: 12;
+  width: 330px;
+  max-height: calc(100vh - 86px);
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(217, 222, 231, 0.96);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: var(--shadow);
+}
 
-    @media (max-width: 820px) {
-      :root { --sidebar-width: 300px; }
-      .sidebar-title { font-size: 18px; }
-      .map-toolbar {
-        left: 8px;
-        right: 8px;
-        justify-content: flex-end;
-        overflow-x: auto;
-      }
+.drawing-queue-panel.hidden,
+.drawing-select-overlay.hidden {
+  display: none;
+}
 
-      .info-card {
-        width: calc(100% - 20px);
-        bottom: 12px;
-        max-height: 62vh;
-      }
-    }
-  </style>
+.drawing-queue-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.drawing-queue-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 900;
+  color: #111827;
+}
+
+.drawing-queue-list {
+  display: grid;
+  gap: 8px;
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+}
+
+.drawing-queue-empty {
+  margin: 0;
+  padding: 14px 8px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.drawing-queue-item {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 8px;
+  padding: 7px;
+  border: 1px solid #e5eaf2;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.drawing-queue-item.active {
+  border-color: #16a34a;
+  background: #f0fdf4;
+}
+
+.drawing-queue-thumb {
+  width: 58px;
+  height: 76px;
+  object-fit: contain;
+  border: 1px solid #d7deea;
+  border-radius: 5px;
+  background: #f8fafc;
+}
+
+.drawing-queue-info {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.drawing-queue-name {
+  overflow: hidden;
+  color: #111827;
+  font-size: 12px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawing-queue-status {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.drawing-queue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.drawing-small-button {
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid #d7deea;
+  border-radius: 6px;
+  background: #fff;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.drawing-small-button.primary {
+  border-color: #16a34a;
+  background: #16a34a;
+  color: #fff;
+}
+
+.drawing-small-button.danger {
+  border-color: #dc2626;
+  background: #dc2626;
+  color: #fff;
+}
+
+.drawing-select-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.drawing-select-dialog {
+  width: min(1180px, 100%);
+  height: min(860px, calc(100vh - 36px));
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 12px;
+  padding: 18px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.drawing-select-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.drawing-select-title {
+  margin: 0;
+  color: #111827;
+  font-size: 19px;
+  font-weight: 900;
+}
+
+.drawing-select-description {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid #e5eaf2;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.drawing-page-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
+  gap: 12px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.drawing-page-card {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 2px solid transparent;
+  border-radius: 9px;
+  background: #f8fafc;
+  cursor: pointer;
+}
+
+.drawing-page-card.selected {
+  border-color: #16a34a;
+  background: #f0fdf4;
+}
+
+.drawing-page-preview {
+  width: 100%;
+  height: 214px;
+  object-fit: contain;
+  border: 1px solid #d7deea;
+  border-radius: 5px;
+  background: #fff;
+}
+
+.drawing-page-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+}
+
+.drawing-page-label {
+  min-width: 0;
+  overflow: hidden;
+  color: #111827;
+  font-size: 12px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawing-page-check {
+  width: 18px;
+  height: 18px;
+  accent-color: #16a34a;
+}
+
+.drawing-select-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.drawing-dialog-button {
+  min-width: 104px;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid #d7deea;
+  border-radius: 7px;
+  background: #fff;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.drawing-dialog-button.primary {
+  border-color: #16a34a;
+  background: #16a34a;
+  color: #fff;
+}
+
+.drawing-dialog-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.drawing-crop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.7);
+}
+
+.drawing-crop-overlay.hidden {
+  display: none;
+}
+
+.drawing-crop-dialog {
+  width: min(1240px, 100%);
+  height: min(900px, calc(100vh - 36px));
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 12px;
+  padding: 18px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.drawing-crop-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.drawing-crop-title {
+  margin: 0;
+  color: #111827;
+  font-size: 19px;
+  font-weight: 900;
+}
+
+.drawing-crop-description {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid #e5eaf2;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+
+.drawing-crop-stage {
+  min-height: 0;
+  overflow: auto;
+  padding: 0;
+  border: 1px solid #d7deea;
+  border-radius: 10px;
+  background: #e5e7eb;
+  overscroll-behavior: contain;
+}
+
+.drawing-crop-canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  background: #fff;
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.2);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.drawing-crop-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.drawing-crop-info {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.drawing-crop-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.drawing-pin-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 86;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.drawing-pin-overlay.hidden {
+  display: none;
+}
+
+.drawing-pin-dialog {
+  width: min(1240px, 100%);
+  height: min(900px, calc(100vh - 36px));
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 12px;
+  padding: 18px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.drawing-pin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.drawing-pin-title {
+  margin: 0;
+  color: #111827;
+  font-size: 19px;
+  font-weight: 900;
+}
+
+.drawing-pin-description {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid #e5eaf2;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.drawing-pin-stage {
+  min-height: 0;
+  overflow: auto;
+  padding: 0;
+  border: 1px solid #d7deea;
+  border-radius: 10px;
+  background: #e5e7eb;
+  overscroll-behavior: contain;
+}
+
+.drawing-pin-canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  background: #fff;
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.2);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.drawing-canvas-workspace {
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 52px;
+}
+
+.drawing-crop-stage.panning,
+.drawing-pin-stage.panning,
+.drawing-crop-stage.panning .drawing-crop-canvas,
+.drawing-pin-stage.panning .drawing-pin-canvas {
+  cursor: grabbing;
+}
+
+.drawing-pin-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.drawing-pin-info {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.drawing-pin-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.drawing-map-control-pin {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #16a34a;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.38);
+  transform: translate(-50%, -50%);
+}
+
+.drawing-aligned-overlay-anchor {
+  position: relative;
+  width: 0;
+  height: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.drawing-aligned-overlay-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  max-width: none;
+  max-height: none;
+  opacity: 0.5;
+  pointer-events: none;
+  user-select: none;
+  transform-origin: 0 0;
+}
+
+.drawing-object-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 87;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.74);
+}
+
+.drawing-object-overlay.hidden {
+  display: none;
+}
+
+.drawing-object-dialog {
+  width: min(1240px, 100%);
+  height: min(900px, calc(100vh - 36px));
+  display: grid;
+  grid-template-rows: auto auto auto 1fr auto;
+  gap: 12px;
+  padding: 18px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.drawing-object-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.drawing-object-title {
+  margin: 0;
+  color: #111827;
+  font-size: 19px;
+  font-weight: 900;
+}
+
+.drawing-object-description {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid #e5eaf2;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.drawing-object-group-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.drawing-object-group-row label {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.drawing-object-group-select {
+  min-width: 180px;
+  height: 34px;
+  padding: 0 9px;
+  border: 1px solid #d7deea;
+  border-radius: 7px;
+  background: #fff;
+  color: #111827;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.drawing-object-stage {
+  min-height: 0;
+  overflow: auto;
+  padding: 0;
+  border: 1px solid #d7deea;
+  border-radius: 10px;
+  background: #e5e7eb;
+  overscroll-behavior: contain;
+}
+
+.drawing-object-canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  background: #fff;
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.2);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.drawing-object-stage.panning,
+.drawing-object-stage.panning .drawing-object-canvas {
+  cursor: grabbing;
+}
+
+.drawing-object-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.drawing-object-info {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.drawing-object-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.drawing-object-candidate {
+  position: relative;
+  min-width: 52px;
+  height: 28px;
+  padding: 0 8px 0 22px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #f97316;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.44);
+  white-space: nowrap;
+}
+
+.drawing-object-candidate::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ffffff;
+  transform: translateY(-50%);
+}
+
+.drawing-object-candidate:hover {
+  background: #ea580c;
+}
+
+.drawing-trace-toolbar {
+  position: absolute;
+  right: 12px;
+  bottom: 18px;
+  z-index: 14;
+  width: 250px;
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid rgba(217, 222, 231, 0.96);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: var(--shadow);
+}
+
+.drawing-trace-toolbar.hidden {
+  display: none;
+}
+
+.drawing-trace-title {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.drawing-trace-opacity {
+  display: grid;
+  gap: 5px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.drawing-trace-opacity input {
+  width: 100%;
+  accent-color: #16a34a;
+}
+
+.drawing-trace-toolbar .drawing-small-button {
+  width: 100%;
+  height: 32px;
+}
+
+#map.drawing-pin-capture-mode,
+#map.drawing-pin-capture-mode * {
+  cursor: crosshair !important;
+}
+
+.drawing-map-pin-capture-banner {
+  position: absolute;
+  top: 62px;
+  left: 50%;
+  z-index: 13;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: rgba(22, 163, 74, 0.96);
+  color: #fff;
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.drawing-map-pin-capture-banner.hidden {
+  display: none;
+}
+
+@media (max-width: 820px) {
+  :root {
+    --sidebar-width: 300px;
+  }
+
+  .sidebar-title {
+    font-size: 18px;
+  }
+
+  .map-toolbar {
+    left: 8px;
+    right: 8px;
+    justify-content: flex-end;
+    overflow-x: auto;
+  }
+
+  .info-card {
+    width: calc(100% - 20px);
+    bottom: 12px;
+    max-height: 62vh;
+  }
+
+  .drawing-queue-panel {
+    width: min(330px, calc(100% - 16px));
+    right: 8px;
+  }
+
+  .drawing-select-dialog,
+  .drawing-crop-dialog {
+    height: calc(100vh - 20px);
+    padding: 12px;
+  }
+}
+</style>
 </head>
 <body>
   <div id="app" class="sidebar-open">
@@ -957,14 +1691,17 @@
         <button id="addGroupButton" class="full-button" type="button">+ 새 그룹 추가</button>
 
         <section class="section">
-          <div class="section-header">
-            <span>선 목록 (Lines)</span>
-            <button id="lineToggleButton" class="tiny-button" type="button">-</button>
-          </div>
-          <div id="lineSectionBody" class="section-body list">
-            <p class="empty-text">선 데이터가 없습니다.</p>
-          </div>
-        </section>
+  <div class="section-header">
+    <span>선 목록 (Lines)</span>
+    <div class="row-actions">
+      <button id="lineMultiDeleteButton" class="tiny-button" type="button">다중삭제</button>
+      <button id="lineToggleButton" class="tiny-button" type="button">-</button>
+    </div>
+  </div>
+  <div id="lineSectionBody" class="section-body list">
+    <p class="empty-text">선 데이터가 없습니다.</p>
+  </div>
+</section>
       </div>
 
       <footer class="sidebar-footer">
@@ -978,14 +1715,142 @@
       <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="Toggle sidebar">☰</button>
       <div id="map" aria-label="Field Manager Admin V2 KakaoMap"></div>
       <div class="map-toolbar" aria-label="Map controls">
-        <button id="refreshButton" class="map-button" type="button">새로고침</button>
-        <button id="fitBoundsButton" class="map-button" type="button">전체보기</button>
-        <button id="markerMoveButton" class="map-button" type="button">마커 이동</button>
-        <button id="cadastralButton" class="map-button" type="button">지적편집도</button>
-        <span class="readonly-badge">READ ONLY</span>
-      </div>
+    <button id="refreshButton" class="map-button" type="button">새로고침</button>
+    <button id="fitBoundsButton" class="map-button" type="button">전체보기</button>
+    <button id="markerCreateButton" class="map-button" type="button">마커 추가</button>
+    <button id="freeLineCreateButton" class="map-button" type="button">선 그리기</button>
+    <button id="freeLineUndoButton" class="map-button" type="button" style="display:none;">되돌리기</button>
+    <button id="freeLineCancelButton" class="map-button" type="button" style="display:none;">취소</button>
+    <button id="markerMoveButton" class="map-button" type="button">마커 이동</button>
+    <button id="cadastralButton" class="map-button" type="button">지적편집도</button>
+    <button id="drawingOverlayUploadButton" class="map-button" type="button">도면 올리기</button>
+    <button id="aiImportButton" class="map-button" type="button">AI 탐지 가져오기</button>
+    <input
+    id="drawingOverlayFileInput"
+    type="file"
+    accept=".pdf,image/jpeg,image/png,image/webp"
+    style="display:none;"
+    >
+    <span class="readonly-badge">READ ONLY</span>
+  </div>
 
-      <section id="infoCard" class="info-card hidden" aria-label="Marker information">
+<section id="drawingQueuePanel" class="drawing-queue-panel hidden" aria-label="도면 작업 대기열">
+  <div class="drawing-queue-head">
+    <h2 class="drawing-queue-title">도면 작업 대기열</h2>
+    <button id="drawingQueueCloseButton" class="close-button" type="button" aria-label="Close drawing queue">x</button>
+  </div>
+
+  <div id="drawingQueueList" class="drawing-queue-list">
+    <p class="drawing-queue-empty">선택된 도면이 없습니다.</p>
+  </div>
+</section>
+
+<div id="drawingSelectOverlay" class="drawing-select-overlay hidden" aria-label="PDF 도면 선택">
+  <section class="drawing-select-dialog">
+    <div class="drawing-select-header">
+      <h2 id="drawingSelectTitle" class="drawing-select-title">PDF 도면 선택</h2>
+      <button id="drawingSelectCloseButton" class="close-button" type="button" aria-label="Close drawing selector">x</button>
+    </div>
+
+    <p class="drawing-select-description">
+      작업할 도면 페이지를 여러 장 선택하세요. 선택한 페이지는 작업 대기열에 저장되며, 다음 단계에서 필요한 범위를 자른 뒤 기준핀으로 지도에 맞춥니다.
+    </p>
+
+    <div id="drawingPageGrid" class="drawing-page-grid">
+      <p class="drawing-queue-empty">PDF 페이지를 불러오는 중입니다.</p>
+    </div>
+
+    <div class="drawing-select-actions">
+      <button id="drawingSelectCancelButton" class="drawing-dialog-button" type="button">취소</button>
+      <button id="drawingAddQueueButton" class="drawing-dialog-button primary" type="button">선택 도면 대기열 추가</button>
+    </div>
+  </section>
+</div>
+
+<div id="drawingCropOverlay" class="drawing-crop-overlay hidden" aria-label="도면 범위 선택">
+  <section class="drawing-crop-dialog">
+    <div class="drawing-crop-header">
+      <h2 id="drawingCropTitle" class="drawing-crop-title">도면 범위 선택</h2>
+      <button id="drawingCropCloseButton" class="close-button" type="button" aria-label="Close drawing crop">x</button>
+    </div>
+
+    <p class="drawing-crop-description">
+      마우스 휠로 확대·축소한 뒤 사용할 영역의 꼭짓점 4개를 순서대로 클릭하세요.
+      권장 순서: 좌상단 → 우상단 → 우하단 → 좌하단.
+    </p>
+
+    <div id="drawingCropStage" class="drawing-crop-stage">
+  <div class="drawing-canvas-workspace">
+    <canvas id="drawingCropCanvas" class="drawing-crop-canvas"></canvas>
+  </div>
+</div>
+
+    <div class="drawing-crop-actions">
+      <div id="drawingCropInfo" class="drawing-crop-info">꼭짓점 0 / 4개 선택 필요 · 휠로 확대/축소</div>
+
+      <div class="drawing-crop-buttons">
+        <button id="drawingCropResetButton" class="drawing-dialog-button" type="button">선택 초기화</button>
+        <button id="drawingCropCancelButton" class="drawing-dialog-button" type="button">취소</button>
+        <button id="drawingCropConfirmButton" class="drawing-dialog-button primary" type="button">선택 범위 확정</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div id="drawingPinOverlay" class="drawing-pin-overlay hidden" aria-label="도면 기준핀 선택">
+  <section class="drawing-pin-dialog">
+    <div class="drawing-pin-header">
+      <h2 id="drawingPinTitle" class="drawing-pin-title">도면 기준핀 지정</h2>
+      <button id="drawingPinCloseButton" class="close-button" type="button" aria-label="Close drawing pin">x</button>
+    </div>
+
+    <p class="drawing-pin-description">
+  용적도와 지적편집도에서 공통으로 확인 가능한 필지 경계 모서리·경계선 교차점 등을 선택하세요.
+  이 기준점은 두 지도를 맞추기 위한 점이며, 실제 마커 위치를 찍는 단계가 아닙니다.
+  서로 떨어진 비직선 위치로 최소 3개를 지정해야 합니다.
+</p>
+
+<div id="drawingPinStage" class="drawing-pin-stage">
+  <div class="drawing-canvas-workspace">
+    <canvas id="drawingPinCanvas" class="drawing-pin-canvas"></canvas>
+  </div>
+</div>
+
+    <div class="drawing-pin-actions">
+      <div id="drawingPinInfo" class="drawing-pin-info">기준핀 0개 / 최소 3개 필요</div>
+
+      <div class="drawing-pin-buttons">
+        <button id="drawingPinUndoButton" class="drawing-dialog-button" type="button">마지막 핀 삭제</button>
+        <button id="drawingPinResetButton" class="drawing-dialog-button" type="button">전체 초기화</button>
+        <button id="drawingPinDoneButton" class="drawing-dialog-button primary" type="button">닫기</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div id="drawingMapPinCaptureBanner" class="drawing-map-pin-capture-banner hidden">
+  <span id="drawingMapPinCaptureText">지도에서 같은 위치를 클릭하세요.</span>
+  <button id="drawingMapPinCancelButton" class="drawing-small-button" type="button">취소</button>
+</div>
+
+<div id="drawingTraceToolbar" class="drawing-trace-toolbar hidden" aria-label="용적도 직접 마커 추가">
+  <div class="drawing-trace-title">용적도 겹침 작업</div>
+
+  <label class="drawing-trace-opacity">
+    <span>도면 투명도</span>
+    <input id="drawingTraceOpacityRange" type="range" min="10" max="90" value="50">
+  </label>
+
+  <button id="drawingTraceMarkerButton" class="drawing-small-button primary" type="button">
+    도면 위 직접 찍기
+  </button>
+
+  <button id="drawingOverlayClearButton" class="drawing-small-button danger" type="button">
+    도면 제거
+  </button>
+</div>
+
+<section id="infoCard" class="info-card hidden" aria-label="Marker information">
         <div class="info-header">
           <h2 class="info-title">마커 정보</h2>
           <button id="closeInfoButton" class="close-button" type="button" aria-label="Close marker info">x</button>
@@ -997,6 +1862,7 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=4a2743b9e49b8da391510688eb04d69d&autoload=false"></script>
   <script>
     console.log("[ADMIN_V2] init");
@@ -1026,9 +1892,59 @@
     var lineVisibility = {};
     var initialAutoFitDone = false;
     var TARGET_MARKER_LEVEL = 2;
+    var markerCreateMode = false;
+    var lastMarkerCreateGroupName = "";
+    var freeLineCreateMode = false;
+    var pendingFreeLinePoints = [];
+    var pendingFreeLineOverlay = null;
     var markerMoveMode = false;
-    var suppressNextMapClick = false;
+    var drawingPdfDocument = null;
+    var drawingSelectionFileName = "";
+    var drawingPagePreviewByNumber = {};
+    var drawingQueue = [];
+    var activeDrawingQueueId = "";
+    var drawingQueueSequence = 0;
+
+    var drawingCropState = {
+        queueId: "",
+        image: null,
+        points: [],
+        hasSelection: false
+};
+
+    var drawingPinState = {
+        queueId: "",
+        image: null,
+        pendingImagePoint: null,
+      awaitingMapPoint: false
+};
+
+    var drawingCanvasZoomState = {
+        crop: 1,
+        pin: 1
+};
+
+    var drawingCanvasPanState = {
+        active: false,
+        stageId: "",
+        pointerId: null,
+        startClientX: 0,
+        startClientY: 0,
+        startScrollLeft: 0,
+        startScrollTop: 0
+};
+
+    var drawingControlMapOverlays = [];
+    var drawingAlignedOverlay = null;
+    var drawingAlignedOverlayImage = null;
+    var drawingAlignedOverlayQueueId = "";
+    var drawingMarkerTraceMode = false;
+
+    var suppressNextMapClick = false; 
+    var cadastralOverlayEnabled = false;
     var focusedMarkerId = null;
+    var selectedLineId = "";
+    var lastSelectedLineClickAt = 0;
     var markerEditState = { marker: null, saving: false };
     var markerDeleteState = { marker: null, deleting: false };
     var pendingMarkerMutations = {};
@@ -1087,22 +2003,59 @@
           try {
             var container = document.getElementById("map");
             map = new kakao.maps.Map(container, {
-              center: new kakao.maps.LatLng(BUSAN_CENTER.lat, BUSAN_CENTER.lng),
-              level: 4
-            });
-            setMapStatus("Map connected");
-            setTimeout(relayoutMap, 120);
+  center: new kakao.maps.LatLng(BUSAN_CENTER.lat, BUSAN_CENTER.lng),
+  level: 4
+});
+
+setMapStatus("Map connected");
+                        setTimeout(relayoutMap, 120);
             window.addEventListener("resize", function() {
-              setTimeout(relayoutMap, 60);
+              setTimeout(function() {
+                relayoutMap();
+                updateDrawingAlignedOverlayTransform();
+              }, 60);
             });
-            kakao.maps.event.addListener(map, "click", function(mouseEvent) {
-              if (suppressNextMapClick) {
-                suppressNextMapClick = false;
-                return;
-              }
-              closeMarkerInfo();
-              closeSidebar();
+
+            kakao.maps.event.addListener(map, "idle", function() {
+              updateDrawingAlignedOverlayTransform();
             });
+
+  kakao.maps.event.addListener(map, "click", function(mouseEvent) {
+  if (suppressNextMapClick) {
+    suppressNextMapClick = false;
+    return;
+  }
+
+  if (drawingPinState.awaitingMapPoint) {
+    captureDrawingMapPin(mouseEvent.latLng);
+    return;
+  }
+
+  if (freeLineCreateMode) {
+    addPendingFreeLinePoint(
+      mouseEvent.latLng.getLat(),
+      mouseEvent.latLng.getLng()
+    );
+    return;
+  }
+
+    if (markerCreateMode) {
+    showMarkerCreateModal(
+      mouseEvent.latLng.getLat(),
+      mouseEvent.latLng.getLng()
+    );
+    return;
+  }
+
+  closeMarkerInfo();
+
+  if (selectedLineId) {
+    selectedLineId = "";
+    renderMapLines(getVisibleLines());
+  }
+
+  closeSidebar();
+});
             subscribeAdminTeamsRealtime();
           } catch (error) {
             setMapStatus("Map error");
@@ -1215,16 +2168,19 @@
         }) : [];
 
         return {
-          id: String(teamDocId || ADMIN_TEAM_DOC_ID) + "::" + String(line.id || "line_" + index),
-          lineId: String(line.id || "line_" + index),
-          teamName: String(teamDocId || ADMIN_TEAM_DOC_ID),
-          title: line.title || "Untitled line",
-          description: line.description || "",
-          markerIds: Array.isArray(line.markerIds) ? line.markerIds.map(String) : [],
-          points: points,
-          color: colorValueToHex(line.colorValue, "#7C3AED"),
-          isVisible: line.isVisible !== false
-        };
+  id: String(teamDocId || ADMIN_TEAM_DOC_ID) + "::" + String(line.id || "line_" + index),
+  lineId: String(line.id || "line_" + index),
+  originalLineId: String(line.originalLineId || ""),
+  sourceLineId: String(line.sourceLineId || ""),
+  groupName: String(line.groupName || ""),
+  teamName: String(teamDocId || ADMIN_TEAM_DOC_ID),
+  title: line.title || "Untitled line",
+  description: line.description || "",
+  markerIds: Array.isArray(line.markerIds) ? line.markerIds.map(String) : [],
+  points: points,
+  color: colorValueToHex(line.colorValue, "#7C3AED"),
+  isVisible: line.isVisible !== false
+};
       });
     }
 
@@ -1644,10 +2600,10 @@
         ctx.fillText(title, width / 2, labelY + labelHeight / 2 + 0.4);
       }
 
-      var image = new kakao.maps.MarkerImage(
+        var image = new kakao.maps.MarkerImage(
         canvas.toDataURL("image/png"),
         new kakao.maps.Size(width, height),
-        { offset: new kakao.maps.Point(width / 2, height) }
+        { offset: new kakao.maps.Point(dotCx, dotCy) }
       );
       markerImageCache[cacheKey] = image;
       return image;
@@ -1780,12 +2736,14 @@
         var path = line.points.map(function(point) {
           return new kakao.maps.LatLng(point.lat, point.lng);
         });
+        var isSelected = selectedLineId === line.id;
         var signature = [
           line.id,
           line.displayKey,
           line.title,
           line.color,
           line.duplicateCount || 1,
+          isSelected ? "selected" : "normal",
           line.points.map(function(point) { return point.lat + "," + point.lng; }).join(";")
         ].join("|");
         var overlay = lineOverlays[line.id];
@@ -1796,9 +2754,9 @@
         overlay = new kakao.maps.Polyline({
           map: map,
           path: path,
-          strokeWeight: 3,
+          strokeWeight: isSelected ? 9 : 5,
           strokeColor: line.color,
-          strokeOpacity: 0.9,
+          strokeOpacity: isSelected ? 1 : 0.95,
           strokeStyle: "solid"
         });
         overlay.__signature = signature;
@@ -1818,41 +2776,65 @@
       renderLineLabels(lines);
     }
 
-    function renderLineLabels(lines) {
-      var keep = {};
+        function renderLineLabels(lines) {
+      var selectedLine = null;
 
-      lines.forEach(function(line) {
-        if (!line.points || line.points.length < 2 || !line.title) return;
-        keep[line.id] = true;
+      (lines || []).some(function(line) {
+        if (
+          line &&
+          line.id === selectedLineId &&
+          line.points &&
+          line.points.length >= 2 &&
+          line.title
+        ) {
+          selectedLine = line;
+          return true;
+        }
 
-        var position = lineLabelPosition(line);
-        var signature = [line.id, line.displayKey, line.title, line.color, line.duplicateCount || 1, position.lat, position.lng].join("|");
-        var overlay = lineLabelOverlays[line.id];
-
-        if (overlay && overlay.__signature === signature) return;
-        if (overlay) overlay.setMap(null);
-
-        var label = document.createElement("div");
-        label.className = "line-label";
-        label.textContent = line.title;
-        label.title = line.description || line.title;
-        label.style.borderColor = line.color;
-
-        overlay = new kakao.maps.CustomOverlay({
-          map: map,
-          position: new kakao.maps.LatLng(position.lat, position.lng),
-          content: label,
-          yAnchor: 0.5
-        });
-        overlay.__signature = signature;
-        lineLabelOverlays[line.id] = overlay;
+        return false;
       });
 
       Object.keys(lineLabelOverlays).forEach(function(id) {
-        if (keep[id]) return;
+        if (selectedLine && id === selectedLine.id) return;
+
         lineLabelOverlays[id].setMap(null);
         delete lineLabelOverlays[id];
       });
+
+      if (!selectedLine) return;
+
+      var position = lineLabelPosition(selectedLine);
+      var signature = [
+        selectedLine.id,
+        selectedLine.displayKey,
+        selectedLine.title,
+        selectedLine.color,
+        selectedLine.duplicateCount || 1,
+        position.lat,
+        position.lng
+      ].join("|");
+
+      var overlay = lineLabelOverlays[selectedLine.id];
+
+      if (overlay && overlay.__signature === signature) return;
+      if (overlay) overlay.setMap(null);
+
+      var label = document.createElement("div");
+      label.className = "line-label";
+      label.textContent = selectedLine.title;
+      label.title = selectedLine.description || selectedLine.title;
+      label.style.borderColor = selectedLine.color;
+
+      overlay = new kakao.maps.CustomOverlay({
+        map: map,
+        position: new kakao.maps.LatLng(position.lat, position.lng),
+        content: label,
+        yAnchor: 0.5,
+        zIndex: 4
+      });
+
+      overlay.__signature = signature;
+      lineLabelOverlays[selectedLine.id] = overlay;
     }
 
     function lineLabelPosition(line) {
@@ -1905,11 +2887,34 @@
       }, 900);
     }
 
-    function focusLine(line) {
-      if (!map || !line.points || !line.points.length) return;
-      var point = line.points[0];
+        function focusLine(line) {
+      if (!map || !line || !line.points || !line.points.length) return;
+
+      var now = Date.now();
+
+      suppressNextMapClick = true;
+
+      if (
+        selectedLineId === line.id &&
+        now - lastSelectedLineClickAt < 500
+      ) {
+        return;
+      }
+
+      selectedLineId = line.id;
+      lastSelectedLineClickAt = now;
+
+      renderMapLines(getVisibleLines());
+
+      var point = lineLabelPosition(line);
+
+      if (typeof map.getLevel === "function" && map.getLevel() > TARGET_MARKER_LEVEL) {
+        map.setLevel(TARGET_MARKER_LEVEL);
+      }
+
       map.setCenter(new kakao.maps.LatLng(point.lat, point.lng));
-      setAdminMessage("Line selected: " + line.title);
+
+      setAdminMessage("선 선택됨: " + line.title);
     }
 
     function cleanMarkerId(value) {
@@ -2933,9 +3938,35 @@
       var main = makeRowMain(group.name, count + " markers");
       var actions = document.createElement("div");
       actions.className = "row-actions";
-      actions.appendChild(makeTinyButton("삭제", "group delete: " + group.name, true));
-      actions.appendChild(makeTinyButton("설정", "group setting: " + group.name, true));
-      actions.appendChild(makeTinyButton("전송", "data share: " + group.name, true));
+      var deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "tiny-button";
+      deleteButton.textContent = "삭제";
+      deleteButton.addEventListener("click", function(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      showGroupDeleteModal(team, group);
+});
+      actions.appendChild(deleteButton);      var settingButton = document.createElement("button");
+      settingButton.type = "button";
+      settingButton.className = "tiny-button";
+      settingButton.textContent = "설정";
+      settingButton.addEventListener("click", function(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      showGroupEditModal(group);
+});
+      actions.appendChild(settingButton);
+      var shareButton = document.createElement("button");
+      shareButton.type = "button";
+      shareButton.className = "tiny-button";
+      shareButton.textContent = "전송";
+      shareButton.addEventListener("click", function(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      showGroupShareModal(group);
+});
+      actions.appendChild(shareButton);
       actions.appendChild(makeToggle(groupVisibility[groupKey(team.docId, group.name)] !== false, function(next) {
         groupVisibility[groupKey(team.docId, group.name)] = next;
         renderTeams();
@@ -3002,8 +4033,27 @@
         var main = makeRowMain((line.teamName === ADMIN_TEAM_DOC_ID ? "" : "[" + line.teamName + "] ") + line.title, line.description || "No description");
         var actions = document.createElement("div");
         actions.className = "row-actions";
-        actions.appendChild(makeTinyButton("설정", "line setting: " + line.lineId, true));
-        actions.appendChild(makeTinyButton("삭제", "line delete: " + line.lineId, true));
+        var settingButton = document.createElement("button");
+        settingButton.type = "button";
+        settingButton.className = "tiny-button";
+        settingButton.textContent = "설정";
+        settingButton.addEventListener("click", function(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        showLineEditModal(line);
+    });
+        actions.appendChild(settingButton);
+
+        var deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.className = "tiny-button";
+        deleteButton.textContent = "삭제";
+        deleteButton.addEventListener("click", function(event) {
+       event.preventDefault();
+        event.stopPropagation();
+       showLineDeleteModal(line);
+    });
+        actions.appendChild(deleteButton);
         actions.appendChild(makeToggle(lineVisibility[line.id] !== false, function(next) {
           lineVisibility[line.id] = next;
           renderLines();
@@ -3713,9 +4763,15 @@ function closeSidebar() {
   }
 }
 
-    function toggleMarkerMoveMode() {
-      markerMoveMode = !markerMoveMode;
-      document.getElementById("markerMoveButton").classList.toggle("active", markerMoveMode);
+function toggleMarkerMoveMode() {
+  markerMoveMode = !markerMoveMode;
+
+  if (markerMoveMode) {
+    setMarkerCreateMode(false);
+    setFreeLineCreateMode(false);
+  }
+
+  document.getElementById("markerMoveButton").classList.toggle("active", markerMoveMode);
       Object.keys(markerObjects).forEach(function(id) {
         var markerObj = markerObjects[id];
         if (markerObj && typeof markerObj.setDraggable === "function") {
@@ -3741,8 +4797,4720 @@ function closeSidebar() {
       panel.appendChild(row);
     }
 
-    function handlePlaceholderAction(actionName) {
-      var messages = {
+    
+
+    function hexToFlutterColorValue(hex) {
+  var clean = String(hex || "#1976D2").replace("#", "").toUpperCase();
+  if (clean.length === 3) {
+    clean = clean.charAt(0) + clean.charAt(0) +
+      clean.charAt(1) + clean.charAt(1) +
+      clean.charAt(2) + clean.charAt(2);
+  }
+  return parseInt("FF" + clean, 16) >>> 0;
+}
+
+function closeGroupCreateModal() {
+  var overlay = document.getElementById("groupCreateOverlay");
+  if (overlay) overlay.remove();
+}
+
+function showGroupCreateModal() {
+  closeGroupCreateModal();
+
+  var overlay = document.createElement("div");
+  overlay.id = "groupCreateOverlay";
+  overlay.className = "marker-edit-overlay";
+
+  var dialog = document.createElement("div");
+  dialog.className = "marker-edit-dialog";
+
+  var title = document.createElement("h2");
+  title.className = "marker-edit-title";
+  title.textContent = "새 그룹 추가";
+  dialog.appendChild(title);
+
+  var form = document.createElement("div");
+  form.className = "marker-edit-form";
+
+  var nameLabel = document.createElement("label");
+  nameLabel.className = "marker-edit-field";
+  nameLabel.textContent = "일자 지역";
+
+  var nameInput = document.createElement("input");
+  nameInput.className = "marker-edit-input";
+  nameInput.type = "text";
+  nameInput.placeholder = "예: 2.4 부산 다대포";
+  nameLabel.appendChild(nameInput);
+  form.appendChild(nameLabel);
+
+  var colorLabel = document.createElement("label");
+  colorLabel.className = "marker-edit-field";
+  colorLabel.textContent = "그룹 색상 선택";
+
+  var colorInput = document.createElement("input");
+  colorInput.type = "color";
+  colorInput.value = "#1976D2";
+  colorInput.style.width = "100%";
+  colorInput.style.height = "44px";
+  colorInput.style.padding = "4px";
+  colorInput.style.border = "1px solid #d7deea";
+  colorInput.style.borderRadius = "7px";
+  colorInput.style.background = "#fbfcff";
+  colorLabel.appendChild(colorInput);
+  form.appendChild(colorLabel);
+
+  dialog.appendChild(form);
+
+  var actions = document.createElement("div");
+  actions.className = "marker-edit-actions";
+
+  var cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "marker-edit-button";
+  cancelButton.textContent = "취소";
+  cancelButton.addEventListener("click", closeGroupCreateModal);
+  actions.appendChild(cancelButton);
+
+  var saveButton = document.createElement("button");
+  saveButton.type = "button";
+  saveButton.className = "marker-edit-button primary";
+  saveButton.textContent = "추가";
+
+  saveButton.addEventListener("click", async function() {
+    var groupName = nameInput.value.trim();
+
+    if (!groupName) {
+      setAdminMessage("그룹 이름을 입력해 주세요.");
+      nameInput.focus();
+      return;
+    }
+
+    saveButton.disabled = true;
+    cancelButton.disabled = true;
+    saveButton.textContent = "저장 중...";
+
+    try {
+      var docRef = db.collection("teams").doc(ADMIN_TEAM_DOC_ID);
+      var newGroup = {
+        name: groupName,
+        colorValue: hexToFlutterColorValue(colorInput.value),
+        isVisible: true
+      };
+
+      await db.runTransaction(async function(transaction) {
+        var snapshot = await transaction.get(docRef);
+
+        if (!snapshot.exists) {
+          transaction.set(docRef, {
+            teamName: ADMIN_TEAM_DOC_ID,
+            teamPw: "1234",
+            groups: [newGroup],
+            markers: [],
+            lines: []
+          }, { merge: true });
+          return;
+        }
+
+        var data = snapshot.data() || {};
+        var groups = Array.isArray(data.groups) ? data.groups.slice() : [];
+
+        var duplicated = groups.some(function(group) {
+          return group && String(group.name || "").trim() === groupName;
+        });
+
+        if (duplicated) {
+          throw new Error("DUPLICATE_GROUP");
+        }
+
+        groups.push(newGroup);
+        transaction.update(docRef, { groups: groups });
+      });
+
+      closeGroupCreateModal();
+      setAdminMessage("새 그룹이 추가되었습니다: " + groupName);
+    } catch (error) {
+      if (error && error.message === "DUPLICATE_GROUP") {
+        setAdminMessage("이미 존재하는 그룹 이름입니다.");
+      } else {
+        console.error("[ADMIN_V2_GROUP_CREATE] failed", error);
+        setAdminMessage("그룹 추가에 실패했습니다.");
+      }
+
+      saveButton.disabled = false;
+      cancelButton.disabled = false;
+      saveButton.textContent = "추가";
+    }
+  });
+
+  actions.appendChild(saveButton);
+  dialog.appendChild(actions);
+  overlay.appendChild(dialog);
+
+  overlay.addEventListener("click", function(event) {
+    if (event.target === overlay) closeGroupCreateModal();
+  });
+
+  document.body.appendChild(overlay);
+  nameInput.focus();
+}
+
+function closeFreeLineCreateModal() {
+  var overlay = document.getElementById("freeLineCreateOverlay");
+  if (overlay) overlay.remove();
+}
+
+function clearPendingFreeLineOverlay() {
+  if (pendingFreeLineOverlay) {
+    pendingFreeLineOverlay.setMap(null);
+    pendingFreeLineOverlay = null;
+  }
+}
+
+function renderPendingFreeLineOverlay() {
+  clearPendingFreeLineOverlay();
+
+  if (!map || pendingFreeLinePoints.length < 2) return;
+
+  pendingFreeLineOverlay = new kakao.maps.Polyline({
+    map: map,
+    path: pendingFreeLinePoints.map(function(point) {
+      return new kakao.maps.LatLng(point.lat, point.lng);
+    }),
+    strokeWeight: 4,
+    strokeColor: "#F97316",
+    strokeOpacity: 0.95,
+    strokeStyle: "solid"
+  });
+}
+
+function updateFreeLineCreateButtons() {
+  var createButton = document.getElementById("freeLineCreateButton");
+  var undoButton = document.getElementById("freeLineUndoButton");
+  var cancelButton = document.getElementById("freeLineCancelButton");
+
+  if (!createButton || !undoButton || !cancelButton) return;
+
+  createButton.classList.toggle("active", freeLineCreateMode);
+  undoButton.style.display = freeLineCreateMode ? "inline-block" : "none";
+  cancelButton.style.display = freeLineCreateMode ? "inline-block" : "none";
+
+  if (!freeLineCreateMode) {
+    createButton.textContent = "선 그리기";
+    return;
+  }
+
+  if (pendingFreeLinePoints.length < 2) {
+    createButton.textContent = "선 그리기 (" + pendingFreeLinePoints.length + ")";
+  } else {
+    createButton.textContent = "선 저장 (" + pendingFreeLinePoints.length + ")";
+  }
+}
+
+function setFreeLineCreateMode(enabled) {
+  freeLineCreateMode = enabled === true;
+
+  if (freeLineCreateMode) {
+    markerCreateMode = false;
+    markerMoveMode = false;
+    pendingFreeLinePoints = [];
+
+    var markerCreateButton = document.getElementById("markerCreateButton");
+    var markerMoveButton = document.getElementById("markerMoveButton");
+
+    if (markerCreateButton) {
+      markerCreateButton.classList.remove("active");
+      markerCreateButton.textContent = "마커 추가";
+    }
+
+    if (markerMoveButton) {
+      markerMoveButton.classList.remove("active");
+    }
+
+    Object.keys(markerObjects).forEach(function(id) {
+      var markerObj = markerObjects[id];
+
+      if (markerObj && typeof markerObj.setDraggable === "function") {
+        markerObj.setDraggable(false);
+        markerObj.__draggable = false;
+      }
+    });
+
+    closeMarkerInfo();
+    setAdminMessage("지도 빈 공간을 순서대로 클릭하여 선을 그리세요.");
+  } else {
+    pendingFreeLinePoints = [];
+    clearPendingFreeLineOverlay();
+    closeFreeLineCreateModal();
+    setAdminMessage("선 그리기 모드가 종료되었습니다.");
+  }
+
+  updateFreeLineCreateButtons();
+}
+
+function addPendingFreeLinePoint(lat, lng) {
+  pendingFreeLinePoints.push({
+    lat: Number(lat),
+    lng: Number(lng)
+  });
+
+  renderPendingFreeLineOverlay();
+  updateFreeLineCreateButtons();
+
+  if (pendingFreeLinePoints.length < 2) {
+    setAdminMessage("첫 번째 지점이 선택되었습니다. 다음 지점을 클릭하세요.");
+  } else {
+    setAdminMessage(
+      pendingFreeLinePoints.length +
+      "개 지점이 선택되었습니다. 상단의 선 저장 버튼을 누르세요."
+    );
+  }
+}
+
+function undoPendingFreeLinePoint() {
+  if (!pendingFreeLinePoints.length) return;
+
+  pendingFreeLinePoints.pop();
+  renderPendingFreeLineOverlay();
+  updateFreeLineCreateButtons();
+
+  setAdminMessage("마지막 선 지점을 취소했습니다.");
+}
+
+function lineCanonicalId(line) {
+  if (!line) return "";
+
+  return String(
+    line.originalLineId ||
+    line.sourceLineId ||
+    line.lineId ||
+    line.id ||
+    ""
+  ).trim();
+}
+
+
+async function sendFreeLineToSelectedTeams(targetTeamIds, sourceLine) {
+  if (!db || !Array.isArray(targetTeamIds) || !targetTeamIds.length || !sourceLine) {
+    return 0;
+  }
+
+  var canonicalLineId = lineCanonicalId(sourceLine);
+  if (!canonicalLineId) return 0;
+
+  var snapshot = await db.collection("teams").get();
+  var batch = db.batch();
+  var writeCount = 0;
+
+  snapshot.forEach(function(doc) {
+    if (doc.id === ADMIN_TEAM_DOC_ID) return;
+    if (targetTeamIds.indexOf(doc.id) === -1) return;
+
+    var data = doc.data() || {};
+    var lines = Array.isArray(data.lines) ? data.lines.slice() : [];
+
+    var existingIndex = lines.findIndex(function(line) {
+      return lineCanonicalId(line) === canonicalLineId;
+    });
+
+    var lineCopy = Object.assign({}, sourceLine, {
+      id: "Sent_" + ADMIN_TEAM_DOC_ID + "_" + canonicalLineId,
+      originalLineId: canonicalLineId,
+      sourceLineId: canonicalLineId
+    });
+
+    if (existingIndex !== -1) {
+      var existingLineId = String(lines[existingIndex].id || "").trim();
+
+      if (existingLineId) {
+        lineCopy.id = existingLineId;
+      }
+
+      lines[existingIndex] = lineCopy;
+    } else {
+      lines.push(lineCopy);
+    }
+
+    batch.update(doc.ref, {
+      lines: lines
+    });
+
+    writeCount += 1;
+  });
+
+  if (writeCount > 0) {
+    await batch.commit();
+  }
+
+  console.log("[ADMIN_V2_FREE_LINE_SHARE]", {
+    lineId: canonicalLineId,
+    targets: targetTeamIds,
+    writes: writeCount
+  });
+
+  return writeCount;
+}
+
+function showFreeLineCreateModal() {
+  closeFreeLineCreateModal();
+
+  if (pendingFreeLinePoints.length < 2) {
+    setAdminMessage("선을 저장하려면 지점을 2개 이상 선택하세요.");
+    return;
+  }
+
+  var overlay = document.createElement("div");
+  overlay.id = "freeLineCreateOverlay";
+  overlay.className = "marker-edit-overlay";
+
+  var dialog = document.createElement("div");
+  dialog.className = "marker-edit-dialog";
+
+  var heading = document.createElement("h2");
+  heading.className = "marker-edit-title";
+  heading.textContent = "새 선 추가";
+  dialog.appendChild(heading);
+
+  var selectedInfo = document.createElement("p");
+  selectedInfo.className = "marker-description";
+  selectedInfo.textContent = "선택한 지점: " + pendingFreeLinePoints.length + "개";
+  dialog.appendChild(selectedInfo);
+
+  var form = document.createElement("div");
+  form.className = "marker-edit-form";
+
+  var titleLabel = document.createElement("label");
+  titleLabel.className = "marker-edit-field";
+  titleLabel.textContent = "선 이름";
+
+  var titleInput = document.createElement("input");
+  titleInput.className = "marker-edit-input";
+  titleInput.type = "text";
+  titleInput.placeholder = "예: 관로 1";
+  titleLabel.appendChild(titleInput);
+  form.appendChild(titleLabel);
+
+  var descriptionLabel = document.createElement("label");
+  descriptionLabel.className = "marker-edit-field";
+  descriptionLabel.textContent = "상세 설명";
+
+  var descriptionInput = document.createElement("textarea");
+  descriptionInput.className = "marker-edit-textarea";
+  descriptionInput.placeholder = "선에 대한 설명을 입력하세요.";
+  descriptionLabel.appendChild(descriptionInput);
+  form.appendChild(descriptionLabel);
+
+  var colorLabel = document.createElement("label");
+  colorLabel.className = "marker-edit-field";
+  colorLabel.textContent = "선 색상";
+
+  var colorInput = document.createElement("input");
+  colorInput.type = "color";
+  colorInput.value = "#7C3AED";
+  colorInput.style.width = "100%";
+  colorInput.style.height = "44px";
+  colorInput.style.padding = "4px";
+  colorInput.style.border = "1px solid #d7deea";
+  colorInput.style.borderRadius = "7px";
+  colorInput.style.background = "#fbfcff";
+  colorLabel.appendChild(colorInput);
+  form.appendChild(colorLabel);
+
+  var shareTitle = document.createElement("p");
+shareTitle.className = "marker-edit-photo-note";
+shareTitle.textContent = "전송할 팀 선택";
+
+form.appendChild(shareTitle);
+
+var selectedTargetTeams = {};
+
+if (!allTeams.length) {
+  var emptyTeamText = document.createElement("p");
+  emptyTeamText.className = "empty-text";
+  emptyTeamText.textContent = "전송 가능한 팀이 없습니다. 선은 관리자 데이터에만 저장됩니다.";
+  form.appendChild(emptyTeamText);
+} else {
+  allTeams.forEach(function(team) {
+    var row = document.createElement("label");
+    row.className = "switch-row";
+    row.style.cursor = "pointer";
+
+    var teamName = document.createElement("div");
+    teamName.className = "row-title";
+    teamName.textContent = team.teamName || team.docId;
+
+    var checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = team.docId;
+    checkbox.style.width = "20px";
+    checkbox.style.height = "20px";
+
+    checkbox.addEventListener("change", function() {
+      if (checkbox.checked) {
+        selectedTargetTeams[team.docId] = true;
+      } else {
+        delete selectedTargetTeams[team.docId];
+      }
+    });
+
+    row.appendChild(teamName);
+    row.appendChild(checkbox);
+    form.appendChild(row);
+  });
+}
+
+dialog.appendChild(form);
+
+var actions = document.createElement("div");
+actions.className = "marker-edit-actions";
+
+  var cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "marker-edit-button";
+  cancelButton.textContent = "취소";
+  cancelButton.addEventListener("click", closeFreeLineCreateModal);
+  actions.appendChild(cancelButton);
+
+  var saveButton = document.createElement("button");
+  saveButton.type = "button";
+  saveButton.className = "marker-edit-button primary";
+  saveButton.textContent = "저장 완료";
+
+  saveButton.addEventListener("click", async function() {
+  var lineTitle = titleInput.value.trim();
+
+  if (!lineTitle) {
+
+      setAdminMessage("선 이름을 입력해 주세요.");
+      titleInput.focus();
+      return;
+    }
+
+    saveButton.disabled = true;
+    cancelButton.disabled = true;
+    saveButton.textContent = "저장 중...";
+
+    try {
+      var docRef = db.collection("teams").doc(ADMIN_TEAM_DOC_ID);
+      var lineId = "line_" + String(Date.now());
+      var newLine = {
+  id: lineId,
+  originalLineId: lineId,
+  sourceLineId: lineId,
+  title: lineTitle,
+  description: descriptionInput.value.trim(),
+  markerIds: [],
+  points: pendingFreeLinePoints.map(function(point) {
+    return {
+      lat: Number(point.lat),
+      lng: Number(point.lng)
+    };
+  }),
+  colorValue: hexToFlutterColorValue(colorInput.value),
+  isVisible: true
+};
+
+      await db.runTransaction(async function(transaction) {
+  var snapshot = await transaction.get(docRef);
+
+  if (!snapshot.exists) {
+    throw new Error("ADMIN_DOC_NOT_FOUND");
+  }
+
+  var data = snapshot.data() || {};
+  var lines = Array.isArray(data.lines) ? data.lines.slice() : [];
+
+  lines.push(newLine);
+
+  transaction.update(docRef, {
+    lines: lines
+  });
+});
+
+var targetTeamIds = Object.keys(selectedTargetTeams);
+var sharedWriteCount = await sendFreeLineToSelectedTeams(targetTeamIds, newLine);
+
+closeFreeLineCreateModal();
+setFreeLineCreateMode(false);
+
+if (sharedWriteCount > 0) {
+  setAdminMessage(
+    "새 선이 추가되고 " + sharedWriteCount + "개 팀에 전송되었습니다: " + lineTitle
+  );
+} else {
+  setAdminMessage("새 선이 추가되었습니다: " + lineTitle);
+}
+    } catch (error) {
+      console.error("[ADMIN_V2_FREE_LINE_CREATE] failed", error);
+      setAdminMessage("선 추가에 실패했습니다.");
+
+      saveButton.disabled = false;
+      cancelButton.disabled = false;
+      saveButton.textContent = "저장 완료";
+    }
+  });
+
+  actions.appendChild(saveButton);
+  dialog.appendChild(actions);
+  overlay.appendChild(dialog);
+
+  overlay.addEventListener("click", function(event) {
+    if (event.target === overlay) {
+      closeFreeLineCreateModal();
+    }
+  });
+
+  document.body.appendChild(overlay);
+  titleInput.focus();
+}
+
+function closeMarkerCreateModal() {
+  var overlay = document.getElementById("markerCreateOverlay");
+  if (overlay) overlay.remove();
+}
+
+function setMarkerCreateMode(enabled) {
+  markerCreateMode = enabled === true;
+
+  var button = document.getElementById("markerCreateButton");
+  if (button) {
+    button.classList.toggle("active", markerCreateMode);
+    button.textContent = markerCreateMode ? "지도 클릭 중..." : "마커 추가";
+  }
+
+  if (markerCreateMode) {
+    setFreeLineCreateMode(false);
+    markerMoveMode = false;
+
+    var moveButton = document.getElementById("markerMoveButton");
+    if (moveButton) {
+      moveButton.classList.remove("active");
+    }
+
+    Object.keys(markerObjects).forEach(function(id) {
+      var markerObj = markerObjects[id];
+      if (markerObj && typeof markerObj.setDraggable === "function") {
+        markerObj.setDraggable(false);
+        markerObj.__draggable = false;
+      }
+    });
+
+    closeMarkerInfo();
+    setAdminMessage("지도에서 마커를 추가할 위치를 클릭하세요.");
+  } else {
+    setAdminMessage("마커 추가 모드가 종료되었습니다.");
+  }
+}
+
+function getNextMarkerTitleForGroup(groupName) {
+  if (!ownTeam || !Array.isArray(ownTeam.markers)) return "1";
+
+  var maxNumber = 0;
+
+  ownTeam.markers.forEach(function(marker) {
+    if (!marker || marker.groupName !== groupName) return;
+
+    var match = String(marker.title || "").match(/\d+/);
+    if (!match) return;
+
+    var numberValue = Number(match[0]);
+    if (Number.isFinite(numberValue) && numberValue > maxNumber) {
+      maxNumber = numberValue;
+    }
+  });
+
+  return String(maxNumber + 1);
+}
+
+async function appendNewAdminMarkerToSharedGroups(newMarker) {
+  if (!db || !newMarker || !newMarker.group) return 0;
+
+  var sourceGroupName = String(newMarker.group.name || "").trim();
+  var newMarkerId = cleanMarkerId(newMarker.id);
+
+  if (!sourceGroupName || !newMarkerId) return 0;
+
+  var snapshot = await db.collection("teams").get();
+  var sourceMarkerIds = {};
+
+  sourceMarkerIds[newMarkerId] = true;
+
+  if (ownTeam && Array.isArray(ownTeam.markers)) {
+    ownTeam.markers.forEach(function(marker) {
+      if (!marker || String(marker.groupName || "").trim() !== sourceGroupName) return;
+
+      var sourceId = cleanMarkerId(
+        marker.rawId ||
+        marker.markerId ||
+        marker.id
+      );
+
+      if (sourceId) {
+        sourceMarkerIds[sourceId] = true;
+      }
+    });
+  }
+
+  var batch = db.batch();
+  var writeCount = 0;
+
+  snapshot.forEach(function(doc) {
+    if (doc.id === ADMIN_TEAM_DOC_ID) return;
+
+    var data = doc.data() || {};
+    var groups = Array.isArray(data.groups) ? data.groups.slice() : [];
+    var markers = Array.isArray(data.markers) ? data.markers.slice() : [];
+
+    var linkedGroupName = "";
+
+    var hasExistingSharedMarker = markers.some(function(marker) {
+      if (!marker) return false;
+
+      var linkId = cleanMarkerId(
+        marker.originalMarkerId ||
+        marker.sourceMarkerId ||
+        marker.parentMarkerId
+      );
+
+      if (!linkId || !sourceMarkerIds[linkId]) return false;
+
+      if (marker.group) {
+        linkedGroupName = String(marker.group.name || "").trim();
+      }
+
+      return true;
+    });
+
+    if (!hasExistingSharedMarker || !linkedGroupName) return;
+
+    var targetGroup = groups.find(function(group) {
+      return group &&
+        String(group.name || "").trim() === linkedGroupName;
+    });
+
+    if (!targetGroup) return;
+
+    var duplicated = markers.some(function(marker) {
+      return markerMatchesTransferredSource(marker, newMarkerId);
+    });
+
+    if (duplicated) return;
+
+    var markerCopy = Object.assign({}, newMarker, {
+      id: "Sent_" + ADMIN_TEAM_DOC_ID + "_" +
+        newMarkerId.replace(/[^a-zA-Z0-9_-]/g, "_"),
+      originalMarkerId: newMarkerId,
+      group: {
+        name: targetGroup.name,
+        colorValue: targetGroup.colorValue,
+        isVisible: targetGroup.isVisible !== false
+      }
+    });
+
+    markers.push(markerCopy);
+
+    batch.update(doc.ref, {
+      markers: markers
+    });
+
+    writeCount += 1;
+  });
+
+  if (writeCount > 0) {
+    await batch.commit();
+  }
+
+  console.log("[ADMIN_V2_SHARED_MARKER_APPEND]", {
+    sourceGroupName: sourceGroupName,
+    markerId: newMarkerId,
+    documents: writeCount
+  });
+
+  return writeCount;
+}
+
+function showMarkerCreateModal(lat, lng) {
+  closeMarkerCreateModal();
+
+  if (!ownTeam || !Array.isArray(ownTeam.groups) || ownTeam.groups.length === 0) {
+    setAdminMessage("먼저 나의 데이터에 그룹을 추가해 주세요.");
+    setMarkerCreateMode(false);
+    return;
+  }
+
+  var overlay = document.createElement("div");
+  overlay.id = "markerCreateOverlay";
+  overlay.className = "marker-edit-overlay";
+
+  var dialog = document.createElement("div");
+  dialog.className = "marker-edit-dialog";
+
+  var title = document.createElement("h2");
+  title.className = "marker-edit-title";
+  title.textContent = "새 마커 추가";
+  dialog.appendChild(title);
+
+  var form = document.createElement("div");
+  form.className = "marker-edit-form";
+
+  var groupLabel = document.createElement("label");
+  groupLabel.className = "marker-edit-field";
+  groupLabel.textContent = "그룹 선택";
+
+  var groupSelect = document.createElement("select");
+  groupSelect.className = "marker-edit-input";
+
+ownTeam.groups.forEach(function(group) {
+  var option = document.createElement("option");
+  option.value = group.name;
+  option.textContent = group.name;
+  groupSelect.appendChild(option);
+});
+
+if (
+  lastMarkerCreateGroupName &&
+  ownTeam.groups.some(function(group) {
+    return String(group.name || "").trim() === lastMarkerCreateGroupName;
+  })
+) {
+  groupSelect.value = lastMarkerCreateGroupName;
+}
+
+groupLabel.appendChild(groupSelect);
+form.appendChild(groupLabel);
+
+var titleLabel = document.createElement("label");
+titleLabel.className = "marker-edit-field";
+titleLabel.textContent = "맨홀 번호";
+
+var titleInput = document.createElement("input");
+titleInput.className = "marker-edit-input";
+titleInput.type = "text";
+titleInput.value = getNextMarkerTitleForGroup(groupSelect.value);
+titleLabel.appendChild(titleInput);
+form.appendChild(titleLabel);
+
+groupSelect.addEventListener("change", function() {
+  lastMarkerCreateGroupName = String(groupSelect.value || "").trim();
+  titleInput.value = getNextMarkerTitleForGroup(groupSelect.value);
+});
+
+  var descriptionLabel = document.createElement("label");
+  descriptionLabel.className = "marker-edit-field";
+  descriptionLabel.textContent = "상세 설명";
+
+  var descriptionInput = document.createElement("textarea");
+  descriptionInput.className = "marker-edit-textarea";
+  descriptionInput.placeholder = "상세 설명을 입력하세요.";
+  descriptionLabel.appendChild(descriptionInput);
+  form.appendChild(descriptionLabel);
+
+  var addressLabel = document.createElement("label");
+  addressLabel.className = "marker-edit-field";
+  addressLabel.textContent = "현장 주소";
+
+  var addressInput = document.createElement("input");
+  addressInput.className = "marker-edit-input";
+  addressInput.type = "text";
+  addressInput.value =
+    "위치: " + Number(lat).toFixed(6) + ", " + Number(lng).toFixed(6);
+  addressLabel.appendChild(addressInput);
+  form.appendChild(addressLabel);
+
+  dialog.appendChild(form);
+
+  var positionText = document.createElement("p");
+  positionText.className = "marker-edit-photo-note";
+  positionText.textContent =
+    "좌표: " + Number(lat).toFixed(6) + ", " + Number(lng).toFixed(6);
+  dialog.appendChild(positionText);
+
+  var actions = document.createElement("div");
+  actions.className = "marker-edit-actions";
+
+  var cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "marker-edit-button";
+  cancelButton.textContent = "취소";
+  cancelButton.addEventListener("click", function() {
+    closeMarkerCreateModal();
+  });
+  actions.appendChild(cancelButton);
+
+  var saveButton = document.createElement("button");
+  saveButton.type = "button";
+  saveButton.className = "marker-edit-button primary";
+  saveButton.textContent = "저장 완료";
+
+  saveButton.addEventListener("click", async function() {
+    var selectedGroupName = String(groupSelect.value || "").trim();
+    var markerTitle = titleInput.value.trim();
+    var description = descriptionInput.value.trim();
+    var address = addressInput.value.trim();
+
+    if (!selectedGroupName) {
+      setAdminMessage("그룹을 선택해 주세요.");
+      return;
+    }
+
+    if (!markerTitle) {
+      setAdminMessage("맨홀 번호를 입력해 주세요.");
+      titleInput.focus();
+      return;
+    }
+
+    saveButton.disabled = true;
+    cancelButton.disabled = true;
+    saveButton.textContent = "저장 중...";
+
+    try {
+  var docRef = db.collection("teams").doc(ADMIN_TEAM_DOC_ID);
+  var markerId = String(Date.now());
+  var newMarker = null;
+
+  await db.runTransaction(async function(transaction) {
+    var snapshot = await transaction.get(docRef);
+    if (!snapshot.exists) {
+      throw new Error("ADMIN_DOC_NOT_FOUND");
+    }
+
+    var data = snapshot.data() || {};
+    var groups = Array.isArray(data.groups) ? data.groups : [];
+    var markers = Array.isArray(data.markers) ? data.markers.slice() : [];
+
+    var selectedGroup = groups.find(function(group) {
+      return group &&
+        String(group.name || "").trim() === selectedGroupName;
+    });
+
+    if (!selectedGroup) {
+      throw new Error("GROUP_NOT_FOUND");
+    }
+
+    newMarker = {
+      id: markerId,
+      lat: Number(lat),
+      lng: Number(lng),
+      title: markerTitle,
+      description: description,
+      address: address,
+      group: {
+        name: selectedGroupName,
+        colorValue: selectedGroup.colorValue,
+        isVisible: selectedGroup.isVisible !== false
+      },
+      photos: [],
+      isChecked: false
+    };
+
+    markers.push(newMarker);
+
+    transaction.update(docRef, {
+      markers: markers
+    });
+  });
+
+  lastMarkerCreateGroupName = selectedGroupName;
+
+  var sharedWriteCount = await appendNewAdminMarkerToSharedGroups(newMarker);
+
+    var continueDrawingTrace =
+    drawingMarkerTraceMode === true &&
+    !!drawingAlignedOverlay &&
+    !!drawingAlignedOverlayQueueId;
+
+  closeMarkerCreateModal();
+
+  if (!continueDrawingTrace) {
+    setMarkerCreateMode(false);
+  }
+
+  if (sharedWriteCount > 0) {
+    setAdminMessage(
+      continueDrawingTrace
+        ? "마커가 저장·동기화되었습니다: " + markerTitle + " / 용적도의 다음 마커 위치를 계속 클릭하세요."
+        : "새 마커가 추가되고 공유 팀에 동기화되었습니다: " + markerTitle
+    );
+  } else {
+    setAdminMessage(
+      continueDrawingTrace
+        ? "마커가 저장되었습니다: " + markerTitle + " / 용적도의 다음 마커 위치를 계속 클릭하세요."
+        : "새 마커가 추가되었습니다: " + markerTitle
+    );
+  }
+} catch (error) {
+
+      console.error("[ADMIN_V2_MARKER_CREATE] failed", error);
+
+      if (error && error.message === "GROUP_NOT_FOUND") {
+        setAdminMessage("선택한 그룹을 찾을 수 없습니다.");
+      } else {
+        setAdminMessage("마커 추가에 실패했습니다.");
+      }
+
+      saveButton.disabled = false;
+      cancelButton.disabled = false;
+      saveButton.textContent = "저장 완료";
+    }
+  });
+
+  actions.appendChild(saveButton);
+  dialog.appendChild(actions);
+  overlay.appendChild(dialog);
+
+  overlay.addEventListener("click", function(event) {
+    if (event.target === overlay) {
+      closeMarkerCreateModal();
+    }
+  });
+
+  document.body.appendChild(overlay);
+  titleInput.focus();
+}
+
+function closeGroupDeleteModal() {
+  var overlay = document.getElementById("groupDeleteOverlay");
+  if (overlay) overlay.remove();
+}
+
+async function commitCanonicalGroupDeletion(sourceTeamId, group) {
+  if (!db || !group) return false;
+
+  var sourceDocId = String(sourceTeamId || ADMIN_TEAM_DOC_ID).trim();
+  var sourceGroupName = String(group.name || "").trim();
+
+  if (!sourceDocId || !sourceGroupName) return false;
+
+  try {
+    var snapshot = await db.collection("teams").get();
+    var sourceDoc = null;
+
+    snapshot.forEach(function(doc) {
+      if (doc.id === sourceDocId) {
+        sourceDoc = doc;
+      }
+    });
+
+    if (!sourceDoc) {
+      setAdminMessage("삭제할 팀의 그룹 문서를 찾을 수 없습니다.");
+      return false;
+    }
+
+    var sourceData = sourceDoc.data() || {};
+    var sourceMarkers = Array.isArray(sourceData.markers) ? sourceData.markers : [];
+
+    var groupMarkers = sourceMarkers.filter(function(marker) {
+      return marker &&
+        marker.group &&
+        String(marker.group.name || "").trim() === sourceGroupName;
+    });
+
+    var targets = {};
+    var componentIds = {};
+
+    function ensureTarget(doc, groupName) {
+      if (!targets[doc.id]) {
+        targets[doc.id] = {
+          doc: doc,
+          groupNames: {},
+          markerIndexes: {}
+        };
+      }
+
+      var cleanGroupName = String(groupName || "").trim();
+      if (cleanGroupName) {
+        targets[doc.id].groupNames[cleanGroupName] = true;
+      }
+
+      return targets[doc.id];
+    }
+
+    ensureTarget(sourceDoc, sourceGroupName);
+
+    for (var i = 0; i < groupMarkers.length; i += 1) {
+      var initiatingMarker = Object.assign({}, groupMarkers[i], {
+        teamName: sourceDocId
+      });
+
+      var component = resolveMarkerComponent(
+        snapshot,
+        initiatingMarker,
+        sourceDocId
+      );
+
+      var component = resolveMarkerComponent(
+        snapshot,
+        initiatingMarker,
+        ADMIN_TEAM_DOC_ID
+      );
+
+      if (!component.ok) {
+        if (component.reason === "ambiguous") {
+          setAdminMessage("공유 연결이 모호하여 그룹 삭제를 중단했습니다.");
+          return false;
+        }
+        continue;
+      }
+
+      component.ids.forEach(function(id) {
+        var cleaned = cleanMarkerId(id);
+        if (cleaned) componentIds[cleaned] = true;
+      });
+
+      component.nodes.forEach(function(node) {
+        var rawMarker = node.marker || {};
+        var markerGroupName = rawMarker.group
+          ? String(rawMarker.group.name || "").trim()
+          : "";
+
+        var target = ensureTarget(node.doc, markerGroupName);
+        target.markerIndexes[node.index] = true;
+
+        markerIdentityIds(rawMarker).forEach(function(id) {
+          var cleaned = cleanMarkerId(id);
+          if (cleaned) componentIds[cleaned] = true;
+        });
+      });
+    }
+
+    var targetIds = Object.keys(targets);
+
+    if (targetIds.length > 450) {
+      setAdminMessage("동기화 대상이 너무 많아 삭제를 중단했습니다.");
+      return false;
+    }
+
+    var batch = db.batch();
+    var removedGroupCount = 0;
+    var removedMarkerCount = 0;
+    var changedLineCount = 0;
+
+    targetIds.forEach(function(docId) {
+      var target = targets[docId];
+      var data = target.doc.data() || {};
+      var groups = Array.isArray(data.groups) ? data.groups.slice() : [];
+      var markers = Array.isArray(data.markers) ? data.markers.slice() : [];
+      var lines = Array.isArray(data.lines) ? data.lines.slice() : [];
+
+      var nextGroups = groups.filter(function(rawGroup) {
+        if (!rawGroup) return true;
+
+        var groupName = String(rawGroup.name || "").trim();
+        if (target.groupNames[groupName]) {
+          removedGroupCount += 1;
+          return false;
+        }
+
+        return true;
+      });
+
+      var indexes = Object.keys(target.markerIndexes)
+        .map(function(index) {
+          return Number(index);
+        })
+        .sort(function(a, b) {
+          return b - a;
+        });
+
+      var deletedIds = [];
+
+      indexes.forEach(function(index) {
+        if (index < 0 || index >= markers.length) return;
+
+        markerIdentityIds(markers[index]).forEach(function(id) {
+          var cleaned = cleanMarkerId(id);
+          if (cleaned && deletedIds.indexOf(cleaned) === -1) {
+            deletedIds.push(cleaned);
+          }
+        });
+
+        markers.splice(index, 1);
+        removedMarkerCount += 1;
+      });
+
+      lines.forEach(function(line) {
+        var lineMarkerIds = Array.isArray(line && line.markerIds)
+          ? line.markerIds
+          : [];
+
+        lineMarkerIds.forEach(function(markerId) {
+          var cleaned = cleanMarkerId(markerId);
+
+          if (!cleaned || !componentIds[cleaned]) return;
+          if (deletedIds.indexOf(cleaned) === -1) {
+            deletedIds.push(cleaned);
+          }
+        });
+      });
+
+      var lineResult = removeDeletedMarkerPointsFromLines(lines, deletedIds);
+
+      if (lineResult.changed) {
+        changedLineCount += lineResult.changedLineCount;
+      }
+
+      batch.update(target.doc.ref, {
+        groups: nextGroups,
+        markers: markers,
+        lines: lineResult.changed ? lineResult.lines : lines
+      });
+    });
+
+    await batch.commit();
+
+    targetIds.forEach(function(docId) {
+      Object.keys(targets[docId].groupNames).forEach(function(groupName) {
+        delete groupVisibility[groupKey(docId, groupName)];
+      });
+    });
+
+    console.log("[ADMIN_V2_GROUP_DELETE]", {
+      sourceGroup: sourceGroupName,
+      documents: targetIds,
+      groupsRemoved: removedGroupCount,
+      markersRemoved: removedMarkerCount,
+      linesChanged: changedLineCount
+    });
+
+    setAdminMessage("공유 그룹과 포함 데이터가 삭제되었습니다.");
+    return true;
+  } catch (error) {
+    console.error("[ADMIN_V2_GROUP_DELETE] failed", error);
+    setAdminMessage("그룹 삭제에 실패했습니다.");
+    return false;
+  }
+}
+
+function showGroupDeleteModal(team, group) {
+  closeGroupDeleteModal();
+
+  var sourceTeamId = String(
+    team && team.docId ? team.docId : ADMIN_TEAM_DOC_ID
+  ).trim();
+
+  var sourceTeamName = String(
+    team && team.teamName ? team.teamName : sourceTeamId
+  ).trim();
+
+  var overlay = document.createElement("div");
+  overlay.id = "groupDeleteOverlay";
+  overlay.className = "marker-edit-overlay";
+
+  var dialog = document.createElement("div");
+  dialog.className = "marker-edit-dialog";
+
+  var title = document.createElement("h2");
+  title.className = "marker-edit-title";
+  title.textContent = "그룹 삭제 확인";
+  dialog.appendChild(title);
+
+  var message = document.createElement("p");
+  message.className = "marker-description";
+  message.textContent =
+    "[" + sourceTeamName + "]의 '" + group.name +
+    "' 그룹과 포함된 모든 공유 마커 및 연결된 선이 삭제됩니다.";
+  dialog.appendChild(message);
+
+  var actions = document.createElement("div");
+  actions.className = "marker-edit-actions";
+
+  var cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "marker-edit-button";
+  cancelButton.textContent = "취소";
+  cancelButton.addEventListener("click", closeGroupDeleteModal);
+  actions.appendChild(cancelButton);
+
+  var deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "marker-edit-button";
+  deleteButton.textContent = "삭제";
+  deleteButton.style.background = "#dc2626";
+  deleteButton.style.borderColor = "#dc2626";
+  deleteButton.style.color = "#ffffff";
+
+  deleteButton.addEventListener("click", async function() {
+    deleteButton.disabled = true;
+    cancelButton.disabled = true;
+    deleteButton.textContent = "삭제 중...";
+
+    var deleted = await commitCanonicalGroupDeletion(sourceTeamId, group);
+
+    if (deleted) {
+      closeGroupDeleteModal();
+      closeMarkerInfo();
+      return;
+    }
+
+    deleteButton.disabled = false;
+    cancelButton.disabled = false;
+    deleteButton.textContent = "삭제";
+  });
+
+  actions.appendChild(deleteButton);
+  dialog.appendChild(actions);
+  overlay.appendChild(dialog);
+
+  overlay.addEventListener("click", function(event) {
+    if (event.target === overlay) {
+      closeGroupDeleteModal();
+    }
+  });
+
+  document.body.appendChild(overlay);
+}
+
+function closeGroupEditModal() {
+  var overlay = document.getElementById("groupEditOverlay");
+  if (overlay) overlay.remove();
+}
+
+async function commitCanonicalGroupMutation(args) {
+  var sourceTeamId = String(args.sourceTeamId || ADMIN_TEAM_DOC_ID);
+  var oldGroupName = String(args.oldGroupName || "").trim();
+  var newGroupName = String(args.newGroupName || "").trim();
+  var newColorValue = args.newColorValue;
+
+  if (!db || !oldGroupName || !newGroupName) {
+    setAdminMessage("그룹 수정 정보를 확인할 수 없습니다.");
+    return false;
+  }
+
+  var snapshot = await db.collection("teams").get();
+  var sourceDoc = null;
+
+  snapshot.forEach(function(doc) {
+    if (doc.id === sourceTeamId) {
+      sourceDoc = doc;
+    }
+  });
+
+  if (!sourceDoc) {
+    setAdminMessage("수정할 원본 그룹 문서를 찾을 수 없습니다.");
+    return false;
+  }
+
+  var sourceData = sourceDoc.data() || {};
+  var sourceMarkers = Array.isArray(sourceData.markers) ? sourceData.markers : [];
+
+  var targetGroupNamesByDoc = {};
+  var affectedDocRefs = {};
+
+  function addAffectedGroup(docId, groupName, docRef) {
+    var cleanName = String(groupName || "").trim();
+    if (!cleanName) return;
+
+    if (!targetGroupNamesByDoc[docId]) {
+      targetGroupNamesByDoc[docId] = {};
+    }
+
+    targetGroupNamesByDoc[docId][cleanName] = true;
+    affectedDocRefs[docId] = docRef;
+  }
+
+  addAffectedGroup(sourceTeamId, oldGroupName, sourceDoc.ref);
+
+  var sourceGroupMarkers = sourceMarkers.filter(function(marker) {
+    return marker &&
+      marker.group &&
+      String(marker.group.name || "").trim() === oldGroupName;
+  });
+
+  for (var i = 0; i < sourceGroupMarkers.length; i += 1) {
+    var initiatingMarker = Object.assign({}, sourceGroupMarkers[i], {
+      teamName: sourceTeamId
+    });
+
+    var component = resolveMarkerComponent(snapshot, initiatingMarker, sourceTeamId);
+
+    if (!component.ok) {
+      if (component.reason === "ambiguous") {
+        setAdminMessage("공유 마커 연결이 모호하여 그룹 수정을 중단했습니다.");
+        return false;
+      }
+      continue;
+    }
+
+    component.nodes.forEach(function(node) {
+      var rawMarker = node.marker || {};
+      var markerGroupName = rawMarker.group
+        ? String(rawMarker.group.name || "").trim()
+        : "";
+
+      addAffectedGroup(node.docId, markerGroupName, node.doc.ref);
+    });
+  }
+
+  var affectedDocIds = Object.keys(affectedDocRefs);
+
+  if (!affectedDocIds.length) {
+    setAdminMessage("수정할 그룹을 찾을 수 없습니다.");
+    return false;
+  }
+
+  if (affectedDocIds.length > 450) {
+    setAdminMessage("동기화 대상이 너무 많아 그룹 수정을 중단했습니다.");
+    return false;
+  }
+
+  var newGroup = {
+    name: newGroupName,
+    colorValue: newColorValue,
+    isVisible: true
+  };
+
+  var batch = db.batch();
+  var writeCount = 0;
+
+  snapshot.forEach(function(doc) {
+    if (!affectedDocRefs[doc.id]) return;
+
+    var data = doc.data() || {};
+    var groups = Array.isArray(data.groups) ? data.groups.slice() : [];
+    var markers = Array.isArray(data.markers) ? data.markers.slice() : [];
+    var affectedNames = targetGroupNamesByDoc[doc.id] || {};
+    var changed = false;
+    var existingVisibility = true;
+
+    groups.forEach(function(group) {
+      if (!group) return;
+      var groupName = String(group.name || "").trim();
+
+      if (affectedNames[groupName] || groupName === newGroupName) {
+        if (group.isVisible === false) {
+          existingVisibility = false;
+        }
+      }
+    });
+
+    var nextGroups = groups.filter(function(group) {
+      if (!group) return true;
+
+      var groupName = String(group.name || "").trim();
+
+      if (affectedNames[groupName] || groupName === newGroupName) {
+        changed = true;
+        return false;
+      }
+
+      return true;
+    });
+
+    nextGroups.push({
+      name: newGroupName,
+      colorValue: newColorValue,
+      isVisible: existingVisibility
+    });
+
+    markers = markers.map(function(marker) {
+      if (!marker || !marker.group) return marker;
+
+      var markerGroupName = String(marker.group.name || "").trim();
+
+      if (!affectedNames[markerGroupName]) {
+        return marker;
+      }
+
+      changed = true;
+
+      return Object.assign({}, marker, {
+        group: {
+          name: newGroupName,
+          colorValue: newColorValue,
+          isVisible: marker.group.isVisible !== false
+        }
+      });
+    });
+
+    if (!changed && doc.id !== sourceTeamId) return;
+
+    batch.update(doc.ref, {
+      groups: nextGroups,
+      markers: markers
+    });
+
+    writeCount += 1;
+  });
+
+  if (!writeCount) {
+    setAdminMessage("변경할 그룹 데이터가 없습니다.");
+    return false;
+  }
+
+  await batch.commit();
+
+  Object.keys(targetGroupNamesByDoc).forEach(function(docId) {
+    var names = targetGroupNamesByDoc[docId];
+
+    Object.keys(names).forEach(function(oldName) {
+      var oldKey = groupKey(docId, oldName);
+      var newKey = groupKey(docId, newGroupName);
+
+      if (groupVisibility[oldKey] !== undefined) {
+        groupVisibility[newKey] = groupVisibility[oldKey];
+        delete groupVisibility[oldKey];
+      }
+    });
+  });
+
+  console.log("[ADMIN_V2_GROUP_MUTATION]", {
+    sourceTeamId: sourceTeamId,
+    oldGroupName: oldGroupName,
+    newGroupName: newGroupName,
+    documents: affectedDocIds,
+    writes: writeCount
+  });
+
+  return true;
+}
+
+function showGroupEditModal(group) {
+  closeGroupEditModal();
+
+  var oldGroupName = String(group.name || "").trim();
+  var overlay = document.createElement("div");
+  overlay.id = "groupEditOverlay";
+  overlay.className = "marker-edit-overlay";
+
+  var dialog = document.createElement("div");
+  dialog.className = "marker-edit-dialog";
+
+  var title = document.createElement("h2");
+  title.className = "marker-edit-title";
+  title.textContent = "그룹 수정";
+  dialog.appendChild(title);
+
+  var form = document.createElement("div");
+  form.className = "marker-edit-form";
+
+  var nameLabel = document.createElement("label");
+  nameLabel.className = "marker-edit-field";
+  nameLabel.textContent = "그룹 이름 수정";
+
+  var nameInput = document.createElement("input");
+  nameInput.className = "marker-edit-input";
+  nameInput.type = "text";
+  nameInput.value = oldGroupName;
+  nameLabel.appendChild(nameInput);
+  form.appendChild(nameLabel);
+
+  var colorLabel = document.createElement("label");
+  colorLabel.className = "marker-edit-field";
+  colorLabel.textContent = "그룹 색상 변경";
+
+  var colorInput = document.createElement("input");
+  colorInput.type = "color";
+  colorInput.value = group.color || "#1976D2";
+  colorInput.style.width = "100%";
+  colorInput.style.height = "44px";
+  colorInput.style.padding = "4px";
+  colorInput.style.border = "1px solid #d7deea";
+  colorInput.style.borderRadius = "7px";
+  colorInput.style.background = "#fbfcff";
+  colorLabel.appendChild(colorInput);
+  form.appendChild(colorLabel);
+
+  dialog.appendChild(form);
+
+  var actions = document.createElement("div");
+  actions.className = "marker-edit-actions";
+
+  var cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "marker-edit-button";
+  cancelButton.textContent = "취소";
+  cancelButton.addEventListener("click", closeGroupEditModal);
+  actions.appendChild(cancelButton);
+
+  var saveButton = document.createElement("button");
+  saveButton.type = "button";
+  saveButton.className = "marker-edit-button primary";
+  saveButton.textContent = "수정 완료";
+
+  saveButton.addEventListener("click", async function() {
+    var newGroupName = nameInput.value.trim();
+
+    if (!newGroupName) {
+      setAdminMessage("그룹 이름을 입력해 주세요.");
+      nameInput.focus();
+      return;
+    }
+
+    saveButton.disabled = true;
+    cancelButton.disabled = true;
+    saveButton.textContent = "동기화 중...";
+
+    try {
+      var saved = await commitCanonicalGroupMutation({
+        sourceTeamId: ADMIN_TEAM_DOC_ID,
+        oldGroupName: oldGroupName,
+        newGroupName: newGroupName,
+        newColorValue: hexToFlutterColorValue(colorInput.value)
+      });
+
+      if (!saved) {
+        saveButton.disabled = false;
+        cancelButton.disabled = false;
+        saveButton.textContent = "수정 완료";
+        return;
+      }
+
+      closeGroupEditModal();
+      setAdminMessage("공유 그룹이 전체 동기화되었습니다: " + newGroupName);
+    } catch (error) {
+      console.error("[ADMIN_V2_GROUP_EDIT] failed", error);
+      setAdminMessage("그룹 수정 동기화에 실패했습니다.");
+
+      saveButton.disabled = false;
+      cancelButton.disabled = false;
+      saveButton.textContent = "수정 완료";
+    }
+  });
+
+  actions.appendChild(saveButton);
+  dialog.appendChild(actions);
+  overlay.appendChild(dialog);
+
+  overlay.addEventListener("click", function(event) {
+    if (event.target === overlay) {
+      closeGroupEditModal();
+    }
+  });
+
+  document.body.appendChild(overlay);
+  nameInput.focus();
+}
+
+function closeGroupShareModal() {
+  var overlay = document.getElementById("groupShareOverlay");
+  if (overlay) overlay.remove();
+}
+
+function sharedTransferCanonicalId(marker) {
+  if (!marker) return "";
+
+  return cleanMarkerId(
+    marker.originalMarkerId ||
+    marker.sourceMarkerId ||
+    marker.parentMarkerId ||
+    marker.id ||
+    marker.markerId
+  );
+}
+
+function markerMatchesTransferredSource(marker, canonicalId) {
+  if (!marker || !canonicalId) return false;
+
+  return cleanMarkerId(marker.originalMarkerId) === canonicalId ||
+    cleanMarkerId(marker.sourceMarkerId) === canonicalId ||
+    cleanMarkerId(marker.parentMarkerId) === canonicalId ||
+    cleanMarkerId(marker.id) === canonicalId ||
+    cleanMarkerId(marker.markerId) === canonicalId;
+}
+
+async function sendAdminGroupDataToTeams(targetTeamIds, group) {
+  if (!db || !group || !Array.isArray(targetTeamIds) || !targetTeamIds.length) {
+    setAdminMessage("전송할 팀을 선택해 주세요.");
+    return false;
+  }
+
+  var groupName = String(group.name || "").trim();
+
+  try {
+    var snapshot = await db.collection("teams").get();
+    var sourceDoc = null;
+    var targetDocs = {};
+
+    snapshot.forEach(function(doc) {
+      if (doc.id === ADMIN_TEAM_DOC_ID) {
+        sourceDoc = doc;
+      }
+
+      if (targetTeamIds.indexOf(doc.id) !== -1) {
+        targetDocs[doc.id] = doc;
+      }
+    });
+
+    if (!sourceDoc) {
+      setAdminMessage("관리자 원본 데이터를 찾을 수 없습니다.");
+      return false;
+    }
+
+    var sourceData = sourceDoc.data() || {};
+    var sourceGroups = Array.isArray(sourceData.groups) ? sourceData.groups : [];
+    var sourceMarkers = Array.isArray(sourceData.markers) ? sourceData.markers : [];
+
+    var sourceGroup = sourceGroups.find(function(item) {
+      return item && String(item.name || "").trim() === groupName;
+    });
+
+    if (!sourceGroup) {
+      setAdminMessage("전송할 그룹을 찾을 수 없습니다.");
+      return false;
+    }
+
+    var markersToSend = sourceMarkers.filter(function(marker) {
+      return marker &&
+        marker.group &&
+        String(marker.group.name || "").trim() === groupName;
+    });
+
+    if (!markersToSend.length) {
+      setAdminMessage("전송할 마커가 없습니다.");
+      return false;
+    }
+
+    var batch = db.batch();
+    var writeCount = 0;
+
+    targetTeamIds.forEach(function(targetTeamId) {
+      var targetDoc = targetDocs[targetTeamId];
+      if (!targetDoc) return;
+
+      var targetData = targetDoc.data() || {};
+      var groups = Array.isArray(targetData.groups) ? targetData.groups.slice() : [];
+      var markers = Array.isArray(targetData.markers) ? targetData.markers.slice() : [];
+
+      var targetGroup = {
+        name: groupName,
+        colorValue: sourceGroup.colorValue,
+        isVisible: sourceGroup.isVisible !== false
+      };
+
+      var groupIndex = groups.findIndex(function(item) {
+        return item && String(item.name || "").trim() === groupName;
+      });
+
+      if (groupIndex !== -1) {
+        groups[groupIndex] = targetGroup;
+      } else {
+        groups.push(targetGroup);
+      }
+
+      markersToSend.forEach(function(sourceMarker) {
+        var canonicalId = sharedTransferCanonicalId(sourceMarker);
+        if (!canonicalId) return;
+
+        var existingIndex = markers.findIndex(function(existingMarker) {
+          return existingMarker &&
+            existingMarker.group &&
+            String(existingMarker.group.name || "").trim() === groupName &&
+            markerMatchesTransferredSource(existingMarker, canonicalId);
+        });
+
+        var markerCopy = Object.assign({}, sourceMarker, {
+          originalMarkerId: canonicalId,
+          group: targetGroup
+        });
+
+        if (existingIndex !== -1) {
+          var existingId = cleanMarkerId(markers[existingIndex].id);
+
+          if (existingId) {
+            markerCopy.id = existingId;
+          }
+
+          markers[existingIndex] = markerCopy;
+        } else {
+          markerCopy.id =
+            "Sent_" +
+            ADMIN_TEAM_DOC_ID +
+            "_" +
+            canonicalId.replace(/[^a-zA-Z0-9_-]/g, "_");
+
+          markers.push(markerCopy);
+        }
+      });
+
+      batch.update(targetDoc.ref, {
+        groups: groups,
+        markers: markers
+      });
+
+      writeCount += 1;
+    });
+
+    if (!writeCount) {
+      setAdminMessage("전송 가능한 팀 문서를 찾을 수 없습니다.");
+      return false;
+    }
+
+    await batch.commit();
+
+    console.log("[ADMIN_V2_GROUP_SHARE]", {
+      groupName: groupName,
+      targets: targetTeamIds,
+      markers: markersToSend.length,
+      writes: writeCount
+    });
+
+    setAdminMessage(
+      "'" + groupName + "' 그룹을 " +
+      writeCount + "개 팀에 전송했습니다."
+    );
+
+    return true;
+  } catch (error) {
+    console.error("[ADMIN_V2_GROUP_SHARE] failed", error);
+    setAdminMessage("데이터 전송에 실패했습니다.");
+    return false;
+  }
+}
+
+function showGroupShareModal(group) {
+  closeGroupShareModal();
+
+  var selectedTeams = {};
+  var markerCount = ownTeam && Array.isArray(ownTeam.markers)
+    ? ownTeam.markers.filter(function(marker) {
+        return marker.groupName === group.name;
+      }).length
+    : 0;
+
+  var overlay = document.createElement("div");
+  overlay.id = "groupShareOverlay";
+  overlay.className = "marker-edit-overlay";
+
+  var dialog = document.createElement("div");
+  dialog.className = "marker-edit-dialog";
+
+  var title = document.createElement("h2");
+  title.className = "marker-edit-title";
+  title.textContent = "데이터 전송: " + group.name;
+  dialog.appendChild(title);
+
+  var summary = document.createElement("p");
+  summary.className = "marker-description";
+  summary.textContent = "전송 마커: " + markerCount + "개";
+  dialog.appendChild(summary);
+
+  var teamTitle = document.createElement("p");
+  teamTitle.className = "marker-edit-photo-note";
+  teamTitle.textContent = "전송할 팀 선택";
+  dialog.appendChild(teamTitle);
+
+  var teamList = document.createElement("div");
+  teamList.className = "marker-edit-form";
+
+  if (!allTeams.length) {
+    var empty = document.createElement("p");
+    empty.className = "empty-text";
+    empty.textContent = "전송 가능한 팀이 없습니다.";
+    teamList.appendChild(empty);
+  } else {
+    allTeams.forEach(function(team) {
+      var row = document.createElement("label");
+      row.className = "switch-row";
+      row.style.cursor = "pointer";
+
+      var teamName = document.createElement("div");
+      teamName.className = "row-title";
+      teamName.textContent = team.teamName || team.docId;
+
+      var checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = team.docId;
+      checkbox.style.width = "20px";
+      checkbox.style.height = "20px";
+
+      checkbox.addEventListener("change", function() {
+        if (checkbox.checked) {
+          selectedTeams[team.docId] = true;
+        } else {
+          delete selectedTeams[team.docId];
+        }
+      });
+
+      row.appendChild(teamName);
+      row.appendChild(checkbox);
+      teamList.appendChild(row);
+    });
+  }
+
+  dialog.appendChild(teamList);
+
+  var note = document.createElement("p");
+  note.className = "marker-edit-photo-note";
+  note.textContent = "현재 단계에서는 그룹과 마커를 전송합니다.";
+  dialog.appendChild(note);
+
+  var actions = document.createElement("div");
+  actions.className = "marker-edit-actions";
+
+  var cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "marker-edit-button";
+  cancelButton.textContent = "취소";
+  cancelButton.addEventListener("click", closeGroupShareModal);
+  actions.appendChild(cancelButton);
+
+  var sendButton = document.createElement("button");
+  sendButton.type = "button";
+  sendButton.className = "marker-edit-button primary";
+  sendButton.textContent = "전송 완료";
+
+  sendButton.addEventListener("click", async function() {
+    var targetTeamIds = Object.keys(selectedTeams);
+
+    if (!targetTeamIds.length) {
+      setAdminMessage("전송할 팀을 선택해 주세요.");
+      return;
+    }
+
+    sendButton.disabled = true;
+    cancelButton.disabled = true;
+    sendButton.textContent = "전송 중...";
+
+    var sent = await sendAdminGroupDataToTeams(targetTeamIds, group);
+
+    if (sent) {
+      closeGroupShareModal();
+      return;
+    }
+
+    sendButton.disabled = false;
+    cancelButton.disabled = false;
+    sendButton.textContent = "전송 완료";
+  });
+
+  actions.appendChild(sendButton);
+  dialog.appendChild(actions);
+  overlay.appendChild(dialog);
+
+  overlay.addEventListener("click", function(event) {
+    if (event.target === overlay) {
+      closeGroupShareModal();
+    }
+  });
+
+  document.body.appendChild(overlay);
+}
+
+function closeLineMultiDeleteModal() {
+  var overlay = document.getElementById("lineMultiDeleteOverlay");
+  if (overlay) overlay.remove();
+}
+
+async function commitCanonicalLineMultiDeletion(selectedLines) {
+  if (!db || !Array.isArray(selectedLines) || !selectedLines.length) {
+    setAdminMessage("삭제할 선을 선택해 주세요.");
+    return 0;
+  }
+
+  var canonicalIds = {};
+
+  selectedLines.forEach(function(line) {
+    var canonicalId = lineCanonicalId(line);
+    if (canonicalId) {
+      canonicalIds[canonicalId] = true;
+    }
+  });
+
+  var targetIds = Object.keys(canonicalIds);
+
+  if (!targetIds.length) {
+    setAdminMessage("삭제할 선 연결 정보를 찾을 수 없습니다.");
+    return 0;
+  }
+
+  try {
+    var snapshot = await db.collection("teams").get();
+    var batch = db.batch();
+    var writeCount = 0;
+    var deletedCount = 0;
+
+    snapshot.forEach(function(doc) {
+      var data = doc.data() || {};
+      var lines = Array.isArray(data.lines) ? data.lines.slice() : [];
+
+      var nextLines = lines.filter(function(rawLine) {
+        if (!rawLine) return true;
+
+        var canonicalId = rawLineCanonicalId(rawLine);
+
+        if (canonicalIds[canonicalId]) {
+          deletedCount += 1;
+          return false;
+        }
+
+        return true;
+      });
+
+      if (nextLines.length === lines.length) return;
+
+      batch.update(doc.ref, {
+        lines: nextLines
+      });
+
+      writeCount += 1;
+    });
+
+    if (!writeCount) {
+      setAdminMessage("삭제할 선을 찾을 수 없습니다.");
+      return 0;
+    }
+
+    await batch.commit();
+
+    Object.keys(lineVisibility).forEach(function(key) {
+      targetIds.forEach(function(canonicalId) {
+        if (key.indexOf(canonicalId) !== -1) {
+          delete lineVisibility[key];
+        }
+      });
+    });
+
+    console.log("[ADMIN_V2_LINE_MULTI_DELETE]", {
+      canonicalIds: targetIds,
+      documents: writeCount,
+      linesDeleted: deletedCount
+    });
+
+    setAdminMessage(
+      "선 " + targetIds.length + "개 삭제가 전체 동기화되었습니다."
+    );
+
+    return targetIds.length;
+  } catch (error) {
+    console.error("[ADMIN_V2_LINE_MULTI_DELETE] failed", error);
+    setAdminMessage("선 다중삭제에 실패했습니다.");
+    return 0;
+  }
+}
+
+function showLineMultiDeleteModal() {
+  closeLineMultiDeleteModal();
+
+  var sourceLines = [];
+
+  if (ownTeam && Array.isArray(ownTeam.lines)) {
+    sourceLines = sourceLines.concat(ownTeam.lines);
+  }
+
+  allTeams.forEach(function(team) {
+    if (Array.isArray(team.lines)) {
+      sourceLines = sourceLines.concat(team.lines);
+    }
+  });
+
+  var uniqueLines = [];
+  var indexByCanonicalId = {};
+
+  sourceLines.forEach(function(line) {
+    var canonicalId = lineCanonicalId(line);
+    if (!canonicalId) return;
+
+    if (indexByCanonicalId[canonicalId] !== undefined) {
+      uniqueLines[indexByCanonicalId[canonicalId]].teamNames.push(line.teamName);
+      return;
+    }
+
+    indexByCanonicalId[canonicalId] = uniqueLines.length;
+
+    uniqueLines.push({
+      canonicalId: canonicalId,
+      line: line,
+      title: line.title || "이름 없는 선",
+      description: line.description || "",
+      color: line.color || "#7C3AED",
+      teamNames: [line.teamName]
+    });
+  });
+
+  var overlay = document.createElement("div");
+  overlay.id = "lineMultiDeleteOverlay";
+  overlay.className = "marker-edit-overlay";
+
+  var dialog = document.createElement("div");
+  dialog.className = "marker-edit-dialog";
+
+  var heading = document.createElement("h2");
+  heading.className = "marker-edit-title";
+  heading.textContent = "선 다중삭제";
+  dialog.appendChild(heading);
+
+  var description = document.createElement("p");
+  description.className = "marker-description";
+  description.textContent =
+    "삭제할 선을 선택하세요. 공유된 동일 선은 관리자/팀장 데이터에서 함께 삭제됩니다.";
+  dialog.appendChild(description);
+
+  var selectedLines = {};
+  var list = document.createElement("div");
+  list.className = "marker-edit-form";
+
+  if (!uniqueLines.length) {
+    var empty = document.createElement("p");
+    empty.className = "empty-text";
+    empty.textContent = "삭제 가능한 선이 없습니다.";
+    list.appendChild(empty);
+  } else {
+    uniqueLines.forEach(function(item) {
+      var row = document.createElement("label");
+      row.className = "switch-row";
+      row.style.cursor = "pointer";
+
+      var info = document.createElement("div");
+
+      var name = document.createElement("div");
+      name.className = "row-title";
+      name.textContent = item.title;
+
+      var teamNames = Array.from(
+        new Set(
+          item.teamNames
+            .filter(function(teamName) {
+              return !!teamName;
+            })
+            .map(function(teamName) {
+              return teamName === ADMIN_TEAM_DOC_ID ? "관리자" : teamName;
+            })
+        )
+      );
+
+      var sub = document.createElement("div");
+      sub.className = "row-sub";
+      sub.textContent = teamNames.length
+        ? "연결 데이터: " + teamNames.join(", ")
+        : "독립 선";
+
+      info.appendChild(name);
+      info.appendChild(sub);
+
+      var checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.style.width = "20px";
+      checkbox.style.height = "20px";
+
+      checkbox.addEventListener("change", function() {
+        if (checkbox.checked) {
+          selectedLines[item.canonicalId] = item.line;
+        } else {
+          delete selectedLines[item.canonicalId];
+        }
+      });
+
+      row.appendChild(info);
+      row.appendChild(checkbox);
+      list.appendChild(row);
+    });
+  }
+
+  dialog.appendChild(list);
+
+  var actions = document.createElement("div");
+  actions.className = "marker-edit-actions";
+
+  var cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "marker-edit-button";
+  cancelButton.textContent = "취소";
+  cancelButton.addEventListener("click", closeLineMultiDeleteModal);
+  actions.appendChild(cancelButton);
+
+  var deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "marker-edit-button";
+  deleteButton.textContent = "선택 삭제";
+  deleteButton.style.background = "#dc2626";
+  deleteButton.style.borderColor = "#dc2626";
+  deleteButton.style.color = "#ffffff";
+
+  deleteButton.addEventListener("click", async function() {
+    var checkedLines = Object.keys(selectedLines).map(function(key) {
+      return selectedLines[key];
+    });
+
+    if (!checkedLines.length) {
+      setAdminMessage("삭제할 선을 선택해 주세요.");
+      return;
+    }
+
+    deleteButton.disabled = true;
+    cancelButton.disabled = true;
+    deleteButton.textContent = "삭제 중...";
+
+    var deletedCount = await commitCanonicalLineMultiDeletion(checkedLines);
+
+    if (deletedCount > 0) {
+      closeLineMultiDeleteModal();
+      return;
+    }
+
+    deleteButton.disabled = false;
+    cancelButton.disabled = false;
+    deleteButton.textContent = "선택 삭제";
+  });
+
+  actions.appendChild(deleteButton);
+  dialog.appendChild(actions);
+  overlay.appendChild(dialog);
+
+  overlay.addEventListener("click", function(event) {
+    if (event.target === overlay) {
+      closeLineMultiDeleteModal();
+    }
+  });
+
+  document.body.appendChild(overlay);
+}
+
+function closeLineDeleteModal() {
+  var overlay = document.getElementById("lineDeleteOverlay");
+  if (overlay) overlay.remove();
+}
+
+async function commitCanonicalLineDeletion(line) {
+  if (!db || !line) return false;
+
+  var canonicalLineId = lineCanonicalId(line);
+
+  if (!canonicalLineId) {
+    setAdminMessage("삭제할 선 연결 정보를 찾을 수 없습니다.");
+    return false;
+  }
+
+  try {
+    var snapshot = await db.collection("teams").get();
+    var batch = db.batch();
+    var writeCount = 0;
+    var deletedCount = 0;
+
+    snapshot.forEach(function(doc) {
+      var data = doc.data() || {};
+      var lines = Array.isArray(data.lines) ? data.lines.slice() : [];
+
+      var nextLines = lines.filter(function(rawLine) {
+        if (!rawLine) return true;
+
+        var isTargetLine = rawLineCanonicalId(rawLine) === canonicalLineId;
+
+        if (isTargetLine) {
+          deletedCount += 1;
+          return false;
+        }
+
+        return true;
+      });
+
+      if (nextLines.length === lines.length) return;
+
+      batch.update(doc.ref, {
+        lines: nextLines
+      });
+
+      writeCount += 1;
+    });
+
+    if (!writeCount) {
+      setAdminMessage("삭제할 공유 선을 찾을 수 없습니다.");
+      return false;
+    }
+
+    await batch.commit();
+
+    Object.keys(lineVisibility).forEach(function(key) {
+      if (key.indexOf(canonicalLineId) !== -1) {
+        delete lineVisibility[key];
+      }
+    });
+
+    console.log("[ADMIN_V2_LINE_DELETE]", {
+      canonicalLineId: canonicalLineId,
+      documents: writeCount,
+      linesDeleted: deletedCount
+    });
+
+    setAdminMessage(
+      "선 삭제가 " + writeCount + "개 문서에 동기화되었습니다."
+    );
+
+    return true;
+  } catch (error) {
+    console.error("[ADMIN_V2_LINE_DELETE] failed", error);
+    setAdminMessage("선 삭제에 실패했습니다.");
+    return false;
+  }
+}
+
+function showLineDeleteModal(line) {
+  closeLineDeleteModal();
+
+  var overlay = document.createElement("div");
+  overlay.id = "lineDeleteOverlay";
+  overlay.className = "marker-edit-overlay";
+
+  var dialog = document.createElement("div");
+  dialog.className = "marker-edit-dialog";
+
+  var heading = document.createElement("h2");
+  heading.className = "marker-edit-title";
+  heading.textContent = "선 삭제 확인";
+  dialog.appendChild(heading);
+
+  var message = document.createElement("p");
+  message.className = "marker-description";
+  message.textContent =
+    "'" + String(line.title || "선") +
+    "' 선을 삭제하면 전송된 동일 선도 함께 삭제됩니다.";
+  dialog.appendChild(message);
+
+  var actions = document.createElement("div");
+  actions.className = "marker-edit-actions";
+
+  var cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "marker-edit-button";
+  cancelButton.textContent = "취소";
+  cancelButton.addEventListener("click", closeLineDeleteModal);
+  actions.appendChild(cancelButton);
+
+  var deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "marker-edit-button";
+  deleteButton.textContent = "삭제";
+  deleteButton.style.background = "#dc2626";
+  deleteButton.style.borderColor = "#dc2626";
+  deleteButton.style.color = "#ffffff";
+
+  deleteButton.addEventListener("click", async function() {
+    deleteButton.disabled = true;
+    cancelButton.disabled = true;
+    deleteButton.textContent = "삭제 중...";
+
+    var deleted = await commitCanonicalLineDeletion(line);
+
+    if (deleted) {
+      closeLineDeleteModal();
+      return;
+    }
+
+    deleteButton.disabled = false;
+    cancelButton.disabled = false;
+    deleteButton.textContent = "삭제";
+  });
+
+  actions.appendChild(deleteButton);
+  dialog.appendChild(actions);
+  overlay.appendChild(dialog);
+
+  overlay.addEventListener("click", function(event) {
+    if (event.target === overlay) {
+      closeLineDeleteModal();
+    }
+  });
+
+  document.body.appendChild(overlay);
+}
+
+function rawLineCanonicalId(line) {
+  if (!line) return "";
+
+  return String(
+    line.originalLineId ||
+    line.sourceLineId ||
+    line.id ||
+    line.lineId ||
+    ""
+  ).trim();
+}
+
+async function commitCanonicalLineMutation(line, fields) {
+  if (!db || !line) return false;
+
+  var canonicalLineId = lineCanonicalId(line);
+
+  if (!canonicalLineId) {
+    setAdminMessage("수정할 선 연결 정보를 찾을 수 없습니다.");
+    return false;
+  }
+
+  try {
+    var snapshot = await db.collection("teams").get();
+    var batch = db.batch();
+    var writeCount = 0;
+
+    snapshot.forEach(function(doc) {
+      var data = doc.data() || {};
+      var lines = Array.isArray(data.lines) ? data.lines.slice() : [];
+      var changed = false;
+
+      lines = lines.map(function(rawLine) {
+        if (!rawLine) return rawLine;
+
+        if (rawLineCanonicalId(rawLine) !== canonicalLineId) {
+          return rawLine;
+        }
+
+        changed = true;
+
+        return Object.assign({}, rawLine, {
+          title: fields.title,
+          description: fields.description,
+          colorValue: fields.colorValue
+        });
+      });
+
+      if (!changed) return;
+
+      batch.update(doc.ref, {
+        lines: lines
+      });
+
+      writeCount += 1;
+    });
+
+    if (!writeCount) {
+      setAdminMessage("수정할 공유 선을 찾을 수 없습니다.");
+      return false;
+    }
+
+    await batch.commit();
+
+    console.log("[ADMIN_V2_LINE_MUTATION]", {
+      canonicalLineId: canonicalLineId,
+      writes: writeCount,
+      title: fields.title
+    });
+
+    setAdminMessage(
+      "선 수정이 " + writeCount + "개 문서에 동기화되었습니다: " + fields.title
+    );
+
+    return true;
+  } catch (error) {
+    console.error("[ADMIN_V2_LINE_MUTATION] failed", error);
+    setAdminMessage("선 수정에 실패했습니다.");
+    return false;
+  }
+}
+
+function showLineEditModal(line) {
+  closeLineEditModal();
+
+  var overlay = document.createElement("div");
+  overlay.id = "lineEditOverlay";
+  overlay.className = "marker-edit-overlay";
+
+  var dialog = document.createElement("div");
+  dialog.className = "marker-edit-dialog";
+
+  var heading = document.createElement("h2");
+  heading.className = "marker-edit-title";
+  heading.textContent = "선 수정";
+  dialog.appendChild(heading);
+
+  var form = document.createElement("div");
+  form.className = "marker-edit-form";
+
+  var titleLabel = document.createElement("label");
+  titleLabel.className = "marker-edit-field";
+  titleLabel.textContent = "선 이름";
+
+  var titleInput = document.createElement("input");
+  titleInput.className = "marker-edit-input";
+  titleInput.type = "text";
+  titleInput.value = line.title || "";
+  titleLabel.appendChild(titleInput);
+  form.appendChild(titleLabel);
+
+  var descriptionLabel = document.createElement("label");
+  descriptionLabel.className = "marker-edit-field";
+  descriptionLabel.textContent = "상세 설명";
+
+  var descriptionInput = document.createElement("textarea");
+  descriptionInput.className = "marker-edit-textarea";
+  descriptionInput.value = line.description || "";
+  descriptionLabel.appendChild(descriptionInput);
+  form.appendChild(descriptionLabel);
+
+  var colorLabel = document.createElement("label");
+  colorLabel.className = "marker-edit-field";
+  colorLabel.textContent = "선 색상";
+
+  var colorInput = document.createElement("input");
+  colorInput.type = "color";
+  colorInput.value = line.color || "#7C3AED";
+  colorInput.style.width = "100%";
+  colorInput.style.height = "44px";
+  colorInput.style.padding = "4px";
+  colorInput.style.border = "1px solid #d7deea";
+  colorInput.style.borderRadius = "7px";
+  colorInput.style.background = "#fbfcff";
+  colorLabel.appendChild(colorInput);
+  form.appendChild(colorLabel);
+
+  dialog.appendChild(form);
+
+  var actions = document.createElement("div");
+  actions.className = "marker-edit-actions";
+
+  var cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "marker-edit-button";
+  cancelButton.textContent = "취소";
+  cancelButton.addEventListener("click", closeLineEditModal);
+  actions.appendChild(cancelButton);
+
+  var saveButton = document.createElement("button");
+  saveButton.type = "button";
+  saveButton.className = "marker-edit-button primary";
+  saveButton.textContent = "수정 완료";
+
+  saveButton.addEventListener("click", async function() {
+    var lineTitle = titleInput.value.trim();
+
+    if (!lineTitle) {
+      setAdminMessage("선 이름을 입력해 주세요.");
+      titleInput.focus();
+      return;
+    }
+
+    saveButton.disabled = true;
+    cancelButton.disabled = true;
+    saveButton.textContent = "동기화 중...";
+
+    var saved = await commitCanonicalLineMutation(line, {
+      title: lineTitle,
+      description: descriptionInput.value.trim(),
+      colorValue: hexToFlutterColorValue(colorInput.value)
+    });
+
+    if (saved) {
+      closeLineEditModal();
+      return;
+    }
+
+    saveButton.disabled = false;
+    cancelButton.disabled = false;
+    saveButton.textContent = "수정 완료";
+  });
+
+  actions.appendChild(saveButton);
+  dialog.appendChild(actions);
+  overlay.appendChild(dialog);
+
+  overlay.addEventListener("click", function(event) {
+    if (event.target === overlay) {
+      closeLineEditModal();
+    }
+  });
+
+  document.body.appendChild(overlay);
+  titleInput.focus();
+}
+
+function closeLineEditModal() {
+  var overlay = document.getElementById("lineEditOverlay");
+  if (overlay) overlay.remove();
+}
+
+function rawLineCanonicalId(line) {
+  if (!line) return "";
+
+  return String(
+    line.originalLineId ||
+    line.sourceLineId ||
+    line.id ||
+    line.lineId ||
+    ""
+  ).trim();
+}
+
+async function commitCanonicalLineMutation(line, fields) {
+  if (!db || !line) return false;
+
+  var canonicalLineId = lineCanonicalId(line);
+
+  if (!canonicalLineId) {
+    setAdminMessage("수정할 선 연결 정보를 찾을 수 없습니다.");
+    return false;
+  }
+
+  try {
+    var snapshot = await db.collection("teams").get();
+    var batch = db.batch();
+    var writeCount = 0;
+
+    snapshot.forEach(function(doc) {
+      var data = doc.data() || {};
+      var lines = Array.isArray(data.lines) ? data.lines.slice() : [];
+      var changed = false;
+
+      lines = lines.map(function(rawLine) {
+        if (!rawLine) return rawLine;
+
+        if (rawLineCanonicalId(rawLine) !== canonicalLineId) {
+          return rawLine;
+        }
+
+        changed = true;
+
+        return Object.assign({}, rawLine, {
+          title: fields.title,
+          description: fields.description,
+          colorValue: fields.colorValue
+        });
+      });
+
+      if (!changed) return;
+
+      batch.update(doc.ref, {
+        lines: lines
+      });
+
+      writeCount += 1;
+    });
+
+    if (!writeCount) {
+      setAdminMessage("수정할 공유 선을 찾을 수 없습니다.");
+      return false;
+    }
+
+    await batch.commit();
+
+    console.log("[ADMIN_V2_LINE_MUTATION]", {
+      canonicalLineId: canonicalLineId,
+      writes: writeCount,
+      title: fields.title
+    });
+
+    setAdminMessage(
+      "선 수정이 " + writeCount + "개 문서에 동기화되었습니다: " + fields.title
+    );
+
+    return true;
+  } catch (error) {
+    console.error("[ADMIN_V2_LINE_MUTATION] failed", error);
+    setAdminMessage("선 수정에 실패했습니다.");
+    return false;
+  }
+}
+
+function showLineEditModal(line) {
+  closeLineEditModal();
+
+  var overlay = document.createElement("div");
+  overlay.id = "lineEditOverlay";
+  overlay.className = "marker-edit-overlay";
+
+  var dialog = document.createElement("div");
+  dialog.className = "marker-edit-dialog";
+
+  var heading = document.createElement("h2");
+  heading.className = "marker-edit-title";
+  heading.textContent = "선 수정";
+  dialog.appendChild(heading);
+
+  var form = document.createElement("div");
+  form.className = "marker-edit-form";
+
+  var titleLabel = document.createElement("label");
+  titleLabel.className = "marker-edit-field";
+  titleLabel.textContent = "선 이름";
+
+  var titleInput = document.createElement("input");
+  titleInput.className = "marker-edit-input";
+  titleInput.type = "text";
+  titleInput.value = line.title || "";
+  titleLabel.appendChild(titleInput);
+  form.appendChild(titleLabel);
+
+  var descriptionLabel = document.createElement("label");
+  descriptionLabel.className = "marker-edit-field";
+  descriptionLabel.textContent = "상세 설명";
+
+  var descriptionInput = document.createElement("textarea");
+  descriptionInput.className = "marker-edit-textarea";
+  descriptionInput.value = line.description || "";
+  descriptionLabel.appendChild(descriptionInput);
+  form.appendChild(descriptionLabel);
+
+  var colorLabel = document.createElement("label");
+  colorLabel.className = "marker-edit-field";
+  colorLabel.textContent = "선 색상";
+
+  var colorInput = document.createElement("input");
+  colorInput.type = "color";
+  colorInput.value = line.color || "#7C3AED";
+  colorInput.style.width = "100%";
+  colorInput.style.height = "44px";
+  colorInput.style.padding = "4px";
+  colorInput.style.border = "1px solid #d7deea";
+  colorInput.style.borderRadius = "7px";
+  colorInput.style.background = "#fbfcff";
+  colorLabel.appendChild(colorInput);
+  form.appendChild(colorLabel);
+
+  dialog.appendChild(form);
+
+  var actions = document.createElement("div");
+  actions.className = "marker-edit-actions";
+
+  var cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "marker-edit-button";
+  cancelButton.textContent = "취소";
+  cancelButton.addEventListener("click", closeLineEditModal);
+  actions.appendChild(cancelButton);
+
+  var saveButton = document.createElement("button");
+  saveButton.type = "button";
+  saveButton.className = "marker-edit-button primary";
+  saveButton.textContent = "수정 완료";
+
+  saveButton.addEventListener("click", async function() {
+    var lineTitle = titleInput.value.trim();
+
+    if (!lineTitle) {
+      setAdminMessage("선 이름을 입력해 주세요.");
+      titleInput.focus();
+      return;
+    }
+
+    saveButton.disabled = true;
+    cancelButton.disabled = true;
+    saveButton.textContent = "동기화 중...";
+
+    var saved = await commitCanonicalLineMutation(line, {
+      title: lineTitle,
+      description: descriptionInput.value.trim(),
+      colorValue: hexToFlutterColorValue(colorInput.value)
+    });
+
+    if (saved) {
+      closeLineEditModal();
+      return;
+    }
+
+    saveButton.disabled = false;
+    cancelButton.disabled = false;
+    saveButton.textContent = "수정 완료";
+  });
+
+  actions.appendChild(saveButton);
+  dialog.appendChild(actions);
+  overlay.appendChild(dialog);
+
+  overlay.addEventListener("click", function(event) {
+    if (event.target === overlay) {
+      closeLineEditModal();
+    }
+  });
+
+  document.body.appendChild(overlay);
+  titleInput.focus();
+}
+
+function setCadastralOverlayEnabled(enabled) {
+  if (!map || !window.kakao || !kakao.maps || !kakao.maps.MapTypeId) {
+    setAdminMessage("지도가 준비되지 않았습니다.");
+    return false;
+  }
+
+  var button = document.getElementById("cadastralButton");
+  var cadastralType = kakao.maps.MapTypeId.USE_DISTRICT;
+  var nextEnabled = enabled === true;
+
+  if (nextEnabled === cadastralOverlayEnabled) {
+    return true;
+  }
+
+  cadastralOverlayEnabled = nextEnabled;
+
+  if (cadastralOverlayEnabled) {
+    map.addOverlayMapTypeId(cadastralType);
+
+    if (button) {
+      button.classList.add("active");
+      button.textContent = "지적편집도 ON";
+    }
+
+    setAdminMessage("지적편집도를 표시합니다.");
+  } else {
+    map.removeOverlayMapTypeId(cadastralType);
+
+    if (button) {
+      button.classList.remove("active");
+      button.textContent = "지적편집도";
+    }
+
+    setAdminMessage("지적편집도를 숨겼습니다.");
+  }
+
+  console.log("[ADMIN_V2_CADASTRAL]", {
+    enabled: cadastralOverlayEnabled
+  });
+
+  return true;
+}
+
+function toggleCadastralOverlay() {
+  setCadastralOverlayEnabled(!cadastralOverlayEnabled);
+}
+
+function closeDrawingSelectModal() {
+  var overlay = document.getElementById("drawingSelectOverlay");
+  if (overlay) {
+    overlay.classList.add("hidden");
+  }
+}
+
+function showDrawingQueuePanel() {
+  var panel = document.getElementById("drawingQueuePanel");
+  if (panel) {
+    panel.classList.remove("hidden");
+  }
+}
+
+function hideDrawingQueuePanel() {
+  var panel = document.getElementById("drawingQueuePanel");
+  if (panel) {
+    panel.classList.add("hidden");
+  }
+}
+
+function readImageFileAsDataUrl(file) {
+  return new Promise(function(resolve, reject) {
+    var reader = new FileReader();
+
+    reader.onload = function(event) {
+      resolve(event.target.result);
+    };
+
+    reader.onerror = function() {
+      reject(new Error("IMAGE_READ_FAILED"));
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
+
+async function renderPdfPageAsDataUrl(pdf, pageNumber, scale) {
+  var page = await pdf.getPage(pageNumber);
+  var viewport = page.getViewport({ scale: scale || 0.32 });
+  var canvas = document.createElement("canvas");
+  var context = canvas.getContext("2d");
+
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+
+  await page.render({
+    canvasContext: context,
+    viewport: viewport
+  }).promise;
+
+  return canvas.toDataURL("image/png");
+}
+
+function queueDrawingItem(item) {
+  drawingQueueSequence += 1;
+
+  drawingQueue.push({
+  id: "drawing_queue_" + drawingQueueSequence,
+  title: item.title || ("도면 " + drawingQueueSequence),
+  sourceType: item.sourceType || "image",
+  pageNumber: item.pageNumber || null,
+  previewUrl: item.previewUrl || "",
+  sourceImageUrl: item.imageUrl || item.previewUrl || "",
+  croppedImageUrl: "",
+  cropRect: null,
+  controlPoints: [],
+  status: "범위 선택 전"
+});
+
+  renderDrawingQueue();
+}
+
+function removeDrawingQueueItem(queueId) {
+  drawingQueue = drawingQueue.filter(function(item) {
+    return item.id !== queueId;
+  });
+
+    if (activeDrawingQueueId === queueId) {
+    activeDrawingQueueId = "";
+    clearDrawingControlMapOverlays();
+    cancelDrawingMapPinCapture();
+    closeDrawingPinModal();
+  }
+
+  if (drawingAlignedOverlayQueueId === queueId) {
+    clearDrawingAlignedOverlay();
+  }
+
+  renderDrawingQueue();
+
+  if (!drawingQueue.length) {
+    setAdminMessage("도면 작업 대기열이 비었습니다.");
+  }
+}
+
+function selectDrawingQueueItem(queueId) {
+  activeDrawingQueueId = queueId;
+
+  drawingQueue.forEach(function(item) {
+    if (item.id === queueId && !item.croppedImageUrl) {
+      item.status = "범위 선택 중";
+    }
+  });
+
+  renderDrawingQueue();
+  openDrawingCropModal(queueId);
+}
+
+function renderDrawingQueue() {
+  var list = document.getElementById("drawingQueueList");
+  if (!list) return;
+
+  list.innerHTML = "";
+
+  if (!drawingQueue.length) {
+    var empty = document.createElement("p");
+    empty.className = "drawing-queue-empty";
+    empty.textContent = "선택된 도면이 없습니다.";
+    list.appendChild(empty);
+    hideDrawingQueuePanel();
+    return;
+  }
+
+  showDrawingQueuePanel();
+
+  drawingQueue.forEach(function(item, index) {
+    var row = document.createElement("article");
+    row.className =
+      "drawing-queue-item" +
+      (item.id === activeDrawingQueueId ? " active" : "");
+
+    var thumb = document.createElement("img");
+    thumb.className = "drawing-queue-thumb";
+    thumb.src = item.previewUrl;
+    thumb.alt = item.title;
+
+    var info = document.createElement("div");
+    info.className = "drawing-queue-info";
+
+    var name = document.createElement("div");
+    name.className = "drawing-queue-name";
+    name.textContent = (index + 1) + ". " + item.title;
+
+    var status = document.createElement("div");
+    status.className = "drawing-queue-status";
+    status.textContent = item.status;
+
+    var actions = document.createElement("div");
+    actions.className = "drawing-queue-actions";
+
+    var selectButton = document.createElement("button");
+    selectButton.type = "button";
+    selectButton.className = "drawing-small-button primary";
+    selectButton.textContent = "배치 시작";    selectButton.addEventListener("click", function() {
+      selectDrawingQueueItem(item.id);
+    });
+
+    var deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "drawing-small-button danger";
+    deleteButton.textContent = "제거";
+    deleteButton.addEventListener("click", function() {
+      removeDrawingQueueItem(item.id);
+    });
+
+    actions.appendChild(selectButton);
+
+    if (item.croppedImageUrl) {
+    var pinButton = document.createElement("button");
+    pinButton.type = "button";
+    pinButton.className = "drawing-small-button primary";
+    pinButton.textContent = item.controlPoints.length >= 3
+      ? "기준핀 수정"
+      : "기준핀 지정";
+
+    pinButton.addEventListener("click", function() {
+      openDrawingPinModal(item.id);
+    });
+
+    actions.appendChild(pinButton);
+
+    if (item.controlPoints.length >= 3) {
+      var alignButton = document.createElement("button");
+      alignButton.type = "button";
+      alignButton.className = "drawing-small-button primary";
+      alignButton.textContent = drawingAlignedOverlayQueueId === item.id
+        ? "배치 갱신"
+        : "지도에 배치";
+
+      alignButton.addEventListener("click", function() {
+        placeDrawingOverlayOnMap(item.id);
+      });
+
+      actions.appendChild(alignButton);
+    }
+  }
+
+  actions.appendChild(deleteButton);
+
+info.appendChild(name);
+info.appendChild(status);
+info.appendChild(actions);
+
+    row.appendChild(thumb);
+    row.appendChild(info);
+    list.appendChild(row);
+  });
+}
+
+async function renderPdfSelectionPages(pdf, fileName) {
+  var grid = document.getElementById("drawingPageGrid");
+  var title = document.getElementById("drawingSelectTitle");
+
+  drawingPagePreviewByNumber = {};
+  grid.innerHTML = "";
+  title.textContent = "PDF 도면 선택 - " + fileName;
+
+  for (var pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    var card = document.createElement("label");
+    card.className = "drawing-page-card";
+
+    var preview = document.createElement("img");
+    preview.className = "drawing-page-preview";
+    preview.alt = pageNumber + "페이지";
+
+    var bottom = document.createElement("div");
+    bottom.className = "drawing-page-card-bottom";
+
+    var label = document.createElement("span");
+    label.className = "drawing-page-label";
+    label.textContent = pageNumber + "페이지";
+
+    var checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "drawing-page-check";
+    checkbox.value = String(pageNumber);
+
+    checkbox.addEventListener("change", function() {
+      var parentCard = this.closest(".drawing-page-card");
+      if (parentCard) {
+        parentCard.classList.toggle("selected", this.checked);
+      }
+    });
+
+    bottom.appendChild(label);
+    bottom.appendChild(checkbox);
+    card.appendChild(preview);
+    card.appendChild(bottom);
+    grid.appendChild(card);
+
+    try {
+      var dataUrl = await renderPdfPageAsDataUrl(pdf, pageNumber, 0.3);
+      drawingPagePreviewByNumber[String(pageNumber)] = dataUrl;
+      preview.src = dataUrl;
+    } catch (error) {
+      console.error("[ADMIN_V2_PDF_THUMBNAIL] page failed", pageNumber, error);
+      label.textContent = pageNumber + "페이지 불러오기 실패";
+      checkbox.disabled = true;
+    }
+  }
+}
+
+async function openPdfDrawingSelector(file) {
+  if (!window.pdfjsLib) {
+    setAdminMessage("PDF 처리 모듈을 불러오지 못했습니다.");
+    return;
+  }
+
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+  setAdminMessage("PDF 페이지 미리보기를 불러오는 중입니다.");
+
+  var bytes = await file.arrayBuffer();
+
+  drawingPdfDocument = await window.pdfjsLib.getDocument({
+    data: bytes
+  }).promise;
+
+  drawingSelectionFileName = String(file.name || "PDF 도면");
+
+  document.getElementById("drawingSelectOverlay").classList.remove("hidden");
+
+  await renderPdfSelectionPages(
+    drawingPdfDocument,
+    drawingSelectionFileName
+  );
+
+  setAdminMessage("작업할 도면 페이지를 선택해 주세요.");
+}
+
+async function addSelectedPdfPagesToQueue() {
+  var selectedInputs = Array.from(
+    document.querySelectorAll(".drawing-page-check:checked")
+  );
+
+  if (!selectedInputs.length) {
+    setAdminMessage("대기열에 추가할 페이지를 선택해 주세요.");
+    return;
+  }
+
+  var button = document.getElementById("drawingAddQueueButton");
+  button.disabled = true;
+  button.textContent = "고해상도 도면 생성 중...";
+
+  try {
+    for (var i = 0; i < selectedInputs.length; i += 1) {
+      var pageNumber = Number(selectedInputs[i].value);
+      var previewUrl = drawingPagePreviewByNumber[String(pageNumber)] || "";
+      var highResolutionUrl = await renderPdfPageAsDataUrl(
+        drawingPdfDocument,
+        pageNumber,
+        2
+      );
+
+      queueDrawingItem({
+        title: drawingSelectionFileName + " - " + pageNumber + "페이지",
+        sourceType: "pdf",
+        pageNumber: pageNumber,
+        previewUrl: previewUrl,
+        imageUrl: highResolutionUrl
+      });
+    }
+
+    closeDrawingSelectModal();
+
+    setAdminMessage(
+      "선택한 도면 " +
+      selectedInputs.length +
+      "장을 작업 대기열에 추가했습니다."
+    );
+  } catch (error) {
+    console.error("[ADMIN_V2_PDF_QUEUE_HIGH_RES] failed", error);
+    setAdminMessage("선택한 PDF 도면을 대기열에 추가하지 못했습니다.");
+  } finally {
+    button.disabled = false;
+    button.textContent = "선택 도면 대기열 추가";
+  }
+}
+
+async function handleDrawingOverlayFileSelect(event) {
+  var input = event.target;
+  var file = input.files && input.files[0];
+
+  if (!file) return;
+
+  try {
+    var fileName = String(file.name || "도면");
+    var lowerName = fileName.toLowerCase();
+
+    if (lowerName.endsWith(".pdf") || file.type === "application/pdf") {
+      await openPdfDrawingSelector(file);
+    } else if (
+      file.type.indexOf("image/") === 0 ||
+      /\.(jpg|jpeg|png|webp)$/i.test(lowerName)
+    ) {
+      var imageUrl = await readImageFileAsDataUrl(file);
+
+      queueDrawingItem({
+        title: fileName,
+        sourceType: "image",
+        previewUrl: imageUrl,
+        imageUrl: imageUrl
+      });
+
+      setAdminMessage("이미지 도면 1장을 작업 대기열에 추가했습니다.");
+    } else {
+      setAdminMessage("PDF 또는 JPG/PNG/WEBP 파일만 사용할 수 있습니다.");
+    }
+  } catch (error) {
+    console.error("[ADMIN_V2_DRAWING_QUEUE_UPLOAD] failed", error);
+    setAdminMessage("도면 파일을 불러오지 못했습니다.");
+  }
+
+  input.value = "";
+}
+
+function initializeDrawingCanvasZoom(canvasId, mode) {
+  var canvas = document.getElementById(canvasId);
+
+  if (!canvas) return;
+
+  drawingCanvasZoomState[mode] = 1;
+
+  canvas.style.width = "";
+  canvas.style.height = "";
+  canvas.style.maxWidth = "100%";
+  canvas.style.maxHeight = "100%";
+
+  requestAnimationFrame(function() {
+    var bounds = canvas.getBoundingClientRect();
+
+    if (!bounds.width || !bounds.height) return;
+
+    canvas.dataset.fitWidth = String(bounds.width);
+    canvas.dataset.fitHeight = String(bounds.height);
+
+    applyDrawingCanvasZoom(canvasId, mode);
+  });
+}
+
+function applyDrawingCanvasZoom(canvasId, mode) {
+  var canvas = document.getElementById(canvasId);
+  var zoom = drawingCanvasZoomState[mode];
+
+  if (
+    !canvas ||
+    !Number.isFinite(zoom) ||
+    !canvas.dataset.fitWidth ||
+    !canvas.dataset.fitHeight
+  ) {
+    return;
+  }
+
+  var baseWidth = Number(canvas.dataset.fitWidth);
+  var baseHeight = Number(canvas.dataset.fitHeight);
+
+  canvas.style.maxWidth = "none";
+  canvas.style.maxHeight = "none";
+  canvas.style.width = baseWidth * zoom + "px";
+  canvas.style.height = baseHeight * zoom + "px";
+
+  var value = document.getElementById(
+    mode === "crop" ? "drawingCropZoomValue" : "drawingPinZoomValue"
+  );
+
+  if (value) {
+    value.textContent = Math.round(zoom * 100) + "%";
+  }
+}
+
+function changeDrawingCanvasZoom(canvasId, mode, amount) {
+  var currentZoom = drawingCanvasZoomState[mode] || 1;
+  var nextZoom = Math.max(0.5, Math.min(6, currentZoom + amount));
+
+  drawingCanvasZoomState[mode] = Number(nextZoom.toFixed(2));
+  applyDrawingCanvasZoom(canvasId, mode);
+}
+
+function handleDrawingCanvasWheelZoom(event, canvasId, mode) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  var canvas = document.getElementById(canvasId);
+  var stage = document.getElementById(
+    mode === "crop" ? "drawingCropStage" : "drawingPinStage"
+);
+
+if (!canvas || !stage) return;
+
+  var beforeRect = canvas.getBoundingClientRect();
+
+  if (!beforeRect.width || !beforeRect.height) return;
+
+  var anchorX = (event.clientX - beforeRect.left) / beforeRect.width;
+  var anchorY = (event.clientY - beforeRect.top) / beforeRect.height;
+
+  anchorX = Math.max(0, Math.min(1, anchorX));
+  anchorY = Math.max(0, Math.min(1, anchorY));
+
+  var currentZoom = drawingCanvasZoomState[mode] || 1;
+  var amount = event.deltaY < 0 ? 0.15 : -0.15;
+  var nextZoom = Math.max(0.5, Math.min(6, currentZoom + amount));
+  if (nextZoom === currentZoom) return;
+
+  drawingCanvasZoomState[mode] = Number(nextZoom.toFixed(2));
+  applyDrawingCanvasZoom(canvasId, mode);
+
+  var afterRect = canvas.getBoundingClientRect();
+
+  var movedAnchorX =
+    afterRect.left + afterRect.width * anchorX - event.clientX;
+
+  var movedAnchorY =
+    afterRect.top + afterRect.height * anchorY - event.clientY;
+
+  stage.scrollLeft += movedAnchorX;
+  stage.scrollTop += movedAnchorY;
+}
+
+function startDrawingCanvasPan(event, stageId) {
+  if (event.button !== 1) return;
+
+  var stage = document.getElementById(stageId);
+
+  if (!stage) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  drawingCanvasPanState = {
+    active: true,
+    stageId: stageId,
+    pointerId: event.pointerId,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    startScrollLeft: stage.scrollLeft,
+    startScrollTop: stage.scrollTop
+  };
+
+  stage.classList.add("panning");
+
+  if (stage.setPointerCapture) {
+    stage.setPointerCapture(event.pointerId);
+  }
+}
+
+function moveDrawingCanvasPan(event) {
+  if (!drawingCanvasPanState.active) return;
+
+  var stage = document.getElementById(drawingCanvasPanState.stageId);
+
+  if (!stage) return;
+
+  event.preventDefault();
+
+  stage.scrollLeft =
+    drawingCanvasPanState.startScrollLeft -
+    (event.clientX - drawingCanvasPanState.startClientX);
+
+  stage.scrollTop =
+    drawingCanvasPanState.startScrollTop -
+    (event.clientY - drawingCanvasPanState.startClientY);
+}
+
+function finishDrawingCanvasPan(event) {
+  if (!drawingCanvasPanState.active) return;
+
+  var stage = document.getElementById(drawingCanvasPanState.stageId);
+
+  if (stage) {
+    stage.classList.remove("panning");
+
+    if (
+      stage.releasePointerCapture &&
+      drawingCanvasPanState.pointerId !== null
+    ) {
+      try {
+        stage.releasePointerCapture(drawingCanvasPanState.pointerId);
+      } catch (error) {
+        console.debug("[ADMIN_V2_DRAWING_PAN_RELEASE]", error);
+      }
+    }
+  }
+
+  drawingCanvasPanState = {
+    active: false,
+    stageId: "",
+    pointerId: null,
+    startClientX: 0,
+    startClientY: 0,
+    startScrollLeft: 0,
+    startScrollTop: 0
+  };
+}
+
+function preventDrawingCanvasAuxClick(event) {
+  if (event.button === 1) {
+    event.preventDefault();
+  }
+}
+
+function resetDrawingCanvasZoom(canvasId, mode) {
+  drawingCanvasZoomState[mode] = 1;
+  applyDrawingCanvasZoom(canvasId, mode);
+}
+
+function closeDrawingCropModal() {
+  var overlay = document.getElementById("drawingCropOverlay");
+
+  if (overlay) {
+    overlay.classList.add("hidden");
+  }
+
+  finishDrawingCanvasPan();
+
+  drawingCropState = {
+    queueId: "",
+    image: null,
+    points: [],
+    hasSelection: false
+  };
+}
+
+function getDrawingQueueItem(queueId) {
+  return drawingQueue.find(function(item) {
+    return item.id === queueId;
+  });
+}
+
+function openDrawingCropModal(queueId) {
+  var item = getDrawingQueueItem(queueId);
+
+  if (!item || !item.sourceImageUrl) {
+    setAdminMessage("범위를 선택할 원본 도면을 찾을 수 없습니다.");
+    return;
+  }
+
+  var overlay = document.getElementById("drawingCropOverlay");
+  var title = document.getElementById("drawingCropTitle");
+  var info = document.getElementById("drawingCropInfo");
+  var image = new Image();
+
+  title.textContent = "도면 범위 선택 - " + item.title;
+  info.textContent = "선택 영역 없음";
+  overlay.classList.remove("hidden");
+
+  image.onload = function() {
+  drawingCropState = {
+    queueId: queueId,
+    image: image,
+    points: [],
+    hasSelection: false
+  };
+
+  document.getElementById("drawingCropInfo").textContent =
+    "꼭짓점 0 / 4개 선택 필요 · 휠로 확대/축소";
+
+  drawDrawingCropCanvas();
+  initializeDrawingCanvasZoom("drawingCropCanvas", "crop");
+};
+
+  image.onerror = function() {
+    setAdminMessage("도면 원본 이미지를 불러오지 못했습니다.");
+    closeDrawingCropModal();
+  };
+
+  image.src = item.sourceImageUrl;
+}
+function drawDrawingCropCanvas() {
+  var canvas = document.getElementById("drawingCropCanvas");
+  var context = canvas.getContext("2d");
+  var image = drawingCropState.image;
+  var points = drawingCropState.points || [];
+
+  if (!image) return;
+
+  canvas.width = image.naturalWidth || image.width;
+  canvas.height = image.naturalHeight || image.height;
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  if (!points.length) return;
+
+  context.lineWidth = Math.max(3, canvas.width / 480);
+  context.strokeStyle = "#16a34a";
+  context.fillStyle = "rgba(22, 163, 74, 0.16)";
+  context.setLineDash([12, 7]);
+
+  context.beginPath();
+  context.moveTo(points[0].x, points[0].y);
+
+  for (var i = 1; i < points.length; i += 1) {
+    context.lineTo(points[i].x, points[i].y);
+  }
+
+  if (points.length === 4) {
+    context.closePath();
+    context.fill();
+  }
+
+  context.stroke();
+  context.setLineDash([]);
+
+  points.forEach(function(point, index) {
+    drawDrawingCropCornerPoint(context, point, index + 1);
+  });
+}
+
+function drawDrawingCropCornerPoint(context, point, number) {
+  var radius = 14;
+
+  context.beginPath();
+  context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+  context.fillStyle = "#16a34a";
+  context.fill();
+  context.lineWidth = 3;
+  context.strokeStyle = "#ffffff";
+  context.stroke();
+
+  context.fillStyle = "#ffffff";
+  context.font = "900 13px Arial, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(String(number), point.x, point.y + 0.5);
+}
+
+function drawingCanvasPoint(event) {
+  var canvas = document.getElementById("drawingCropCanvas");
+  var bounds = canvas.getBoundingClientRect();
+
+  return {
+    x: Math.round(
+      Math.max(
+        0,
+        Math.min(
+          canvas.width,
+          (event.clientX - bounds.left) * (canvas.width / bounds.width)
+        )
+      )
+    ),
+    y: Math.round(
+      Math.max(
+        0,
+        Math.min(
+          canvas.height,
+          (event.clientY - bounds.top) * (canvas.height / bounds.height)
+        )
+      )
+    )
+  };
+}
+
+function addDrawingCropCornerPoint(event) {
+  if (!drawingCropState.image) return;
+
+  if (drawingCropState.points.length >= 4) {
+    drawingCropState.points = [];
+    drawingCropState.hasSelection = false;
+  }
+
+  drawingCropState.points.push(drawingCanvasPoint(event));
+  drawingCropState.hasSelection = drawingCropState.points.length === 4;
+
+  var count = drawingCropState.points.length;
+
+  document.getElementById("drawingCropInfo").textContent =
+    drawingCropState.hasSelection
+      ? "꼭짓점 4 / 4개 선택 완료 · 선택 범위를 확정하세요."
+      : "꼭짓점 " + count + " / 4개 선택 필요 · 휠로 확대/축소";
+
+  drawDrawingCropCanvas();
+}
+
+function drawingCropBounds() {
+  var points = drawingCropState.points || [];
+
+  if (points.length !== 4) return null;
+
+  var xs = points.map(function(point) {
+    return point.x;
+  });
+
+  var ys = points.map(function(point) {
+    return point.y;
+  });
+
+  var left = Math.min.apply(null, xs);
+  var top = Math.min.apply(null, ys);
+  var right = Math.max.apply(null, xs);
+  var bottom = Math.max.apply(null, ys);
+
+  return {
+    x: Math.round(left),
+    y: Math.round(top),
+    width: Math.round(right - left),
+    height: Math.round(bottom - top)
+  };
+}
+
+function resetDrawingCropSelection() {
+  if (!drawingCropState.image) return;
+
+  drawingCropState.points = [];
+  drawingCropState.hasSelection = false;
+
+  document.getElementById("drawingCropInfo").textContent =
+    "꼭짓점 0 / 4개 선택 필요 · 휠로 확대/축소";
+
+  drawDrawingCropCanvas();
+}
+
+function confirmDrawingCropSelection() {
+  if (
+    !drawingCropState.hasSelection ||
+    !drawingCropState.image ||
+    drawingCropState.points.length !== 4
+  ) {
+    setAdminMessage("도면 범위의 꼭짓점 4개를 순서대로 선택하세요.");
+    return;
+  }
+
+  var item = getDrawingQueueItem(drawingCropState.queueId);
+  var rect = drawingCropBounds();
+  var points = drawingCropState.points.map(function(point) {
+    return {
+      x: point.x,
+      y: point.y
+    };
+  });
+
+  if (!item || !rect || rect.width < 20 || rect.height < 20) {
+    setAdminMessage("선택한 도면 범위를 저장할 수 없습니다.");
+    return;
+  }
+
+  var cropCanvas = document.createElement("canvas");
+  var cropContext = cropCanvas.getContext("2d");
+
+  cropCanvas.width = rect.width;
+  cropCanvas.height = rect.height;
+
+  cropContext.save();
+  cropContext.beginPath();
+
+  points.forEach(function(point, index) {
+    var x = point.x - rect.x;
+    var y = point.y - rect.y;
+
+    if (index === 0) {
+      cropContext.moveTo(x, y);
+    } else {
+      cropContext.lineTo(x, y);
+    }
+  });
+
+  cropContext.closePath();
+  cropContext.clip();
+
+  cropContext.drawImage(
+    drawingCropState.image,
+    -rect.x,
+    -rect.y
+  );
+
+  cropContext.restore();
+
+  item.croppedImageUrl = cropCanvas.toDataURL("image/png");
+  item.previewUrl = item.croppedImageUrl;
+  item.cropRect = rect;
+  item.cropQuad = points;
+  item.controlPoints = [];
+  item.status = "범위 선택 완료 / 기준핀 대기";
+
+  if (drawingAlignedOverlayQueueId === item.id) {
+    clearDrawingAlignedOverlay();
+  }
+
+  if (activeDrawingQueueId === item.id) {
+    clearDrawingControlMapOverlays();
+  }
+
+  closeDrawingCropModal();
+  renderDrawingQueue();
+
+  setAdminMessage(
+    item.title +
+    " 도면 범위를 확정했습니다. 다음 단계에서 기준핀을 지정합니다."
+  );
+}
+function getDrawingPinQueueItem() {
+  return getDrawingQueueItem(drawingPinState.queueId);
+}
+
+function closeDrawingPinModal() {
+  var overlay = document.getElementById("drawingPinOverlay");
+
+  if (overlay) {
+    overlay.classList.add("hidden");
+  }
+
+  finishDrawingCanvasPan();
+}
+
+function cancelDrawingMapPinCapture() {
+  drawingPinState.pendingImagePoint = null;
+  drawingPinState.awaitingMapPoint = false;
+
+  var mapElement = document.getElementById("map");
+  var banner = document.getElementById("drawingMapPinCaptureBanner");
+
+  if (mapElement) {
+    mapElement.classList.remove("drawing-pin-capture-mode");
+  }
+
+  if (banner) {
+    banner.classList.add("hidden");
+  }
+}
+
+function openDrawingPinModal(queueId) {
+  var item = getDrawingQueueItem(queueId);
+
+  if (!item || !item.croppedImageUrl) {
+    setAdminMessage("먼저 도면 범위를 선택해 주세요.");
+    return;
+  }
+
+  cancelDrawingMapPinCapture();
+
+  activeDrawingQueueId = queueId;
+  drawingPinState.queueId = queueId;
+
+  var overlay = document.getElementById("drawingPinOverlay");
+  var title = document.getElementById("drawingPinTitle");
+  var image = new Image();
+
+  title.textContent = "도면 기준핀 지정 - " + item.title;
+  overlay.classList.remove("hidden");
+
+  image.onload = function() {
+  drawingPinState.image = image;
+  drawDrawingPinCanvas();
+  initializeDrawingCanvasZoom("drawingPinCanvas", "pin");
+  updateDrawingPinInfo();
+  renderDrawingControlMapOverlays(item);
+};
+
+  image.onerror = function() {
+    setAdminMessage("잘라낸 도면 이미지를 불러오지 못했습니다.");
+    closeDrawingPinModal();
+  };
+
+  image.src = item.croppedImageUrl;
+}
+
+function drawDrawingPinCanvas() {
+  var canvas = document.getElementById("drawingPinCanvas");
+  var context = canvas.getContext("2d");
+  var image = drawingPinState.image;
+  var item = getDrawingPinQueueItem();
+
+  if (!canvas || !context || !image || !item) return;
+
+  canvas.width = image.naturalWidth || image.width;
+  canvas.height = image.naturalHeight || image.height;
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  item.controlPoints.forEach(function(point, index) {
+    drawDrawingImagePin(context, point.imageX, point.imageY, index + 1, false);
+  });
+
+  if (drawingPinState.pendingImagePoint) {
+    drawDrawingImagePin(
+      context,
+      drawingPinState.pendingImagePoint.x,
+      drawingPinState.pendingImagePoint.y,
+      item.controlPoints.length + 1,
+      true
+    );
+  }
+}
+
+function drawDrawingImagePin(context, x, y, number, pending) {
+  var radius = 13;
+
+  context.beginPath();
+  context.arc(x, y, radius, 0, Math.PI * 2);
+  context.fillStyle = pending ? "#f97316" : "#16a34a";
+  context.fill();
+  context.lineWidth = 3;
+  context.strokeStyle = "#ffffff";
+  context.stroke();
+
+  context.fillStyle = "#ffffff";
+  context.font = "900 13px Arial, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(String(number), x, y + 0.5);
+}
+
+function drawingPinCanvasPoint(event) {
+  var canvas = document.getElementById("drawingPinCanvas");
+  var bounds = canvas.getBoundingClientRect();
+
+  return {
+    x: Math.max(
+      0,
+      Math.min(
+        canvas.width,
+        (event.clientX - bounds.left) * (canvas.width / bounds.width)
+      )
+    ),
+    y: Math.max(
+      0,
+      Math.min(
+        canvas.height,
+        (event.clientY - bounds.top) * (canvas.height / bounds.height)
+      )
+    )
+  };
+}
+
+function beginDrawingPinPair(event) {
+  var item = getDrawingPinQueueItem();
+
+  if (!item || !drawingPinState.image || drawingPinState.awaitingMapPoint) {
+    return;
+  }
+
+  var point = drawingPinCanvasPoint(event);
+  var pinNumber = item.controlPoints.length + 1;
+
+  drawingPinState.pendingImagePoint = {
+    x: Math.round(point.x),
+    y: Math.round(point.y)
+  };
+  drawingPinState.awaitingMapPoint = true;
+
+  drawDrawingPinCanvas();
+  closeDrawingPinModal();
+
+  var mapElement = document.getElementById("map");
+  var banner = document.getElementById("drawingMapPinCaptureBanner");
+  var text = document.getElementById("drawingMapPinCaptureText");
+
+  if (mapElement) {
+    mapElement.classList.add("drawing-pin-capture-mode");
+  }
+
+  text.textContent =
+    pinNumber + "번 기준핀: 십자선 중심으로 지도상의 동일 위치를 클릭하세요.";
+
+  banner.classList.remove("hidden");
+
+  setAdminMessage(
+    pinNumber + "번 도면 기준점을 선택했습니다. 십자선 중심으로 지도에서 같은 위치를 클릭하세요."
+  );
+}
+
+function captureDrawingMapPin(latLng) {
+  if (!drawingPinState.awaitingMapPoint || !drawingPinState.pendingImagePoint) {
+    return false;
+  }
+
+  var item = getDrawingPinQueueItem();
+
+  if (!item) {
+    cancelDrawingMapPinCapture();
+    return false;
+  }
+
+  item.controlPoints.push({
+    imageX: drawingPinState.pendingImagePoint.x,
+    imageY: drawingPinState.pendingImagePoint.y,
+    lat: latLng.getLat(),
+    lng: latLng.getLng()
+  });
+
+  cancelDrawingMapPinCapture();
+
+  item.status = item.controlPoints.length >= 3
+    ? "기준핀 " + item.controlPoints.length + "개 / 정합 가능"
+    : "기준핀 " + item.controlPoints.length + "개 / 최소 3개 필요";
+
+  renderDrawingQueue();
+  renderDrawingControlMapOverlays(item);
+
+  if (drawingAlignedOverlayQueueId === item.id) {
+    updateDrawingAlignedOverlayTransform();
+  }
+
+  openDrawingPinModal(item.id);
+
+  setAdminMessage(
+    item.controlPoints.length >= 3
+      ? "기준핀 " + item.controlPoints.length + "개가 저장되었습니다. 정합을 진행할 수 있습니다."
+      : "기준핀 " + item.controlPoints.length + "개가 저장되었습니다. 최소 3개가 필요합니다."
+  );
+
+  return true;
+}
+
+function updateDrawingPinInfo() {
+  var item = getDrawingPinQueueItem();
+  var info = document.getElementById("drawingPinInfo");
+
+  if (!item || !info) return;
+
+  info.textContent = item.controlPoints.length >= 3
+    ? "기준핀 " + item.controlPoints.length + "개 / 정합 가능"
+    : "기준핀 " + item.controlPoints.length + "개 / 최소 3개 필요";
+}
+
+function removeLastDrawingControlPoint() {
+  var item = getDrawingPinQueueItem();
+
+  if (!item || !item.controlPoints.length) return;
+
+  item.controlPoints.pop();
+
+  item.status = item.controlPoints.length >= 3
+    ? "기준핀 " + item.controlPoints.length + "개 / 정합 가능"
+    : "기준핀 " + item.controlPoints.length + "개 / 최소 3개 필요";
+
+    if (drawingAlignedOverlayQueueId === item.id) {
+    if (item.controlPoints.length >= 3) {
+      updateDrawingAlignedOverlayTransform();
+    } else {
+      clearDrawingAlignedOverlay();
+    }
+  }
+
+  renderDrawingQueue();
+  renderDrawingControlMapOverlays(item);
+  drawDrawingPinCanvas();
+  updateDrawingPinInfo();
+}
+
+function resetDrawingControlPoints() {
+  var item = getDrawingPinQueueItem();
+
+  if (!item) return;
+
+  item.controlPoints = [];
+  item.status = "범위 선택 완료 / 기준핀 대기";
+
+    cancelDrawingMapPinCapture();
+  clearDrawingControlMapOverlays();
+
+  if (drawingAlignedOverlayQueueId === item.id) {
+    clearDrawingAlignedOverlay();
+  }
+
+  renderDrawingQueue();
+  drawDrawingPinCanvas();
+  updateDrawingPinInfo();
+
+  setAdminMessage("기준핀을 모두 초기화했습니다.");
+}
+
+function clearDrawingControlMapOverlays() {
+  drawingControlMapOverlays.forEach(function(overlay) {
+    overlay.setMap(null);
+  });
+
+  drawingControlMapOverlays = [];
+}
+
+function renderDrawingControlMapOverlays(item) {
+  clearDrawingControlMapOverlays();
+
+  if (!map || !item || !Array.isArray(item.controlPoints)) return;
+
+  item.controlPoints.forEach(function(point, index) {
+    var pin = document.createElement("div");
+    pin.className = "drawing-map-control-pin";
+    pin.textContent = String(index + 1);
+
+    var overlay = new kakao.maps.CustomOverlay({
+      map: map,
+      position: new kakao.maps.LatLng(point.lat, point.lng),
+      content: pin,
+      xAnchor: 0,
+      yAnchor: 0
+    });
+
+    drawingControlMapOverlays.push(overlay);
+  });
+}
+
+function solveDrawingLinear3(matrix, values) {
+  var rows = matrix.map(function(row, index) {
+    return [row[0], row[1], row[2], values[index]];
+  });
+
+  for (var column = 0; column < 3; column += 1) {
+    var pivotRow = column;
+
+    for (var rowIndex = column + 1; rowIndex < 3; rowIndex += 1) {
+      if (Math.abs(rows[rowIndex][column]) > Math.abs(rows[pivotRow][column])) {
+        pivotRow = rowIndex;
+      }
+    }
+
+    if (Math.abs(rows[pivotRow][column]) < 0.000001) {
+      return null;
+    }
+
+    if (pivotRow !== column) {
+      var swapped = rows[column];
+      rows[column] = rows[pivotRow];
+      rows[pivotRow] = swapped;
+    }
+
+    var pivot = rows[column][column];
+
+    for (var normalizeIndex = column; normalizeIndex < 4; normalizeIndex += 1) {
+      rows[column][normalizeIndex] /= pivot;
+    }
+
+    for (var eliminateRow = 0; eliminateRow < 3; eliminateRow += 1) {
+      if (eliminateRow === column) continue;
+
+      var factor = rows[eliminateRow][column];
+
+      for (var eliminateColumn = column; eliminateColumn < 4; eliminateColumn += 1) {
+        rows[eliminateRow][eliminateColumn] -=
+          factor * rows[column][eliminateColumn];
+      }
+    }
+  }
+
+  return [rows[0][3], rows[1][3], rows[2][3]];
+}
+
+function calculateDrawingAffineTransform(item) {
+  if (
+    !map ||
+    !item ||
+    !Array.isArray(item.controlPoints) ||
+    item.controlPoints.length < 3
+  ) {
+    return null;
+  }
+
+  var controlPoints = item.controlPoints.slice(0, 3);
+  var projection = map.getProjection();
+  var anchorPosition = new kakao.maps.LatLng(
+    controlPoints[0].lat,
+    controlPoints[0].lng
+  );
+  var anchorPixel = projection.containerPointFromCoords(anchorPosition);
+
+  var sourceMatrix = controlPoints.map(function(point) {
+    return [point.imageX, point.imageY, 1];
+  });
+
+  var targetPixels = controlPoints.map(function(point) {
+    var pixel = projection.containerPointFromCoords(
+      new kakao.maps.LatLng(point.lat, point.lng)
+    );
+
+    return {
+      x: pixel.x - anchorPixel.x,
+      y: pixel.y - anchorPixel.y
+    };
+  });
+
+  var xCoefficients = solveDrawingLinear3(
+    sourceMatrix,
+    targetPixels.map(function(point) {
+      return point.x;
+    })
+  );
+
+  var yCoefficients = solveDrawingLinear3(
+    sourceMatrix,
+    targetPixels.map(function(point) {
+      return point.y;
+    })
+  );
+
+  if (!xCoefficients || !yCoefficients) {
+    return null;
+  }
+
+  return {
+    position: anchorPosition,
+    cssMatrix: [
+      xCoefficients[0],
+      yCoefficients[0],
+      xCoefficients[1],
+      yCoefficients[1],
+      xCoefficients[2],
+      yCoefficients[2]
+    ].map(function(value) {
+      return Number(value.toFixed(8));
+    }).join(",")
+  };
+}
+
+function clearDrawingAlignedOverlay() {
+  if (drawingAlignedOverlay) {
+    drawingAlignedOverlay.setMap(null);
+  }
+
+  drawingAlignedOverlay = null;
+  drawingAlignedOverlayImage = null;
+  drawingAlignedOverlayQueueId = "";
+
+  var toolbar = document.getElementById("drawingTraceToolbar");
+  if (toolbar) {
+    toolbar.classList.add("hidden");
+  }
+
+  if (drawingMarkerTraceMode) {
+    drawingMarkerTraceMode = false;
+    setMarkerCreateMode(false);
+  }
+}
+
+function updateDrawingAlignedOverlayTransform() {
+  if (
+    !drawingAlignedOverlay ||
+    !drawingAlignedOverlayImage ||
+    !drawingAlignedOverlayQueueId
+  ) {
+    return;
+  }
+
+  var item = getDrawingQueueItem(drawingAlignedOverlayQueueId);
+  var transform = calculateDrawingAffineTransform(item);
+
+  if (!transform) return;
+
+  drawingAlignedOverlay.setPosition(transform.position);
+  drawingAlignedOverlayImage.style.transform =
+    "matrix(" + transform.cssMatrix + ")";
+}
+
+function updateDrawingOverlayOpacity(value) {
+  if (!drawingAlignedOverlayImage) return;
+
+  var opacityValue = Number(value);
+
+  if (!Number.isFinite(opacityValue)) {
+    opacityValue = 50;
+  }
+
+  opacityValue = Math.max(10, Math.min(90, opacityValue));
+  drawingAlignedOverlayImage.style.opacity = String(opacityValue / 100);
+}
+
+function startDrawingMarkerTracing() {
+  if (!drawingAlignedOverlay || !drawingAlignedOverlayQueueId) {
+    setAdminMessage("먼저 용적도를 지도 위에 배치하세요.");
+    return;
+  }
+
+  setCadastralOverlayEnabled(true);
+  clearDrawingControlMapOverlays();
+
+  drawingMarkerTraceMode = true;
+  setMarkerCreateMode(true);
+
+  setAdminMessage(
+    "용적도에서 등록할 점의 중심을 직접 클릭하세요. TYPE-1, TYPE-2 구분은 저장창에서 그룹으로 선택합니다."
+  );
+}
+
+function placeDrawingOverlayOnMap(queueId) {
+  var item = getDrawingQueueItem(queueId);
+
+  if (
+    !map ||
+    !item ||
+    !item.croppedImageUrl ||
+    item.controlPoints.length < 3
+  ) {
+    setAdminMessage("정합 기준점 3개 이상을 지정한 뒤 지도에 배치하세요.");
+    return;
+  }
+
+  setCadastralOverlayEnabled(true);
+
+  var transform = calculateDrawingAffineTransform(item);
+
+  if (!transform) {
+    setAdminMessage(
+      "정합 기준점 3개가 한 직선에 가깝습니다. 필지 경계의 서로 떨어진 지점을 다시 선택하세요."
+    );
+    return;
+  }
+
+  clearDrawingAlignedOverlay();
+
+  var anchor = document.createElement("div");
+  anchor.className = "drawing-aligned-overlay-anchor";
+
+  var image = document.createElement("img");
+  image.className = "drawing-aligned-overlay-image";
+  image.src = item.croppedImageUrl;
+  image.alt = item.title + " 용적도 오버레이";
+  image.style.opacity = "0.5";
+  image.style.transform = "matrix(" + transform.cssMatrix + ")";
+
+  anchor.appendChild(image);
+
+  drawingAlignedOverlay = new kakao.maps.CustomOverlay({
+    map: map,
+    position: transform.position,
+    content: anchor,
+    xAnchor: 0,
+    yAnchor: 0,
+    zIndex: 1
+  });
+
+  drawingAlignedOverlayImage = image;
+  drawingAlignedOverlayQueueId = item.id;
+  drawingMarkerTraceMode = false;
+
+  item.status =
+    "지적편집도 위 배치 완료 / 정합점 " + item.controlPoints.length + "개";
+  activeDrawingQueueId = item.id;
+
+  var toolbar = document.getElementById("drawingTraceToolbar");
+  var opacityRange = document.getElementById("drawingTraceOpacityRange");
+
+  if (opacityRange) {
+    opacityRange.value = "50";
+  }
+
+  if (toolbar) {
+    toolbar.classList.remove("hidden");
+  }
+
+  clearDrawingControlMapOverlays();
+  renderDrawingQueue();
+
+  setAdminMessage(
+    item.title +
+    " 용적도를 지적편집도 위에 배치했습니다. 경계가 맞으면 도면 마커 본뜨기를 시작하세요."
+  );
+}
+
+function closeAiImportModal() {
+  var overlay = document.getElementById("aiImportOverlay");
+
+  if (overlay) {
+    overlay.remove();
+  }
+}
+
+function aiImportSafeToken(value) {
+  return String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function aiImportGroupName(rawName) {
+  var sourceName = String(rawName || "").trim();
+
+  if (!sourceName) {
+    sourceName = "미분류";
+  }
+
+  return "AI탐지_" + sourceName;
+}
+
+function aiImportDateText(timestamp) {
+  if (!timestamp || typeof timestamp.toDate !== "function") {
+    return "시간 정보 없음";
+  }
+
+  var date = timestamp.toDate();
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  ].join(".") + " " + [
+    String(date.getHours()).padStart(2, "0"),
+    String(date.getMinutes()).padStart(2, "0")
+  ].join(":");
+}
+
+function aiImportCanonicalMarkerId(aiDocumentId, index) {
+  return "AI_" + aiImportSafeToken(aiDocumentId) + "_" + String(index + 1);
+}
+
+function aiImportMarkerMatchesCanonical(marker, canonicalId) {
+  if (!marker || !canonicalId) return false;
+
+  var ids = [
+    marker.id,
+    marker.markerId,
+    marker.originalMarkerId,
+    marker.sourceMarkerId,
+    marker.parentMarkerId
+  ].map(cleanMarkerId).filter(Boolean);
+
+  return ids.indexOf(cleanMarkerId(canonicalId)) !== -1;
+}
+
+function getOrCreateAiTargetGroup(groups, groupName) {
+  var existing = groups.find(function(group) {
+    return group && String(group.name || "").trim() === groupName;
+  });
+
+  if (existing) {
+    return {
+      name: groupName,
+      colorValue: existing.colorValue,
+      isVisible: existing.isVisible !== false
+    };
+  }
+
+  var newGroup = {
+    name: groupName,
+    colorValue: hexToFlutterColorValue("#EF4444"),
+    isVisible: true
+  };
+
+  groups.push(newGroup);
+
+  return newGroup;
+}
+
+async function deployAiDetectedResultsToTeams(selectedRecords, targetTeamIds) {
+  if (!db || !Array.isArray(selectedRecords) || !selectedRecords.length) {
+    setAdminMessage("가져올 AI 탐지 결과를 선택해 주세요.");
+    return false;
+  }
+
+  if (!Array.isArray(targetTeamIds) || !targetTeamIds.length) {
+    setAdminMessage("배포할 팀을 하나 이상 선택해 주세요.");
+    return false;
+  }
+
+  try {
+    var teamSnapshot = await db.collection("teams").get();
+    var sourceDocsById = {};
+    var workingDataById = {};
+
+    teamSnapshot.forEach(function(doc) {
+      sourceDocsById[doc.id] = doc;
+
+      var data = doc.data() || {};
+
+      workingDataById[doc.id] = {
+        ref: doc.ref,
+        groups: Array.isArray(data.groups) ? data.groups.slice() : [],
+        markers: Array.isArray(data.markers) ? data.markers.slice() : []
+      };
+    });
+
+    var validTargetIds = targetTeamIds.filter(function(teamId) {
+      return !!workingDataById[teamId];
+    });
+
+    if (!validTargetIds.length) {
+      setAdminMessage("배포 가능한 팀 문서를 찾을 수 없습니다.");
+      return false;
+    }
+
+    if (validTargetIds.length > 450) {
+      setAdminMessage("배포 대상 팀이 너무 많아 작업을 중단했습니다.");
+      return false;
+    }
+
+    function findExistingCanonicalOwner(canonicalId) {
+      var ownerTeamId = "";
+
+      Object.keys(workingDataById).some(function(teamId) {
+        var markers = workingDataById[teamId].markers;
+
+        var found = markers.some(function(marker) {
+          return marker &&
+            cleanMarkerId(marker.id) === cleanMarkerId(canonicalId);
+        });
+
+        if (found) {
+          ownerTeamId = teamId;
+          return true;
+        }
+
+        return false;
+      });
+
+      return ownerTeamId;
+    }
+
+    var importedMarkerCount = 0;
+    var affectedGroupNames = {};
+
+    selectedRecords.forEach(function(record) {
+      var data = record.data || {};
+      var sourceGroupName = String(data.groupName || "").trim();
+      var deployedGroupName = aiImportGroupName(sourceGroupName);
+      var manholes = Array.isArray(data.manholes) ? data.manholes : [];
+
+      affectedGroupNames[deployedGroupName] = true;
+
+      manholes.forEach(function(manhole, index) {
+        var lat = Number(manhole && manhole.lat);
+        var lng = Number(manhole && manhole.lng);
+
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          return;
+        }
+
+        var canonicalId = aiImportCanonicalMarkerId(record.id, index);
+        var ownerTeamId =
+          findExistingCanonicalOwner(canonicalId) ||
+          validTargetIds[0];
+
+        validTargetIds.forEach(function(targetTeamId) {
+          var targetData = workingDataById[targetTeamId];
+          var targetGroup = getOrCreateAiTargetGroup(
+            targetData.groups,
+            deployedGroupName
+          );
+
+          var existingIndex = targetData.markers.findIndex(function(marker) {
+            return aiImportMarkerMatchesCanonical(marker, canonicalId);
+          });
+
+          var isOwner = targetTeamId === ownerTeamId;
+
+          var markerPayload = {
+            id: isOwner
+              ? canonicalId
+              : "Sent_AI_" +
+                aiImportSafeToken(targetTeamId) +
+                "_" +
+                aiImportSafeToken(canonicalId),
+            lat: lat,
+            lng: lng,
+            title: "AI탐지 " + String(index + 1),
+            description: "AI 시스템에서 일괄 로드된 위치",
+            address: "주소 확인 필요 (AI)",
+            group: {
+              name: targetGroup.name,
+              colorValue: targetGroup.colorValue,
+              isVisible: targetGroup.isVisible !== false
+            },
+            photos: [],
+            isChecked: false
+          };
+
+          if (!isOwner) {
+            markerPayload.originalMarkerId = canonicalId;
+          }
+
+          if (existingIndex !== -1) {
+            var existingMarker = targetData.markers[existingIndex] || {};
+
+            if (!isOwner && cleanMarkerId(existingMarker.id)) {
+              markerPayload.id = cleanMarkerId(existingMarker.id);
+            }
+
+            targetData.markers[existingIndex] = Object.assign(
+              {},
+              existingMarker,
+              markerPayload
+            );
+          } else {
+            targetData.markers.push(markerPayload);
+          }
+        });
+
+        importedMarkerCount += 1;
+      });
+    });
+
+    if (!importedMarkerCount) {
+      setAdminMessage("선택한 AI 탐지 결과에 저장 가능한 좌표가 없습니다.");
+      return false;
+    }
+
+    var batch = db.batch();
+
+    validTargetIds.forEach(function(teamId) {
+      var targetData = workingDataById[teamId];
+
+      batch.update(targetData.ref, {
+        groups: targetData.groups,
+        markers: targetData.markers
+      });
+    });
+
+    await batch.commit();
+
+    console.log("[ADMIN_V2_AI_IMPORT]", {
+      targets: validTargetIds,
+      groups: Object.keys(affectedGroupNames),
+      markersPerTeam: importedMarkerCount
+    });
+
+    setAdminMessage(
+      "AI 탐지 결과 배포 완료: " +
+      validTargetIds.length +
+      "개 팀 / 팀당 " +
+      importedMarkerCount +
+      "개 마커"
+    );
+
+    return true;
+  } catch (error) {
+    console.error("[ADMIN_V2_AI_IMPORT] failed", error);
+    setAdminMessage("AI 탐지 결과 배포에 실패했습니다.");
+    return false;
+  }
+}
+
+async function showAiImportModal() {
+  closeAiImportModal();
+
+  if (!db) {
+    setAdminMessage("Firebase 연결 후 다시 시도해 주세요.");
+    return;
+  }
+
+  setAdminMessage("AI 탐지 결과를 불러오는 중입니다...");
+
+  try {
+    var snapshot = await db
+      .collection("ai_detected")
+      .orderBy("createdAt", "desc")
+      .limit(50)
+      .get();
+
+    if (snapshot.empty) {
+      setAdminMessage("가져올 AI 탐지 결과가 없습니다.");
+      return;
+    }
+
+    var records = [];
+
+    snapshot.forEach(function(doc) {
+      var data = doc.data() || {};
+
+      records.push({
+        id: doc.id,
+        data: data
+      });
+    });
+
+    var overlay = document.createElement("div");
+    overlay.id = "aiImportOverlay";
+    overlay.className = "marker-edit-overlay";
+
+    var dialog = document.createElement("div");
+    dialog.className = "marker-edit-dialog";
+    dialog.style.width = "min(720px, 100%)";
+    dialog.style.maxHeight = "min(820px, calc(100vh - 36px))";
+
+    var title = document.createElement("h2");
+    title.className = "marker-edit-title";
+    title.textContent = "AI 탐지 결과 가져오기";
+    dialog.appendChild(title);
+
+    var description = document.createElement("p");
+    description.className = "marker-edit-photo-note";
+    description.textContent =
+      "가져올 결과와 배포 대상을 선택하면 즉시 AI탐지_<그룹명> 그룹과 마커가 생성됩니다.";
+    dialog.appendChild(description);
+
+    var resultTitle = document.createElement("div");
+    resultTitle.className = "marker-edit-field";
+    resultTitle.textContent = "1. 가져올 AI 탐지 결과 선택";
+    dialog.appendChild(resultTitle);
+
+    var resultList = document.createElement("div");
+    resultList.style.display = "grid";
+    resultList.style.gap = "6px";
+    resultList.style.maxHeight = "240px";
+    resultList.style.overflowY = "auto";
+    resultList.style.padding = "8px";
+    resultList.style.border = "1px solid #e5eaf2";
+    resultList.style.borderRadius = "8px";
+    resultList.style.background = "#fbfcff";
+
+    var selectedRecordIds = {};
+
+    records.forEach(function(record) {
+      var data = record.data || {};
+      var row = document.createElement("label");
+      row.style.display = "grid";
+      row.style.gridTemplateColumns = "20px 1fr";
+      row.style.gap = "8px";
+      row.style.alignItems = "start";
+      row.style.padding = "7px";
+      row.style.border = "1px solid #edf0f5";
+      row.style.borderRadius = "7px";
+      row.style.background = "#ffffff";
+      row.style.cursor = "pointer";
+
+      var checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.addEventListener("change", function() {
+        if (checkbox.checked) {
+          selectedRecordIds[record.id] = true;
+        } else {
+          delete selectedRecordIds[record.id];
+        }
+      });
+
+      var textWrap = document.createElement("div");
+
+      var name = document.createElement("div");
+      name.style.fontSize = "13px";
+      name.style.fontWeight = "900";
+      name.textContent = aiImportGroupName(data.groupName);
+
+      var meta = document.createElement("div");
+      meta.style.marginTop = "3px";
+      meta.style.color = "#6b7280";
+      meta.style.fontSize = "11px";
+      meta.style.fontWeight = "800";
+      meta.textContent =
+        "원본: " +
+        String(data.groupName || "미분류") +
+        " / 마커 " +
+        String(Number(data.markerCount) || (Array.isArray(data.manholes) ? data.manholes.length : 0)) +
+        "개 / " +
+        aiImportDateText(data.createdAt);
+
+      textWrap.appendChild(name);
+      textWrap.appendChild(meta);
+      row.appendChild(checkbox);
+      row.appendChild(textWrap);
+      resultList.appendChild(row);
+    });
+
+    dialog.appendChild(resultList);
+
+    var targetTitle = document.createElement("div");
+    targetTitle.className = "marker-edit-field";
+    targetTitle.style.marginTop = "8px";
+    targetTitle.textContent = "2. 배포 대상 팀 선택";
+    dialog.appendChild(targetTitle);
+
+    var targetList = document.createElement("div");
+    targetList.style.display = "flex";
+    targetList.style.flexWrap = "wrap";
+    targetList.style.gap = "7px";
+    targetList.style.padding = "8px";
+    targetList.style.border = "1px solid #e5eaf2";
+    targetList.style.borderRadius = "8px";
+    targetList.style.background = "#fbfcff";
+
+    var selectedTargetIds = {};
+
+    var targetTeams = [{
+      docId: ADMIN_TEAM_DOC_ID,
+      teamName: "관리자 데이터"
+    }].concat(
+      allTeams.map(function(team) {
+        return {
+          docId: team.docId,
+          teamName: team.teamName || team.docId
+        };
+      })
+    );
+
+    targetTeams.forEach(function(team) {
+      var chip = document.createElement("label");
+      chip.style.display = "flex";
+      chip.style.alignItems = "center";
+      chip.style.gap = "5px";
+      chip.style.padding = "7px 9px";
+      chip.style.border = "1px solid #d7deea";
+      chip.style.borderRadius = "999px";
+      chip.style.background = "#ffffff";
+      chip.style.fontSize = "12px";
+      chip.style.fontWeight = "900";
+      chip.style.cursor = "pointer";
+
+      var checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.addEventListener("change", function() {
+        if (checkbox.checked) {
+          selectedTargetIds[team.docId] = true;
+          chip.style.background = "#dbeafe";
+          chip.style.borderColor = "#60a5fa";
+        } else {
+          delete selectedTargetIds[team.docId];
+          chip.style.background = "#ffffff";
+          chip.style.borderColor = "#d7deea";
+        }
+      });
+
+      var text = document.createElement("span");
+      text.textContent =
+        team.docId === ADMIN_TEAM_DOC_ID
+          ? team.teamName + " (" + team.docId + ")"
+          : team.teamName;
+
+      chip.appendChild(checkbox);
+      chip.appendChild(text);
+      targetList.appendChild(chip);
+    });
+
+    dialog.appendChild(targetList);
+
+    var actions = document.createElement("div");
+    actions.className = "marker-edit-actions";
+
+    var cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.className = "marker-edit-button";
+    cancelButton.textContent = "취소";
+    cancelButton.addEventListener("click", closeAiImportModal);
+    actions.appendChild(cancelButton);
+
+    var deployButton = document.createElement("button");
+    deployButton.type = "button";
+    deployButton.className = "marker-edit-button primary";
+    deployButton.textContent = "선택 팀에 즉시 배포";
+
+    deployButton.addEventListener("click", async function() {
+      var selectedRecords = records.filter(function(record) {
+        return selectedRecordIds[record.id] === true;
+      });
+
+      var targetTeamIds = Object.keys(selectedTargetIds);
+
+      if (!selectedRecords.length) {
+        setAdminMessage("가져올 AI 탐지 결과를 선택해 주세요.");
+        return;
+      }
+
+      if (!targetTeamIds.length) {
+        setAdminMessage("배포할 팀을 하나 이상 선택해 주세요.");
+        return;
+      }
+
+      var totalMarkerCount = selectedRecords.reduce(function(total, record) {
+        var manholes = Array.isArray(record.data.manholes)
+          ? record.data.manholes
+          : [];
+
+        return total + manholes.length;
+      }, 0);
+
+      var confirmed = window.confirm(
+        "선택한 AI 결과를 " +
+        targetTeamIds.length +
+        "개 팀에 즉시 배포합니다.\n\n" +
+        "생성 예정 마커: 팀당 " +
+        totalMarkerCount +
+        "개\n" +
+        "계속하시겠습니까?"
+      );
+
+      if (!confirmed) return;
+
+      deployButton.disabled = true;
+      cancelButton.disabled = true;
+      deployButton.textContent = "배포 중...";
+
+      var success = await deployAiDetectedResultsToTeams(
+        selectedRecords,
+        targetTeamIds
+      );
+
+      if (success) {
+        closeAiImportModal();
+        return;
+      }
+
+      deployButton.disabled = false;
+      cancelButton.disabled = false;
+      deployButton.textContent = "선택 팀에 즉시 배포";
+    });
+
+    actions.appendChild(deployButton);
+    dialog.appendChild(actions);
+    overlay.appendChild(dialog);
+
+    overlay.addEventListener("click", function(event) {
+      if (event.target === overlay) {
+        closeAiImportModal();
+      }
+    });
+
+    document.body.appendChild(overlay);
+
+    setAdminMessage("가져올 AI 탐지 결과와 배포 대상을 선택하세요.");
+  } catch (error) {
+    console.error("[ADMIN_V2_AI_IMPORT_LIST] failed", error);
+    setAdminMessage("AI 탐지 결과 목록을 불러오지 못했습니다.");
+  }
+}
+
+function handlePlaceholderAction(actionName) {
+var messages = {
         "marker share": "전송 기능은 준비 중입니다",
         "team edit": "수정 기능은 준비 중입니다",
         "team delete": "삭제 기능은 준비 중입니다",
@@ -3781,12 +9549,196 @@ function closeSidebar() {
       });
       document.getElementById("refreshButton").addEventListener("click", subscribeAdminTeamsRealtime);
       document.getElementById("fitBoundsButton").addEventListener("click", fitBoundsToVisibleItems);
-      document.getElementById("markerMoveButton").addEventListener("click", toggleMarkerMoveMode);
-      document.getElementById("cadastralButton").addEventListener("click", function() {
-        handlePlaceholderAction("cadastral");
+      document.getElementById("markerCreateButton").addEventListener("click", function() {
+        setMarkerCreateMode(!markerCreateMode);
       });
+
+      document.getElementById("freeLineCreateButton").addEventListener("click", function() {
+        if (!freeLineCreateMode) {
+          setMarkerCreateMode(false);
+          setFreeLineCreateMode(true);
+          return;
+        }
+
+        if (pendingFreeLinePoints.length < 2) {
+          setAdminMessage("선을 저장하려면 지점을 2개 이상 선택하세요.");
+          return;
+        }
+
+        showFreeLineCreateModal();
+      });
+
+      document.getElementById("freeLineUndoButton").addEventListener("click", function() {
+        undoPendingFreeLinePoint();
+      });
+
+      document.getElementById("freeLineCancelButton").addEventListener("click", function() {
+        setFreeLineCreateMode(false);
+      });
+
+      document.getElementById("markerMoveButton").addEventListener("click", toggleMarkerMoveMode);
+
+document.getElementById("cadastralButton").addEventListener("click", function() {
+  toggleCadastralOverlay();
+});
+
+document.getElementById("drawingOverlayUploadButton").addEventListener("click", function() {
+  document.getElementById("drawingOverlayFileInput").click();
+});
+
+document.getElementById("aiImportButton").addEventListener("click", function() {
+  showAiImportModal();
+});
+
+document.getElementById("drawingOverlayFileInput").addEventListener("change", function(event) {
+  handleDrawingOverlayFileSelect(event);
+});
+
+document.getElementById("drawingQueueCloseButton").addEventListener("click", function() {
+  hideDrawingQueuePanel();
+});
+
+document.getElementById("drawingTraceOpacityRange").addEventListener("input", function(event) {
+  updateDrawingOverlayOpacity(event.target.value);
+});
+
+document.getElementById("drawingTraceMarkerButton").addEventListener("click", function() {
+  startDrawingMarkerTracing();
+});
+
+document.getElementById("drawingOverlayClearButton").addEventListener("click", function() {
+  clearDrawingAlignedOverlay();
+  clearDrawingControlMapOverlays();
+  setAdminMessage("지도 위 용적도 오버레이를 제거했습니다.");
+});
+
+document.getElementById("drawingSelectCloseButton").addEventListener("click", function() {
+  closeDrawingSelectModal();
+});
+
+document.getElementById("drawingSelectCancelButton").addEventListener("click", function() {
+  closeDrawingSelectModal();
+});
+
+document.getElementById("drawingAddQueueButton").addEventListener("click", async function() {
+  await addSelectedPdfPagesToQueue();
+});
+
+document.getElementById("drawingSelectOverlay").addEventListener("click", function(event) {
+  if (event.target === this) {
+    closeDrawingSelectModal();
+  }
+});
+
+document.getElementById("drawingCropCloseButton").addEventListener("click", function() {
+  closeDrawingCropModal();
+});
+
+document.getElementById("drawingCropCancelButton").addEventListener("click", function() {
+  closeDrawingCropModal();
+});
+
+document.getElementById("drawingCropResetButton").addEventListener("click", function() {
+  resetDrawingCropSelection();
+});
+
+document.getElementById("drawingCropConfirmButton").addEventListener("click", function() {
+  confirmDrawingCropSelection();
+});
+
+document.getElementById("drawingCropCanvas").addEventListener("click", function(event) {
+  addDrawingCropCornerPoint(event);
+});
+
+document.getElementById("drawingCropCanvas").addEventListener("wheel", function(event) {
+  handleDrawingCanvasWheelZoom(event, "drawingCropCanvas", "crop");
+}, { passive: false });
+
+document.getElementById("drawingCropStage").addEventListener("pointerdown", function(event) {
+  startDrawingCanvasPan(event, "drawingCropStage");
+});
+
+document.getElementById("drawingCropStage").addEventListener("pointermove", function(event) {
+  moveDrawingCanvasPan(event);
+});
+
+document.getElementById("drawingCropStage").addEventListener("pointerup", function(event) {
+  finishDrawingCanvasPan(event);
+});
+
+document.getElementById("drawingCropStage").addEventListener("pointercancel", function(event) {
+  finishDrawingCanvasPan(event);
+});
+
+document.getElementById("drawingCropStage").addEventListener("auxclick", function(event) {
+  preventDrawingCanvasAuxClick(event);
+});
+
+document.getElementById("drawingCropOverlay").addEventListener("click", function(event) {
+  if (event.target === this) {
+    closeDrawingCropModal();
+  }
+});
+
+document.getElementById("drawingPinCanvas").addEventListener("click", function(event) {
+  beginDrawingPinPair(event);
+});
+
+document.getElementById("drawingPinCanvas").addEventListener("wheel", function(event) {
+  handleDrawingCanvasWheelZoom(event, "drawingPinCanvas", "pin");
+}, { passive: false });
+
+document.getElementById("drawingPinStage").addEventListener("pointerdown", function(event) {
+  startDrawingCanvasPan(event, "drawingPinStage");
+});
+
+document.getElementById("drawingPinStage").addEventListener("pointermove", function(event) {
+  moveDrawingCanvasPan(event);
+});
+
+document.getElementById("drawingPinStage").addEventListener("pointerup", function(event) {
+  finishDrawingCanvasPan(event);
+});
+
+document.getElementById("drawingPinStage").addEventListener("pointercancel", function(event) {
+  finishDrawingCanvasPan(event);
+});
+
+document.getElementById("drawingPinStage").addEventListener("auxclick", function(event) {
+  preventDrawingCanvasAuxClick(event);
+});
+
+document.getElementById("drawingPinCloseButton").addEventListener("click", function() {
+  closeDrawingPinModal();
+});
+
+document.getElementById("drawingPinDoneButton").addEventListener("click", function() {
+  closeDrawingPinModal();
+});
+
+document.getElementById("drawingPinUndoButton").addEventListener("click", function() {
+  removeLastDrawingControlPoint();
+});
+
+document.getElementById("drawingPinResetButton").addEventListener("click", function() {
+  resetDrawingControlPoints();
+});
+
+document.getElementById("drawingMapPinCancelButton").addEventListener("click", function() {
+  cancelDrawingMapPinCapture();
+
+  if (drawingPinState.queueId) {
+    openDrawingPinModal(drawingPinState.queueId);
+  }
+});
+
+document.getElementById("drawingPinOverlay").addEventListener("click", function(event) {
+  if (event.target === this) {
+    closeDrawingPinModal();
+  }
+});
       document.getElementById("addGroupButton").addEventListener("click", function() {
-        handlePlaceholderAction("add group");
+        showGroupCreateModal();
       });
       document.getElementById("logoutButton").addEventListener("click", function() {
         handlePlaceholderAction("logout");
@@ -3796,19 +9748,41 @@ function closeSidebar() {
         handlePlaceholderAction("spreadsheet upload");
       });
       document.getElementById("closeInfoButton").addEventListener("click", closeMarkerInfo);
+
+      document.getElementById("lineMultiDeleteButton").addEventListener("click", function() {
+  showLineMultiDeleteModal();
+});
+
       document.getElementById("lineToggleButton").addEventListener("click", function() {
         var body = document.getElementById("lineSectionBody");
         var hidden = body.style.display === "none";
         body.style.display = hidden ? "grid" : "none";
         this.textContent = hidden ? "-" : "+";
-      });
-      document.addEventListener("keydown", function(event) {
-        if (event.key === "Escape") {
-          closePhotoLightbox();
-          closeMarkerDeleteModal();
-        }
-      });
-    }
+});
+
+    document.addEventListener("keydown", function(event) {
+  if (event.key === "Escape") {
+    closePhotoLightbox();
+    closeMarkerDeleteModal();
+    closeGroupCreateModal();
+    closeGroupEditModal();
+    closeAiImportModal();
+    closeGroupDeleteModal();
+    closeMarkerCreateModal();
+    closeGroupShareModal();
+    closeFreeLineCreateModal();
+    closeLineEditModal();
+    closeLineDeleteModal();
+    closeLineMultiDeleteModal();
+    closeDrawingSelectModal();
+    closeDrawingCropModal();
+    closeDrawingPinModal();
+    cancelDrawingMapPinCapture();
+    setMarkerCreateMode(false);
+    setFreeLineCreateMode(false);
+  }
+});
+       }
 
     function startAdminV2() {
       bindEvents();
