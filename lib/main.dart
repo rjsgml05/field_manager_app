@@ -390,6 +390,7 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   Timer? _markerUpdateTimer;
   bool _isMapInteracting = false;
   bool _hasPendingMarkerUpdate = false;
+  bool _didInitialGpsMove = false;
   String? _lastSentMarkersHash;
   String? _lastSentLinesHash;
   bool? _lastSentMarkerMoveMode;
@@ -622,6 +623,8 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
             _lastSentMarkerMoveMode = null;
             _invalidateMarkerRenderHash();
             _scheduleMarkerUpdate(ms: 0);
+
+            _moveToInitialGpsLocation();
           } else if (message.message.startsWith('mapInteractionStart')) {
             if (_isMapInteracting) return;
             _isMapInteracting = true;
@@ -670,7 +673,7 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
     }
   }
 
-  Future<void> _showCurrentLocationOnMap(double lat, double lng) async {
+    Future<void> _showCurrentLocationOnMap(double lat, double lng) async {
     final controller = _webViewController;
     if (controller == null) return;
 
@@ -685,6 +688,54 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
       await controller.runJavaScript('showCurrentLocation($payload);');
     } catch (e) {
       debugPrint('showCurrentLocation failed: $e');
+    }
+  }
+
+  Future<void> _moveToInitialGpsLocation() async {
+    if (_didInitialGpsMove || !mounted || kIsWeb) return;
+
+    _didInitialGpsMove = true;
+
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+
+      if (!serviceEnabled) {
+        debugPrint('[INITIAL_GPS] 위치 서비스가 꺼져 있습니다.');
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (
+        permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever
+      ) {
+        debugPrint('[INITIAL_GPS] 위치 권한이 허용되지 않았습니다.');
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      if (!mounted) return;
+
+      await _showCurrentLocationOnMap(
+        position.latitude,
+        position.longitude,
+      );
+
+      await _moveTo(
+        position.latitude,
+        position.longitude,
+        3,
+      );
+    } catch (e) {
+      debugPrint('[INITIAL_GPS] 최초 현재 위치 이동 실패: $e');
     }
   }
 
@@ -2814,9 +2865,8 @@ Future<void> _loadData() async {
           }
         });
 
-        // 화면에 마커 아이콘 다시 그리기
-        _invalidateMarkerRenderHash();
-        _scheduleMarkerUpdate(ms: 200);
+        // 실제 마커/선 표시값이 달라진 경우에만 내부 hash 비교를 통과해 WebView로 전송됨
+        _scheduleMarkerUpdate(ms: 120);
       } else if (!doc.exists && mounted) {
         // 📍 2. 관리자가 파이어베이스에서 팀 폴더(문서)를 아예 삭제했을 때
         setState(() {
@@ -2824,9 +2874,9 @@ Future<void> _loadData() async {
           _markerDataMap.clear(); // 마커 데이터 비우기
           _lineDataMap.clear();   // 선 데이터 비우기
         });
-        // 화면에서 마커/선 싹 지우기
-        _invalidateMarkerRenderHash();
-        _scheduleMarkerUpdate(ms: 200);
+
+        // 데이터가 실제로 비워졌으므로 계산되는 hash가 달라져 지도에서도 제거됨
+        _scheduleMarkerUpdate(ms: 120);
 
         // (선택 사항) 사용자에게 알려주기
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2876,7 +2926,7 @@ Future<void> _loadData() async {
           }
         });
         _invalidateMarkerRenderHash();
-        _scheduleMarkerUpdate(ms: 200); // 화면 갱신
+        _scheduleMarkerUpdate(ms: 120);
       });
     }
   }
@@ -4184,14 +4234,69 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
             const SizedBox(height: 10),
             Padding(
               padding: const EdgeInsets.only(bottom: 100), 
-              child: FloatingActionButton(
-                heroTag: "gps", 
-                onPressed: () async { 
-                  Position p = await Geolocator.getCurrentPosition(); 
-                  await _showCurrentLocationOnMap(p.latitude, p.longitude);
-                  _moveTo(p.latitude, p.longitude, 3); 
-                }, 
-                child: const Icon(Icons.my_location)
+                            child: FloatingActionButton(
+                heroTag: "gps",
+                onPressed: () async {
+                  try {
+                    final serviceEnabled =
+                        await Geolocator.isLocationServiceEnabled();
+
+                    if (!serviceEnabled) {
+                      if (!mounted) return;
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("휴대폰 위치 서비스를 켜주세요."),
+                        ),
+                      );
+                      return;
+                    }
+
+                    var permission = await Geolocator.checkPermission();
+
+                    if (permission == LocationPermission.denied) {
+                      permission = await Geolocator.requestPermission();
+                    }
+
+                    if (
+                      permission == LocationPermission.denied ||
+                      permission == LocationPermission.deniedForever
+                    ) {
+                      if (!mounted) return;
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("현재 위치를 보려면 위치 권한이 필요합니다."),
+                        ),
+                      );
+                      return;
+                    }
+
+                    final position = await Geolocator.getCurrentPosition(
+                      desiredAccuracy: LocationAccuracy.high,
+                    );
+
+                    await _showCurrentLocationOnMap(
+                      position.latitude,
+                      position.longitude,
+                    );
+
+                    await _moveTo(
+                      position.latitude,
+                      position.longitude,
+                      3,
+                    );
+                  } catch (e) {
+                    if (!mounted) return;
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("현재 위치를 불러오지 못했습니다."),
+                      ),
+                    );
+                  }
+                },
+                child: const Icon(Icons.my_location),
               )
             ),
           ]

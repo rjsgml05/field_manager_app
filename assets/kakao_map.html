@@ -9,7 +9,7 @@
     var pendingMarkers = null;
     var pendingLines = null;
     var markerMoveMode = false;
-    var KAKAO_DEBUG = false;
+    var KAKAO_DEBUG = FileSystemWritableFileStream;
 
     window.__kakaoMapState = window.__kakaoMapState || {
       mapReady: mapReady,
@@ -183,23 +183,54 @@
       transition: none;
     }
 
-    .cluster-marker {
-      align-items: center;
-      border: 1px solid rgba(0, 0, 0, 0.34);
-      border-radius: 50%;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
-      cursor: pointer;
+        .cluster-marker {
+      position: relative;
       display: flex;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 13px;
-      font-weight: 800;
-      height: 38px;
+      align-items: center;
       justify-content: center;
+      width: 36px;
+      height: 36px;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      background: #39f;
+      color: #ffffff;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 12px;
+      font-weight: 900;
       line-height: 1;
-      min-width: 38px;
-      padding: 0 4px;
+      cursor: pointer;
       pointer-events: auto;
       user-select: none;
+      box-shadow:
+        0 0 0 1px rgba(0, 80, 180, 0.28),
+        0 3px 9px rgba(0, 80, 180, 0.32);
+      transition: transform 120ms ease, background-color 120ms ease;
+    }
+
+    .cluster-marker::before {
+      content: "";
+      position: absolute;
+      inset: -5px;
+      border-radius: 50%;
+      background: rgba(51, 153, 255, 0.14);
+      z-index: -1;
+    }
+
+    .cluster-marker.medium {
+      width: 41px;
+      height: 41px;
+      font-size: 13px;
+    }
+
+    .cluster-marker.large {
+      width: 47px;
+      height: 47px;
+      font-size: 14px;
+    }
+
+    .cluster-marker:active {
+      background: #ff2f2f;
+      transform: scale(1.14);
     }
   </style>
 </head>
@@ -238,6 +269,7 @@
     var pendingDrawMarkers = window.__kakaoMapState.pendingDrawMarkers;
     var markerMap = {};
     var markerOverlayMap = {};
+    var markerClusterOverlayMap = {};
     var drawMarkerMap = {};
     var lineMap = {};
     var lineOverlayMap = {};
@@ -247,7 +279,7 @@
     var lineData = [];
     var LABEL_HIDE_LEVEL = 7;
     var LINE_LABEL_HIDE_LEVEL = 8;
-    var CLUSTER_LEVEL = 8;
+    var CLUSTER_LEVEL = 6;
     var VIEWPORT_RENDER_DEBOUNCE_MS = 120;
     var viewportRenderTimer = null;
     var latestVisibleBounds = null;
@@ -261,19 +293,33 @@
     var suppressNextMapClick = false;
     var suppressMapClickUntil = 0;
 
-    window.setMarkerMoveMode = function(enabled) {
+      window.setMarkerMoveMode = function(enabled) {
       markerMoveMode = enabled === true || enabled === 'true';
       window.__kakaoMapState.markerMoveMode = markerMoveMode;
+
       if (KAKAO_DEBUG) console.log('setMarkerMoveMode', markerMoveMode);
+
+      if (markerMoveMode) {
+        clearMarkerClusterOverlays();
+      }
+
+        if (mapReady && map) {
+        redrawMarkers();
+        redrawLines();
+      }
+
       Object.keys(markerMap).forEach(function(id) {
         var marker = markerMap[id];
+
         if (marker && typeof marker.setDraggable === 'function') {
           marker.setDraggable(markerMoveMode);
           marker.__draggable = markerMoveMode;
         }
       });
+
       if (!markerMoveMode && activeMarkerDrag) {
         activeMarkerDrag = null;
+
         if (map && typeof map.setDraggable === 'function') {
           map.setDraggable(true);
         }
@@ -659,22 +705,29 @@
       }
     }
 
-    function makeClusterContent(cluster) {
-      var color = cluster.color || '#4CAF50';
+      function makeClusterContent(cluster) {
+      var count = Array.isArray(cluster.items) ? cluster.items.length : 0;
       var root = document.createElement('div');
+
       root.className = 'cluster-marker';
-      root.style.backgroundColor = color;
-      root.style.color = textColorForBackground(color);
-      root.textContent = String(cluster.items.length);
+      root.textContent = String(count);
+      root.title = count + '개 마커 보기';
 
       root.addEventListener('click', function(event) {
         event.preventDefault();
         event.stopPropagation();
+
         if (!map) return;
 
+        root.style.backgroundColor = '#ff2f2f';
+        root.style.transform = 'scale(1.12)';
+
         var level = Math.max(1, map.getLevel() - 2);
-        map.setCenter(new kakao.maps.LatLng(cluster.lat, cluster.lng));
-        map.setLevel(level);
+
+        setTimeout(function() {
+          map.setCenter(new kakao.maps.LatLng(cluster.lat, cluster.lng));
+          map.setLevel(level);
+        }, 70);
       });
 
       return root;
@@ -697,8 +750,39 @@
       return bestColor;
     }
 
-    function clusterMarkers(items, level) {
-      if (level < CLUSTER_LEVEL) {
+      function getMarkersInsideCurrentViewport(items) {
+      if (!map || typeof map.getBounds !== 'function') {
+        return items.slice();
+      }
+
+      var bounds = map.getBounds();
+      var southWest = bounds.getSouthWest();
+      var northEast = bounds.getNorthEast();
+
+      var minLat = southWest.getLat();
+      var maxLat = northEast.getLat();
+      var minLng = southWest.getLng();
+      var maxLng = northEast.getLng();
+
+      return items.filter(function(item) {
+        var lat = Number(item.lat ?? item.latitude);
+        var lng = Number(item.lng ?? item.longitude);
+
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          return false;
+        }
+
+        return (
+          lat >= minLat &&
+          lat <= maxLat &&
+          lng >= minLng &&
+          lng <= maxLng
+        );
+      });
+    }
+
+      function clusterMarkers(items, level) {
+      if (level < CLUSTER_LEVEL || markerMoveMode) {
         return items.map(function(item) {
           return {
             type: 'marker',
@@ -707,41 +791,94 @@
         });
       }
 
-      var cellSize = 0.01 * Math.pow(2, level - CLUSTER_LEVEL);
-      var buckets = {};
+      var visibleItems = getMarkersInsideCurrentViewport(items);
 
-      items.forEach(function(item) {
-        var lat = Number(item.lat ?? item.latitude);
-        var lng = Number(item.lng ?? item.longitude);
-        var key = Math.floor(lat / cellSize) + ':' + Math.floor(lng / cellSize);
+      if (!visibleItems.length) {
+        return [];
+      }
 
-        if (!buckets[key]) buckets[key] = [];
-        buckets[key].push(item);
+      if (visibleItems.length === 1) {
+        return [{
+          type: 'marker',
+          item: visibleItems[0]
+        }];
+      }
+
+      var latSum = 0;
+      var lngSum = 0;
+
+      visibleItems.forEach(function(item) {
+        latSum += Number(item.lat ?? item.latitude);
+        lngSum += Number(item.lng ?? item.longitude);
       });
 
-      return Object.keys(buckets).map(function(key) {
-        var bucket = buckets[key];
-        if (bucket.length === 1) {
-          return {
-            type: 'marker',
-            item: bucket[0]
-          };
+      return [{
+        type: 'cluster',
+        key: 'cluster_viewport_' + String(level),
+        items: visibleItems,
+        lat: latSum / visibleItems.length,
+        lng: lngSum / visibleItems.length
+      }];
+    }
+
+        function clearMarkerClusterOverlays() {
+      Object.keys(markerClusterOverlayMap).forEach(function(key) {
+        var overlay = markerClusterOverlayMap[key];
+
+        if (overlay && typeof overlay.setMap === 'function') {
+          overlay.setMap(null);
+        }
+      });
+
+      markerClusterOverlayMap = {};
+    }
+
+    function renderMarkerClusters(clusters) {
+      var nextClusterKeys = {};
+
+      clusters.forEach(function(cluster) {
+        if (!cluster || cluster.type !== 'cluster' || !cluster.key) return;
+
+        var key = cluster.key;
+        nextClusterKeys[key] = true;
+
+        var signature = [
+          key,
+          cluster.items.length,
+          cluster.lat,
+          cluster.lng,
+          cluster.color
+        ].join('|');
+
+        var overlay = markerClusterOverlayMap[key];
+
+        if (overlay && overlay.__renderSignature === signature) {
+          overlay.setMap(map);
+          return;
         }
 
-        var latSum = 0;
-        var lngSum = 0;
-        bucket.forEach(function(item) {
-          latSum += Number(item.lat ?? item.latitude);
-          lngSum += Number(item.lng ?? item.longitude);
+        if (overlay) {
+          overlay.setMap(null);
+        }
+
+        overlay = new kakao.maps.CustomOverlay({
+          map: map,
+          position: new kakao.maps.LatLng(cluster.lat, cluster.lng),
+          content: makeClusterContent(cluster),
+          xAnchor: 0.5,
+          yAnchor: 0.5,
+          zIndex: 4
         });
 
-        return {
-          type: 'cluster',
-          items: bucket,
-          lat: latSum / bucket.length,
-          lng: lngSum / bucket.length,
-          color: dominantColor(bucket)
-        };
+        overlay.__renderSignature = signature;
+        markerClusterOverlayMap[key] = overlay;
+      });
+
+      Object.keys(markerClusterOverlayMap).forEach(function(key) {
+        if (nextClusterKeys[key]) return;
+
+        markerClusterOverlayMap[key].setMap(null);
+        delete markerClusterOverlayMap[key];
       });
     }
 
@@ -890,7 +1027,7 @@
       var image = new kakao.maps.MarkerImage(
         url,
         new kakao.maps.Size(width, height),
-        { offset: new kakao.maps.Point(width / 2, height) }
+        { offset: new kakao.maps.Point(dotCx, dotCy) }
       );
 
       markerImageCache[cacheKey] = image;
@@ -950,21 +1087,49 @@
       ].join('|');
     }
 
+      function isMarkerClusterDisplayActive() {
+      if (!map || markerMoveMode || map.getLevel() < CLUSTER_LEVEL) {
+        return false;
+      }
+
+      var renderItems = clusterMarkers(markerData, map.getLevel());
+
+      return renderItems.some(function(entry) {
+        return entry && entry.type === 'cluster';
+      });
+    }
+
     function redrawMarkers() {
       if (!map) return;
 
+      var level = map.getLevel();
+      var renderItems = clusterMarkers(markerData, level);
+      var clusterItems = renderItems.filter(function(entry) {
+        return entry.type === 'cluster';
+      });
+
+      var visibleMarkerItems = renderItems
+        .filter(function(entry) {
+          return entry.type === 'marker';
+        })
+        .map(function(entry) {
+          return entry.item;
+        });
+
+      renderMarkerClusters(clusterItems);
+
       var nextIds = {};
-      var total = 0;
+      var total = markerData.length;
       var created = 0;
       var reused = 0;
       var moved = 0;
       var imageUpdated = 0;
       var removed = 0;
 
-      markerData.forEach(function(item, index) {
+      visibleMarkerItems.forEach(function(item) {
         var id = String(item.id ?? '');
         if (!id) return;
-        total++;
+
         nextIds[id] = true;
 
         var lat = Number(item.lat ?? item.latitude);
@@ -981,6 +1146,7 @@
           }
 
           var nextImageKey = markerImageKey(item);
+
           if (marker.__imageKey !== nextImageKey) {
             marker.setImage(createMarkerImage(item));
             marker.__imageKey = nextImageKey;
@@ -988,12 +1154,17 @@
           } else {
             reused++;
           }
+
           marker.__renderSignature = signature;
 
-          if (marker.__draggable !== markerMoveMode && typeof marker.setDraggable === 'function') {
+          if (
+            marker.__draggable !== markerMoveMode &&
+            typeof marker.setDraggable === 'function'
+          ) {
             marker.setDraggable(markerMoveMode);
             marker.__draggable = markerMoveMode;
           }
+
           marker.__item = item;
           marker.setMap(map);
           return;
@@ -1007,22 +1178,58 @@
 
       Object.keys(markerMap).forEach(function(id) {
         if (nextIds[id]) return;
+
         if (markerMap[id] && typeof markerMap[id].setMap === 'function') {
           markerMap[id].setMap(null);
         }
+
         delete markerMap[id];
         delete markerOverlayMap[id];
         removed++;
       });
 
       if (KAKAO_DEBUG) {
-        console.log('[KAKAO_MARKERS] png marker diff', { total: total, created: created, reused: reused, moved: moved, imageUpdated: imageUpdated, removed: removed });
-        console.log('[KAKAO_MARKERS] image cache size', Object.keys(markerImageCache).length);
+        console.log('[KAKAO_MARKERS] clustered render', {
+          level: level,
+          markerMoveMode: markerMoveMode,
+          sourceMarkers: total,
+          visibleMarkers: visibleMarkerItems.length,
+          visibleClusters: clusterItems.length,
+          created: created,
+          reused: reused,
+          moved: moved,
+          imageUpdated: imageUpdated,
+          removed: removed
+        });
+
+        console.log(
+          '[KAKAO_MARKERS] image cache size',
+          Object.keys(markerImageCache).length
+        );
       }
     }
 
-    function redrawLines() {
+      function redrawLines() {
       if (!map) return;
+
+      if (isMarkerClusterDisplayActive()) {
+        Object.keys(lineMap).forEach(function(id) {
+          if (lineMap[id] && typeof lineMap[id].setMap === 'function') {
+            lineMap[id].setMap(null);
+          }
+        });
+
+        Object.keys(lineOverlayMap).forEach(function(id) {
+          if (
+            lineOverlayMap[id] &&
+            typeof lineOverlayMap[id].setMap === 'function'
+          ) {
+            lineOverlayMap[id].setMap(null);
+          }
+        });
+
+        return;
+      }
 
       var nextIds = {};
       var total = 0;
@@ -1149,9 +1356,11 @@
         });
       });
 
-      kakao.maps.event.addListener(map, 'zoom_changed', function() {
+        kakao.maps.event.addListener(map, 'zoom_changed', function() {
         notifyMapInteractionStart('zoom');
         updateVisibleBoundsSnapshot();
+        redrawMarkers();
+        redrawLines();
         scheduleMapInteractionEnd('zoomIdle', 220);
       });
       kakao.maps.event.addListener(map, 'dragstart', function() {
@@ -1170,8 +1379,18 @@
       kakao.maps.event.addListener(map, 'dragend', function() {
         scheduleMapInteractionEnd('dragend', 80);
       });
-      kakao.maps.event.addListener(map, 'idle', function() {
+        kakao.maps.event.addListener(map, 'idle', function() {
         updateVisibleBoundsSnapshot();
+
+        if (
+          !markerMoveMode &&
+          map &&
+          map.getLevel() >= CLUSTER_LEVEL
+        ) {
+          redrawMarkers();
+          redrawLines();
+        }
+
         scheduleMapInteractionEnd('idle', 80);
       });
       document.addEventListener('mousemove', moveActiveMarker);
