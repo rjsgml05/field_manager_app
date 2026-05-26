@@ -9,7 +9,7 @@
     var pendingMarkers = null;
     var pendingLines = null;
     var markerMoveMode = false;
-    var KAKAO_DEBUG = FileSystemWritableFileStream;
+    const KAKAO_DEBUG = false;
 
     window.__kakaoMapState = window.__kakaoMapState || {
       mapReady: mapReady,
@@ -76,10 +76,19 @@
     }
 
     .line-label {
-      border-color: rgba(25, 118, 210, 0.38);
-      box-shadow: none;
-      color: #0d47a1;
-      padding: 3px 6px;
+      background: rgba(255, 255, 255, 0.96);
+      border-color: rgba(25, 118, 210, 0.72);
+      border-radius: 999px;
+      border-width: 2px;
+      box-shadow: 0 2px 7px rgba(15, 23, 42, 0.18);
+      color: #111827;
+      font-size: 12px;
+      font-weight: 900;
+      line-height: 1.2;
+      max-width: 160px;
+      overflow: hidden;
+      padding: 4px 9px;
+      text-overflow: ellipsis;
     }
 
     .current-location-label {
@@ -277,11 +286,17 @@
     var currentLocationOverlay = null;
     var markerData = [];
     var lineData = [];
+    var selectedLineId = null;
+    var isClusterRenderedOnMap = false;
     var LABEL_HIDE_LEVEL = 7;
     var LINE_LABEL_HIDE_LEVEL = 8;
     var CLUSTER_LEVEL = 6;
     var VIEWPORT_RENDER_DEBOUNCE_MS = 120;
+    var VIEWPORT_RENDER_PADDING_RATIO = 0.25;
     var viewportRenderTimer = null;
+    var mapRedrawAnimationFrame = null;
+    var mapRedrawNeedsMarkers = false;
+    var mapRedrawNeedsLines = false;
     var latestVisibleBounds = null;
     var isMapInteractingForFlutter = false;
     var mapInteractionEndTimer = null;
@@ -303,9 +318,8 @@
         clearMarkerClusterOverlays();
       }
 
-        if (mapReady && map) {
-        redrawMarkers();
-        redrawLines();
+      if (mapReady && map) {
+        scheduleMapRedraw();
       }
 
       Object.keys(markerMap).forEach(function(id) {
@@ -401,7 +415,7 @@
 
     function renderMarkersNow(markers) {
       markerData = normalizeItems(markers);
-      redrawMarkers();
+      scheduleMapRedraw({ markers: true, lines: false });
     }
 
     window.renderMarkers = function(markers) {
@@ -417,7 +431,7 @@
 
     function renderLinesNow(lines) {
       lineData = normalizeItems(lines);
-      redrawLines();
+      scheduleMapRedraw({ markers: false, lines: true });
     }
 
     window.renderLines = function(lines) {
@@ -750,19 +764,35 @@
       return bestColor;
     }
 
-      function getMarkersInsideCurrentViewport(items) {
+    function getPaddedViewportBounds(paddingRatio) {
       if (!map || typeof map.getBounds !== 'function') {
-        return items.slice();
+        return null;
       }
 
       var bounds = map.getBounds();
       var southWest = bounds.getSouthWest();
       var northEast = bounds.getNorthEast();
-
       var minLat = southWest.getLat();
       var maxLat = northEast.getLat();
       var minLng = southWest.getLng();
       var maxLng = northEast.getLng();
+      var latPadding = Math.abs(maxLat - minLat) * paddingRatio;
+      var lngPadding = Math.abs(maxLng - minLng) * paddingRatio;
+
+      return {
+        minLat: minLat - latPadding,
+        maxLat: maxLat + latPadding,
+        minLng: minLng - lngPadding,
+        maxLng: maxLng + lngPadding
+      };
+    }
+
+    function getMarkersInsideCurrentViewport(items) {
+      var paddedBounds = getPaddedViewportBounds(VIEWPORT_RENDER_PADDING_RATIO);
+
+      if (!paddedBounds) {
+        return items.slice();
+      }
 
       return items.filter(function(item) {
         var lat = Number(item.lat ?? item.latitude);
@@ -773,25 +803,25 @@
         }
 
         return (
-          lat >= minLat &&
-          lat <= maxLat &&
-          lng >= minLng &&
-          lng <= maxLng
+          lat >= paddedBounds.minLat &&
+          lat <= paddedBounds.maxLat &&
+          lng >= paddedBounds.minLng &&
+          lng <= paddedBounds.maxLng
         );
       });
     }
 
-      function clusterMarkers(items, level) {
+    function clusterMarkers(items, level) {
+      var visibleItems = getMarkersInsideCurrentViewport(items);
+
       if (level < CLUSTER_LEVEL || markerMoveMode) {
-        return items.map(function(item) {
+        return visibleItems.map(function(item) {
           return {
             type: 'marker',
             item: item
           };
         });
       }
-
-      var visibleItems = getMarkersInsideCurrentViewport(items);
 
       if (!visibleItems.length) {
         return [];
@@ -833,7 +863,7 @@
       markerClusterOverlayMap = {};
     }
 
-    function renderMarkerClusters(clusters) {
+      function renderMarkerClusters(clusters) {
       var nextClusterKeys = {};
 
       clusters.forEach(function(cluster) {
@@ -846,14 +876,16 @@
           key,
           cluster.items.length,
           cluster.lat,
-          cluster.lng,
-          cluster.color
+          cluster.lng
         ].join('|');
 
         var overlay = markerClusterOverlayMap[key];
 
         if (overlay && overlay.__renderSignature === signature) {
-          overlay.setMap(map);
+          if (overlay.__isShown !== true) {
+            overlay.setMap(map);
+            overlay.__isShown = true;
+          }
           return;
         }
 
@@ -871,13 +903,21 @@
         });
 
         overlay.__renderSignature = signature;
+        overlay.__isShown = true;
         markerClusterOverlayMap[key] = overlay;
       });
 
       Object.keys(markerClusterOverlayMap).forEach(function(key) {
         if (nextClusterKeys[key]) return;
 
-        markerClusterOverlayMap[key].setMap(null);
+        if (
+          markerClusterOverlayMap[key] &&
+          typeof markerClusterOverlayMap[key].setMap === 'function'
+        ) {
+          markerClusterOverlayMap[key].setMap(null);
+          markerClusterOverlayMap[key].__isShown = false;
+        }
+
         delete markerClusterOverlayMap[key];
       });
     }
@@ -1065,13 +1105,15 @@
       return marker;
     }
 
-    function lineSignature(line, showLineLabels) {
+      function lineSignature(line, displayState) {
       if (line && line.renderKey !== undefined && line.renderKey !== null) {
-        return String(line.renderKey) + '|' + showLineLabels;
+        return String(line.renderKey) + '|' + displayState;
       }
+
       var points = normalizeItems(line.points).map(function(point) {
         return String(point.lat ?? point.latitude) + ',' + String(point.lng ?? point.longitude);
       }).join(';');
+
       return [
         line.id ?? '',
         line.title ?? line.name ?? '',
@@ -1083,20 +1125,8 @@
         line.isVisible ?? '',
         normalizeItems(line.markerIds).join(','),
         points,
-        showLineLabels
+        displayState
       ].join('|');
-    }
-
-      function isMarkerClusterDisplayActive() {
-      if (!map || markerMoveMode || map.getLevel() < CLUSTER_LEVEL) {
-        return false;
-      }
-
-      var renderItems = clusterMarkers(markerData, map.getLevel());
-
-      return renderItems.some(function(entry) {
-        return entry && entry.type === 'cluster';
-      });
     }
 
     function redrawMarkers() {
@@ -1116,6 +1146,11 @@
           return entry.item;
         });
 
+      var nextClusterRenderedOnMap = clusterItems.length > 0;
+      var clusterDisplayChanged =
+        isClusterRenderedOnMap !== nextClusterRenderedOnMap;
+
+      isClusterRenderedOnMap = nextClusterRenderedOnMap;
       renderMarkerClusters(clusterItems);
 
       var nextIds = {};
@@ -1166,11 +1201,17 @@
           }
 
           marker.__item = item;
-          marker.setMap(map);
+
+          if (marker.__isShown !== true) {
+            marker.setMap(map);
+            marker.__isShown = true;
+          }
+
           return;
         }
 
         marker = createKakaoMarker(item, id);
+        marker.__isShown = true;
         markerMap[id] = marker;
         markerOverlayMap[id] = marker;
         created++;
@@ -1181,12 +1222,17 @@
 
         if (markerMap[id] && typeof markerMap[id].setMap === 'function') {
           markerMap[id].setMap(null);
+          markerMap[id].__isShown = false;
         }
 
         delete markerMap[id];
         delete markerOverlayMap[id];
         removed++;
       });
+
+      if (clusterDisplayChanged) {
+        scheduleMapRedraw({ markers: false, lines: true });
+      }
 
       if (KAKAO_DEBUG) {
         console.log('[KAKAO_MARKERS] clustered render', {
@@ -1209,22 +1255,35 @@
       }
     }
 
-      function redrawLines() {
+    function redrawLines() {
       if (!map) return;
 
-      if (isMarkerClusterDisplayActive()) {
+      if (isClusterRenderedOnMap) {
+        selectedLineId = null;
+
         Object.keys(lineMap).forEach(function(id) {
-          if (lineMap[id] && typeof lineMap[id].setMap === 'function') {
-            lineMap[id].setMap(null);
+          var polyline = lineMap[id];
+
+          if (
+            polyline &&
+            typeof polyline.setMap === 'function' &&
+            polyline.__isShown !== false
+          ) {
+            polyline.setMap(null);
+            polyline.__isShown = false;
           }
         });
 
         Object.keys(lineOverlayMap).forEach(function(id) {
+          var labelOverlay = lineOverlayMap[id];
+
           if (
-            lineOverlayMap[id] &&
-            typeof lineOverlayMap[id].setMap === 'function'
+            labelOverlay &&
+            typeof labelOverlay.setMap === 'function' &&
+            labelOverlay.__isShown !== false
           ) {
-            lineOverlayMap[id].setMap(null);
+            labelOverlay.setMap(null);
+            labelOverlay.__isShown = false;
           }
         });
 
@@ -1235,83 +1294,190 @@
       var total = 0;
       var created = 0;
       var reused = 0;
-      var moved = 0;
       var updated = 0;
       var removed = 0;
-      var showLineLabels = true;
+      var selectedLineStillVisible = false;
 
       lineData.forEach(function(line) {
         var id = String(line.id ?? '');
         if (!id) return;
+
         var visible = line.isVisible !== false && line.isVisible !== 'false';
-        var points = normalizeItems(line.points).map(toLatLng);
-        if (!visible || points.length < 2) return;
+        var rawPoints = normalizeItems(line.points);
+
+        if (!visible || rawPoints.length < 2) return;
 
         total++;
         nextIds[id] = true;
-        var signature = lineSignature(line, showLineLabels);
+
+        var isSelected = selectedLineId === id;
+        if (isSelected) {
+          selectedLineStillVisible = true;
+        }
+
+        var displayState = isSelected ? 'selected' : 'normal';
+        var signature = lineSignature(line, displayState);
         var polyline = lineMap[id];
+        var points = null;
+        var baseStrokeWeight = Number(line.width ?? 4);
+        var baseStrokeOpacity = Number(line.opacity ?? 0.9);
+
+        if (!Number.isFinite(baseStrokeWeight) || baseStrokeWeight <= 0) {
+          baseStrokeWeight = 4;
+        }
+
+        if (!Number.isFinite(baseStrokeOpacity)) {
+          baseStrokeOpacity = 0.9;
+        }
 
         if (polyline && polyline.__renderSignature === signature) {
-          polyline.setMap(map);
+          if (polyline.__isShown !== true) {
+            polyline.setMap(map);
+            polyline.__isShown = true;
+          }
           reused++;
         } else {
+          points = rawPoints.map(toLatLng);
+
           if (polyline) {
             polyline.setMap(null);
+            polyline.__isShown = false;
             updated++;
           } else {
             created++;
           }
+
           polyline = new kakao.maps.Polyline({
             map: map,
             path: points,
-            strokeWeight: Number(line.width ?? 4),
+            strokeWeight: isSelected
+              ? Math.max(baseStrokeWeight + 3, Math.round(baseStrokeWeight * 1.8))
+              : baseStrokeWeight,
             strokeColor: String(line.color ?? '#1976D2'),
-            strokeOpacity: Number(line.opacity ?? 0.9),
-            strokeStyle: String(line.style ?? 'solid')
+            strokeOpacity: isSelected ? 1 : baseStrokeOpacity,
+            strokeStyle: String(line.style ?? 'solid'),
+            zIndex: isSelected ? 5 : 2
           });
+
           polyline.__renderSignature = signature;
+          polyline.__isShown = true;
+
+          kakao.maps.event.addListener(polyline, 'click', function() {
+            selectedLineId = id;
+            suppressMapClickBriefly();
+            scheduleMapRedraw({ markers: false, lines: true });
+          });
+
           lineMap[id] = polyline;
         }
 
-        var labelPosition = points[Math.floor(points.length / 2)];
-        var labelSignature = signature + '|label|' + String(line.title ?? line.name ?? id);
+        var shouldShowLineLabel = isSelected;
         var overlay = lineOverlayMap[id];
 
-        if (showLineLabels) {
+        if (shouldShowLineLabel) {
+          if (points === null) {
+            points = rawPoints.map(toLatLng);
+          }
+
+          var labelPosition = points[Math.floor(points.length / 2)];
+          var labelSignature = signature + '|label|' +
+            String(line.title ?? line.name ?? id);
+
           if (overlay && overlay.__renderSignature === labelSignature) {
             overlay.setPosition(labelPosition);
-            overlay.setMap(map);
+
+            if (overlay.__isShown !== true) {
+              overlay.setMap(map);
+              overlay.__isShown = true;
+            }
           } else {
-            if (overlay) overlay.setMap(null);
+            if (overlay) {
+              overlay.setMap(null);
+              overlay.__isShown = false;
+            }
+
             overlay = new kakao.maps.CustomOverlay({
               map: map,
               position: labelPosition,
-              content: makeLabel(line.title ?? line.name ?? id, 'line-label', line.color),
-              yAnchor: 1.35
+              content: makeLabel(
+                line.title ?? line.name ?? id,
+                'line-label',
+                line.color
+              ),
+              yAnchor: 0.5,
+              zIndex: 4
             });
+
             overlay.__renderSignature = labelSignature;
+            overlay.__isShown = true;
             lineOverlayMap[id] = overlay;
           }
-        } else if (overlay) {
+        } else if (overlay && overlay.__isShown === true) {
           overlay.setMap(null);
+          overlay.__isShown = false;
         }
       });
 
       Object.keys(lineMap).forEach(function(id) {
         if (nextIds[id]) return;
+
         if (lineMap[id] && typeof lineMap[id].setMap === 'function') {
           lineMap[id].setMap(null);
         }
-        if (lineOverlayMap[id] && typeof lineOverlayMap[id].setMap === 'function') {
+
+        if (
+          lineOverlayMap[id] &&
+          typeof lineOverlayMap[id].setMap === 'function'
+        ) {
           lineOverlayMap[id].setMap(null);
         }
+
         delete lineMap[id];
         delete lineOverlayMap[id];
         removed++;
       });
 
-      if (KAKAO_DEBUG) console.log('[KAKAO_LINES] diff', { total: total, created: created, reused: reused, moved: moved, updated: updated, removed: removed });
+      if (selectedLineId !== null && !selectedLineStillVisible) {
+        selectedLineId = null;
+      }
+
+      if (KAKAO_DEBUG) {
+        console.log('[KAKAO_LINES] diff', {
+          total: total,
+          created: created,
+          reused: reused,
+          updated: updated,
+          removed: removed
+        });
+      }
+    }
+
+    function scheduleMapRedraw(options) {
+      if (!mapReady || !map) return;
+
+      var redrawMarkersRequested = !options || options.markers !== false;
+      var redrawLinesRequested = !options || options.lines !== false;
+
+      mapRedrawNeedsMarkers = mapRedrawNeedsMarkers || redrawMarkersRequested;
+      mapRedrawNeedsLines = mapRedrawNeedsLines || redrawLinesRequested;
+
+      if (mapRedrawAnimationFrame !== null) return;
+
+      mapRedrawAnimationFrame = requestAnimationFrame(function() {
+        var shouldRedrawMarkers = mapRedrawNeedsMarkers;
+        var shouldRedrawLines = mapRedrawNeedsLines;
+
+        mapRedrawAnimationFrame = null;
+        mapRedrawNeedsMarkers = false;
+        mapRedrawNeedsLines = false;
+
+        if (shouldRedrawMarkers) {
+          redrawMarkers();
+        }
+        if (shouldRedrawLines) {
+          redrawLines();
+        }
+      });
     }
 
     function refreshZoomDependentLayers() {
@@ -1349,6 +1515,11 @@
           return;
         }
 
+        if (selectedLineId !== null) {
+          selectedLineId = null;
+          scheduleMapRedraw({ markers: false, lines: true });
+        }
+
         var latLng = mouseEvent.latLng;
         postToFlutter('MapTapChannel', {
           lat: latLng.getLat(),
@@ -1356,11 +1527,9 @@
         });
       });
 
-        kakao.maps.event.addListener(map, 'zoom_changed', function() {
+      kakao.maps.event.addListener(map, 'zoom_changed', function() {
         notifyMapInteractionStart('zoom');
         updateVisibleBoundsSnapshot();
-        redrawMarkers();
-        redrawLines();
         scheduleMapInteractionEnd('zoomIdle', 220);
       });
       kakao.maps.event.addListener(map, 'dragstart', function() {
@@ -1379,17 +1548,12 @@
       kakao.maps.event.addListener(map, 'dragend', function() {
         scheduleMapInteractionEnd('dragend', 80);
       });
-        kakao.maps.event.addListener(map, 'idle', function() {
+      kakao.maps.event.addListener(map, 'idle', function() {
         updateVisibleBoundsSnapshot();
 
-        if (
-          !markerMoveMode &&
-          map &&
-          map.getLevel() >= CLUSTER_LEVEL
-        ) {
-          redrawMarkers();
-          redrawLines();
-        }
+        // viewport 변화에 따라 표시 마커만 확인한다.
+        // 선은 데이터/선택 상태/클러스터 표시 상태가 바뀔 때만 다시 그린다.
+        scheduleMapRedraw({ markers: true, lines: false });
 
         scheduleMapInteractionEnd('idle', 80);
       });
