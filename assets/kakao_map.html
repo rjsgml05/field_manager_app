@@ -1536,14 +1536,10 @@
         notifyMapInteractionStart('drag');
       });
       kakao.maps.event.addListener(map, 'bounds_changed', function() {
-        notifyMapInteractionStart('bounds');
         updateVisibleBoundsSnapshot();
-        scheduleMapInteractionEnd('boundsIdle', 180);
       });
       kakao.maps.event.addListener(map, 'center_changed', function() {
-        notifyMapInteractionStart('bounds');
         updateVisibleBoundsSnapshot();
-        scheduleMapInteractionEnd('boundsIdle', 180);
       });
       kakao.maps.event.addListener(map, 'dragend', function() {
         scheduleMapInteractionEnd('dragend', 80);

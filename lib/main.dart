@@ -388,6 +388,7 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   final List<String> _tempLineMarkerIds = [];
   WebViewController? _webViewController;
   Timer? _markerUpdateTimer;
+  Timer? _mapInteractionSafetyTimer;
   bool _isMapInteracting = false;
   bool _hasPendingMarkerUpdate = false;
   bool _didInitialGpsMove = false;
@@ -619,6 +620,7 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
         onMessageReceived: (JavaScriptMessage message) {
           if (_verboseMapDebug) debugPrint("FlutterChannel: ${message.message}");
           if (message.message.contains('mapReady')) {
+            _cancelMapInteractionSafetyTimer();
             _isMapInteracting = false;
             _hasPendingMarkerUpdate = true;
             _lastSentMarkerMoveMode = null;
@@ -627,9 +629,11 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
 
             _moveToInitialGpsLocation();
           } else if (message.message.startsWith('mapInteractionStart')) {
+            _startMapInteractionSafetyTimer();
             if (_isMapInteracting) return;
             _isMapInteracting = true;
           } else if (message.message.startsWith('mapInteractionEnd')) {
+            _cancelMapInteractionSafetyTimer();
             if (!_isMapInteracting) return;
             _isMapInteracting = false;
             _flushPendingMarkerUpdateAfterMapIdle();
@@ -2218,6 +2222,7 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
   @override
 void dispose() {
   _markerUpdateTimer?.cancel();
+  _mapInteractionSafetyTimer?.cancel();
   WidgetsBinding.instance.removeObserver(this);
   MockLocationPlugin.stopMockLocation();
   _myTeamSub?.cancel();    // ← 추가
@@ -2228,6 +2233,7 @@ void dispose() {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _cancelMapInteractionSafetyTimer();
       _isMapInteracting = false;
       _hasPendingMarkerUpdate = true;
       _scheduleMarkerUpdate(ms: 150);
@@ -2286,6 +2292,21 @@ void _flushPendingMarkerUpdateAfterMapIdle() {
     if (_verboseMapDebug) debugPrint('[KAKAO_RENDER] flushed after map idle');
     _scheduleMarkerUpdate(ms: 150);
   }
+}
+
+void _startMapInteractionSafetyTimer() {
+  _mapInteractionSafetyTimer?.cancel();
+  _mapInteractionSafetyTimer = Timer(const Duration(seconds: 3), () {
+    _mapInteractionSafetyTimer = null;
+    if (!mounted || !_isMapInteracting) return;
+    _isMapInteracting = false;
+    _flushPendingMarkerUpdateAfterMapIdle();
+  });
+}
+
+void _cancelMapInteractionSafetyTimer() {
+  _mapInteractionSafetyTimer?.cancel();
+  _mapInteractionSafetyTimer = null;
 }
 
 void _invalidateMarkerRenderHash() {
