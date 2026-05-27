@@ -1950,6 +1950,8 @@
     var pendingMarkerMutations = {};
     var markerMutationSequence = 0;
     var unsubscribeTeamsSnapshot = null;
+    var lastAdminCanonicalMarkerLogKey = "";
+    var lastAdminCanonicalLineLogKey = "";
 
     var adminRenderFrameId = null;
     var pendingAdminRenderOptions = {
@@ -2181,6 +2183,7 @@ setMapStatus("Map connected");
           id: String(teamDocId || ADMIN_TEAM_DOC_ID) + "::" + rawId,
           rawId: rawId,
           markerId: marker.markerId || marker.id || rawId,
+          canonicalMarkerId: marker.canonicalMarkerId || "",
           originalMarkerId: marker.originalMarkerId || "",
           sourceMarkerId: marker.sourceMarkerId || "",
           parentMarkerId: marker.parentMarkerId || "",
@@ -2230,6 +2233,7 @@ setMapStatus("Map connected");
         return {
   id: String(teamDocId || ADMIN_TEAM_DOC_ID) + "::" + String(line.id || "line_" + index),
   lineId: String(line.id || "line_" + index),
+  canonicalLineId: String(line.canonicalLineId || ""),
   originalLineId: String(line.originalLineId || ""),
   sourceLineId: String(line.sourceLineId || ""),
   groupName: String(line.groupName || ""),
@@ -2387,9 +2391,11 @@ setMapStatus("Map connected");
     }
 
     function markerSourceKey(marker) {
+      var canonical = String(marker.canonicalMarkerId || "").trim();
       var original = String(marker.originalMarkerId || "").trim();
       var source = String(marker.sourceMarkerId || "").trim();
       var parent = String(marker.parentMarkerId || "").trim();
+      if (canonical) return canonical;
       if (original) return original;
       if (source) return source;
       if (parent) return parent;
@@ -2403,80 +2409,150 @@ setMapStatus("Map connected");
       return "own:" + String(marker.teamName || marker.docId || ADMIN_TEAM_DOC_ID) + ":" + ownId;
     }
 
-    function markerCoordHash(marker) {
-      return Number(marker.lat).toFixed(5) + "," + Number(marker.lng).toFixed(5);
-    }
-
-    function isSameMarkerPosition(a, b) {
-      return Math.abs(Number(a.lat) - Number(b.lat)) <= 0.00001 &&
-        Math.abs(Number(a.lng) - Number(b.lng)) <= 0.00001;
-    }
-
     function markerRenderPriority(marker) {
-      return String(marker.teamName || "") === ADMIN_TEAM_DOC_ID ? 0 : 3;
+      if (String(marker.teamName || "") === ADMIN_TEAM_DOC_ID) return 0;
+      if (!markerSourceKey(marker)) return 1;
+      return 3;
     }
 
-    function mergeMarkerDuplicate(existing, incoming) {
-      var representative = markerRenderPriority(incoming) < markerRenderPriority(existing) ? incoming : existing;
-      var teams = [].concat(existing.duplicateTeams || [existing.teamName], incoming.duplicateTeams || [incoming.teamName])
+    function markerOwnRenderIds(marker) {
+      return [marker && marker.rawId, marker && marker.markerId, marker && marker.id]
+        .map(cleanMarkerId)
         .filter(Boolean);
-      var uniqueTeams = Array.from(new Set(teams.map(String))).sort();
-      representative.duplicateCount = (existing.duplicateCount || 1) + (incoming.duplicateCount || 1);
-      representative.duplicateTeams = uniqueTeams;
-      representative.isDeduped = representative.duplicateCount > 1;
-      representative.displayKey = existing.displayKey || incoming.displayKey || markerDisplayKey(representative);
-      return representative;
     }
 
-      function dedupeVisibleMarkers(markers) {
-      var result = [];
-      var resultIndexesByBaseKey = Object.create(null);
+    function markerLinkRenderIds(marker) {
+      return [
+        marker && marker.canonicalMarkerId,
+        marker && marker.originalMarkerId,
+        marker && marker.sourceMarkerId,
+        marker && marker.parentMarkerId
+      ].map(cleanMarkerId).filter(Boolean);
+    }
 
-      (markers || []).forEach(function(marker) {
-        var baseDisplayKey = markerDisplayKey(marker);
-        var item = Object.assign({}, marker, {
-          displayKey: baseDisplayKey,
-          duplicateCount: marker.duplicateCount || 1,
-          duplicateTeams: marker.duplicateTeams || [marker.teamName],
-          isDeduped: marker.isDeduped === true
-        });
+    function chooseMarkerCanonicalId(nodes) {
+      var linkIds = [];
+      nodes.forEach(function(node) {
+        linkIds = linkIds.concat(markerLinkRenderIds(node.marker));
+      });
+      linkIds = Array.from(new Set(linkIds));
+      if (linkIds.length) return linkIds[0];
+      var representative = nodes.slice().sort(function(a, b) {
+        return markerRenderPriority(a.marker) - markerRenderPriority(b.marker);
+      })[0];
+      return cleanMarkerId(representative && (representative.marker.rawId || representative.marker.markerId || representative.marker.id));
+    }
 
-        var candidateIndexes =
-          resultIndexesByBaseKey[baseDisplayKey] || [];
+    function markerComponentKey(marker, canonicalId) {
+      if (markerLinkRenderIds(marker).length && canonicalId) return "canonical:" + canonicalId;
+      return markerDisplayKey(marker);
+    }
 
-        var matchIndex = -1;
+    function logAdminCanonicalRender(kind, rawCount, renderedCount) {
+      var removed = rawCount - renderedCount;
+      if (removed <= 0) return;
+      var key = rawCount + ":" + renderedCount;
+      if (kind === "markers") {
+        if (lastAdminCanonicalMarkerLogKey === key) return;
+        lastAdminCanonicalMarkerLogKey = key;
+      } else {
+        if (lastAdminCanonicalLineLogKey === key) return;
+        lastAdminCanonicalLineLogKey = key;
+      }
+      console.log("[ADMIN_V2_CANONICAL_RENDER] " + kind + " raw=" + rawCount + " rendered=" + renderedCount + " removed=" + removed);
+    }
 
-        for (var i = 0; i < candidateIndexes.length; i += 1) {
-          var resultIndex = candidateIndexes[i];
-
-          if (isSameMarkerPosition(result[resultIndex], item)) {
-            matchIndex = resultIndex;
-            break;
-          }
-        }
-
-        if (matchIndex !== -1) {
-          result[matchIndex] = mergeMarkerDuplicate(
-            result[matchIndex],
-            item
-          );
-          return;
-        }
-
-        if (candidateIndexes.length) {
-          item.displayKey =
-            baseDisplayKey + "@" + markerCoordHash(item);
-        }
-
-        result.push(item);
-
-        if (!resultIndexesByBaseKey[baseDisplayKey]) {
-          resultIndexesByBaseKey[baseDisplayKey] = [];
-        }
-
-        resultIndexesByBaseKey[baseDisplayKey].push(result.length - 1);
+    function dedupeVisibleMarkers(markers) {
+      var raw = Array.isArray(markers) ? markers : [];
+      var parent = [];
+      var nodes = raw.map(function(marker, index) {
+        parent[index] = index;
+        return {
+          index: index,
+          marker: marker,
+          ownIds: markerOwnRenderIds(marker),
+          linkIds: markerLinkRenderIds(marker)
+        };
       });
 
+      function find(index) {
+        while (parent[index] !== index) {
+          parent[index] = parent[parent[index]];
+          index = parent[index];
+        }
+        return index;
+      }
+
+      function union(a, b) {
+        var rootA = find(a);
+        var rootB = find(b);
+        if (rootA !== rootB) parent[rootB] = rootA;
+      }
+
+      var ownIdToIndexes = Object.create(null);
+      var linkIdToIndexes = Object.create(null);
+      nodes.forEach(function(node) {
+        node.ownIds.forEach(function(id) {
+          if (!ownIdToIndexes[id]) ownIdToIndexes[id] = [];
+          ownIdToIndexes[id].push(node.index);
+        });
+        node.linkIds.forEach(function(id) {
+          if (!linkIdToIndexes[id]) linkIdToIndexes[id] = [];
+          linkIdToIndexes[id].push(node.index);
+        });
+      });
+
+      Object.keys(linkIdToIndexes).forEach(function(linkId) {
+        var linked = linkIdToIndexes[linkId];
+        for (var i = 1; i < linked.length; i += 1) union(linked[0], linked[i]);
+        (ownIdToIndexes[linkId] || []).forEach(function(ownIndex) {
+          union(linked[0], ownIndex);
+        });
+      });
+
+      var components = Object.create(null);
+      nodes.forEach(function(node) {
+        var root = find(node.index);
+        if (!components[root]) components[root] = [];
+        components[root].push(node);
+      });
+
+      var result = Object.keys(components).map(function(root) {
+        var componentNodes = components[root];
+        var canonicalId = chooseMarkerCanonicalId(componentNodes);
+        var representativeNode = componentNodes.slice().sort(function(a, b) {
+          return markerRenderPriority(a.marker) - markerRenderPriority(b.marker);
+        })[0];
+        var representative = Object.assign({}, representativeNode.marker);
+        var duplicateTeams = [];
+        var duplicateGroupNames = [];
+        var componentMarkerIds = [];
+        var hasLink = componentNodes.some(function(node) {
+          return markerLinkRenderIds(node.marker).length > 0;
+        });
+
+        componentNodes.forEach(function(node) {
+          var marker = node.marker || {};
+          if (marker.teamName) duplicateTeams.push(marker.teamName);
+          if (marker.groupName) duplicateGroupNames.push(marker.groupName);
+          componentMarkerIds = componentMarkerIds.concat(markerOwnRenderIds(marker), markerLinkRenderIds(marker));
+        });
+
+        duplicateTeams = Array.from(new Set(duplicateTeams.map(String))).sort();
+        duplicateGroupNames = Array.from(new Set(duplicateGroupNames.map(String))).sort();
+        componentMarkerIds = Array.from(new Set(componentMarkerIds.map(cleanMarkerId).filter(Boolean))).sort();
+
+        if (hasLink) representative.canonicalMarkerId = representative.canonicalMarkerId || canonicalId;
+        representative.displayKey = hasLink && canonicalId ? "canonical:" + canonicalId : markerDisplayKey(representative);
+        representative.duplicateCount = componentNodes.length;
+        representative.duplicateTeams = duplicateTeams;
+        representative.duplicateGroupNames = duplicateGroupNames;
+        representative.componentMarkerIds = componentMarkerIds;
+        representative.isDeduped = componentNodes.length > 1;
+        return representative;
+      });
+
+      logAdminCanonicalRender("markers", raw.length, result.length);
       return result;
     }
 
@@ -2503,11 +2579,24 @@ setMapStatus("Map connected");
       }).join(">");
     }
 
+    function lineCanonicalRenderId(line) {
+      return String(
+        line && (
+          line.canonicalLineId ||
+          line.originalLineId ||
+          line.sourceLineId ||
+          ""
+        ) || ""
+      ).trim();
+    }
+
     function lineDisplayKey(line) {
+      var canonicalLineId = lineCanonicalRenderId(line);
+      if (canonicalLineId) return "canonical:" + canonicalLineId;
       var pathHash = linePathHash(line);
       var markerIds = Array.isArray(line.markerIds) ? line.markerIds.map(normalizeSharedMarkerId).filter(Boolean).join(">") : "";
       if (markerIds) return "markers:" + markerIds + "|path:" + pathHash + "|color:" + line.color;
-      return "path:" + pathHash + "|color:" + line.color;
+      return "own:" + String(line.teamName || ADMIN_TEAM_DOC_ID) + ":" + String(line.lineId || line.id || "");
     }
 
     function mergeLineDuplicate(existing, incoming) {
@@ -2522,35 +2611,129 @@ setMapStatus("Map connected");
       representative.isDeduped = representative.duplicateCount > 1;
       representative.displayKey = existing.displayKey || incoming.displayKey || lineDisplayKey(representative);
       representative.pathHash = existing.pathHash || incoming.pathHash || linePathHash(representative);
+      representative.canonicalLineId = existing.canonicalLineId || incoming.canonicalLineId || lineCanonicalRenderId(representative);
       return representative;
     }
 
-    function dedupeVisibleLines(lines) {
-      var result = [];
-      (lines || []).forEach(function(line) {
-        var pathHash = linePathHash(line);
-        var displayKey = lineDisplayKey(line);
-        var item = Object.assign({}, line, {
-          displayKey: displayKey,
-          pathHash: pathHash,
-          duplicateCount: line.duplicateCount || 1,
-          duplicateTeams: line.duplicateTeams || [line.teamName],
-          duplicateTitles: line.duplicateTitles || [line.title],
-          isDeduped: line.isDeduped === true
-        });
-        var matchIndex = -1;
-        for (var i = 0; i < result.length; i += 1) {
-          if (result[i].displayKey === displayKey) {
-            matchIndex = i;
-            break;
-          }
-        }
-        if (matchIndex !== -1) {
-          result[matchIndex] = mergeLineDuplicate(result[matchIndex], item);
-        } else {
-          result.push(item);
-        }
+    function lineOwnRenderIds(line) {
+      return [line && line.lineId, line && line.id]
+        .map(cleanMarkerId)
+        .filter(Boolean);
+    }
+
+    function lineLinkRenderIds(line) {
+      return [
+        line && line.canonicalLineId,
+        line && line.originalLineId,
+        line && line.sourceLineId
+      ].map(cleanMarkerId).filter(Boolean);
+    }
+
+    function lineRenderPriority(line) {
+      return String(line && line.teamName || "") === ADMIN_TEAM_DOC_ID ? 0 : 3;
+    }
+
+    function chooseLineCanonicalId(nodes) {
+      var linkIds = [];
+      nodes.forEach(function(node) {
+        linkIds = linkIds.concat(lineLinkRenderIds(node.line));
       });
+      linkIds = Array.from(new Set(linkIds));
+      if (linkIds.length) return linkIds[0];
+      var representative = nodes.slice().sort(function(a, b) {
+        return lineRenderPriority(a.line) - lineRenderPriority(b.line);
+      })[0];
+      return cleanMarkerId(representative && (representative.line.lineId || representative.line.id));
+    }
+
+    function dedupeVisibleLines(lines) {
+      var raw = Array.isArray(lines) ? lines : [];
+      var parent = [];
+      var nodes = raw.map(function(line, index) {
+        parent[index] = index;
+        return {
+          index: index,
+          line: line,
+          ownIds: lineOwnRenderIds(line),
+          linkIds: lineLinkRenderIds(line)
+        };
+      });
+
+      function find(index) {
+        while (parent[index] !== index) {
+          parent[index] = parent[parent[index]];
+          index = parent[index];
+        }
+        return index;
+      }
+
+      function union(a, b) {
+        var rootA = find(a);
+        var rootB = find(b);
+        if (rootA !== rootB) parent[rootB] = rootA;
+      }
+
+      var ownIdToIndexes = Object.create(null);
+      var linkIdToIndexes = Object.create(null);
+      nodes.forEach(function(node) {
+        node.ownIds.forEach(function(id) {
+          if (!ownIdToIndexes[id]) ownIdToIndexes[id] = [];
+          ownIdToIndexes[id].push(node.index);
+        });
+        node.linkIds.forEach(function(id) {
+          if (!linkIdToIndexes[id]) linkIdToIndexes[id] = [];
+          linkIdToIndexes[id].push(node.index);
+        });
+      });
+
+      Object.keys(linkIdToIndexes).forEach(function(linkId) {
+        var linked = linkIdToIndexes[linkId];
+        for (var i = 1; i < linked.length; i += 1) union(linked[0], linked[i]);
+        (ownIdToIndexes[linkId] || []).forEach(function(ownIndex) {
+          union(linked[0], ownIndex);
+        });
+      });
+
+      var components = Object.create(null);
+      nodes.forEach(function(node) {
+        var root = find(node.index);
+        if (!components[root]) components[root] = [];
+        components[root].push(node);
+      });
+
+      var result = Object.keys(components).map(function(root) {
+        var componentNodes = components[root];
+        var canonicalId = chooseLineCanonicalId(componentNodes);
+        var representativeNode = componentNodes.slice().sort(function(a, b) {
+          return lineRenderPriority(a.line) - lineRenderPriority(b.line);
+        })[0];
+        var representative = Object.assign({}, representativeNode.line);
+        var duplicateTeams = [];
+        var duplicateTitles = [];
+        var componentLineIds = [];
+
+        componentNodes.forEach(function(node) {
+          var line = node.line || {};
+          if (line.teamName) duplicateTeams.push(line.teamName);
+          if (line.title) duplicateTitles.push(line.title);
+          componentLineIds = componentLineIds.concat(lineOwnRenderIds(line), lineLinkRenderIds(line));
+        });
+
+        var hasLink = componentNodes.some(function(node) {
+          return lineLinkRenderIds(node.line).length > 0;
+        });
+        if (hasLink) representative.canonicalLineId = representative.canonicalLineId || canonicalId;
+        representative.displayKey = hasLink && canonicalId ? "canonical:" + canonicalId : lineDisplayKey(representative);
+        representative.pathHash = linePathHash(representative);
+        representative.duplicateCount = componentNodes.length;
+        representative.duplicateTeams = Array.from(new Set(duplicateTeams.map(String))).sort();
+        representative.duplicateTitles = Array.from(new Set(duplicateTitles.map(String))).sort();
+        representative.componentLineIds = Array.from(new Set(componentLineIds.map(cleanMarkerId).filter(Boolean))).sort();
+        representative.isDeduped = componentNodes.length > 1;
+        return representative;
+      });
+
+      logAdminCanonicalRender("lines", (Array.isArray(lines) ? lines.length : 0), result.length);
       return result;
     }
 
@@ -2565,9 +2748,11 @@ setMapStatus("Map connected");
         marker.duplicateCount || 1,
         marker.address,
         marker.markerId,
+        marker.canonicalMarkerId,
         marker.originalMarkerId,
         marker.sourceMarkerId,
-        marker.parentMarkerId
+        marker.parentMarkerId,
+        (marker.componentMarkerIds || []).join(",")
       ].join("|");
     }
 
@@ -3022,6 +3207,7 @@ setMapStatus("Map connected");
     function sharedMarkerCanonicalId(rawMarker) {
       if (!rawMarker) return "";
       return cleanMarkerId(
+        rawMarker.canonicalMarkerId ||
         rawMarker.originalMarkerId ||
         rawMarker.sourceMarkerId ||
         rawMarker.parentMarkerId ||
@@ -3056,6 +3242,7 @@ setMapStatus("Map connected");
 
     function markerLinkIds(rawMarker) {
       var values = [
+        rawMarker && rawMarker.canonicalMarkerId,
         rawMarker && rawMarker.originalMarkerId,
         rawMarker && rawMarker.sourceMarkerId,
         rawMarker && rawMarker.parentMarkerId
@@ -3274,6 +3461,7 @@ setMapStatus("Map connected");
         marker && marker.id,
         marker && marker.rawId,
         marker && marker.markerId,
+        marker && marker.canonicalMarkerId,
         marker && marker.originalMarkerId,
         marker && marker.sourceMarkerId,
         marker && marker.parentMarkerId
@@ -6558,6 +6746,7 @@ function sharedTransferCanonicalId(marker) {
   if (!marker) return "";
 
   return cleanMarkerId(
+    marker.canonicalMarkerId ||
     marker.originalMarkerId ||
     marker.sourceMarkerId ||
     marker.parentMarkerId ||
@@ -6570,6 +6759,7 @@ function markerMatchesTransferredSource(marker, canonicalId) {
   if (!marker || !canonicalId) return false;
 
   return cleanMarkerId(marker.originalMarkerId) === canonicalId ||
+    cleanMarkerId(marker.canonicalMarkerId) === canonicalId ||
     cleanMarkerId(marker.sourceMarkerId) === canonicalId ||
     cleanMarkerId(marker.parentMarkerId) === canonicalId ||
     cleanMarkerId(marker.id) === canonicalId ||
@@ -6667,7 +6857,9 @@ async function sendAdminGroupDataToTeams(targetTeamIds, group) {
         });
 
         var markerCopy = Object.assign({}, sourceMarker, {
+          canonicalMarkerId: canonicalId,
           originalMarkerId: canonicalId,
+          sourceMarkerId: canonicalId,
           group: targetGroup
         });
 
@@ -9178,6 +9370,7 @@ function aiImportMarkerMatchesCanonical(marker, canonicalId) {
   var ids = [
     marker.id,
     marker.markerId,
+    marker.canonicalMarkerId,
     marker.originalMarkerId,
     marker.sourceMarkerId,
     marker.parentMarkerId
@@ -9329,12 +9522,11 @@ async function deployAiDetectedResultsToTeams(selectedRecords, targetTeamIds) {
               isVisible: targetGroup.isVisible !== false
             },
             photos: [],
-            isChecked: false
+            isChecked: false,
+            canonicalMarkerId: canonicalId,
+            originalMarkerId: canonicalId,
+            sourceMarkerId: canonicalId
           };
-
-          if (!isOwner) {
-            markerPayload.originalMarkerId = canonicalId;
-          }
 
           if (existingIndex !== -1) {
             var existingMarker = targetData.markers[existingIndex] || {};

@@ -60,7 +60,7 @@ class SiteData {
   String address; 
   MapGroup group;
   List<PhotoItem> photos;
-  String? originalMarkerId, sourceMarkerId, parentMarkerId;
+  String? canonicalMarkerId, originalMarkerId, sourceMarkerId, parentMarkerId;
   bool isChecked; // ✅ 마커 상태 확인용 변수
 
   SiteData({
@@ -72,6 +72,7 @@ class SiteData {
     required this.address, 
     required this.group, 
     required this.photos, 
+    this.canonicalMarkerId,
     this.originalMarkerId,
     this.sourceMarkerId,
     this.parentMarkerId,
@@ -88,6 +89,7 @@ class SiteData {
   Map<String, dynamic> toJson() => {
     'id': id, 'lat': lat, 'lng': lng, 'title': title, 'description': description, 
     'address': address, 'group': group.toJson(), 'photos': photos.map((p) => p.toJson()).toList(),
+    if (canonicalMarkerId != null) 'canonicalMarkerId': canonicalMarkerId,
     if (originalMarkerId != null) 'originalMarkerId': originalMarkerId,
     if (sourceMarkerId != null) 'sourceMarkerId': sourceMarkerId,
     if (parentMarkerId != null) 'parentMarkerId': parentMarkerId,
@@ -100,6 +102,7 @@ class SiteData {
     address: json['address'] ?? "주소 정보 없음", 
     group: MapGroup.fromJson(json['group']), 
     photos: (json['photos'] as List).map((p) => PhotoItem.fromJson(p)).toList(),
+    canonicalMarkerId: json['canonicalMarkerId']?.toString(),
     originalMarkerId: json['originalMarkerId']?.toString(),
     sourceMarkerId: json['sourceMarkerId']?.toString(),
     parentMarkerId: json['parentMarkerId']?.toString(),
@@ -113,6 +116,7 @@ class LineData {
   List<LatLng> points;
   int colorValue;
   bool isVisible; // ✅ [추가]
+  String? canonicalLineId, originalLineId, sourceLineId;
 
   LineData({
     required this.id, 
@@ -122,6 +126,9 @@ class LineData {
     required this.markerIds, 
     required this.colorValue,
     this.isVisible = true, // ✅ [수정] 여기에 ' = true'가 꼭 있어야 합니다!
+    this.canonicalLineId,
+    this.originalLineId,
+    this.sourceLineId,
   });
 
   Map<String, dynamic> toJson() => {
@@ -132,6 +139,9 @@ class LineData {
     'markerIds': markerIds, 
     'colorValue': colorValue,
     'isVisible': isVisible, // ✅ 저장 포함
+    if (canonicalLineId != null) 'canonicalLineId': canonicalLineId,
+    if (originalLineId != null) 'originalLineId': originalLineId,
+    if (sourceLineId != null) 'sourceLineId': sourceLineId,
   };
 
   factory LineData.fromJson(Map<String, dynamic> json) => LineData(
@@ -142,6 +152,9 @@ class LineData {
     markerIds: List<String>.from(json['markerIds'] ?? []), 
     colorValue: json['colorValue'],
     isVisible: json['isVisible'] ?? true, // ✅ 불러오기 포함
+    canonicalLineId: json['canonicalLineId']?.toString(),
+    originalLineId: json['originalLineId']?.toString(),
+    sourceLineId: json['sourceLineId']?.toString(),
   );
 }
 // --- [관리자용 팀 데이터 클래스] ---
@@ -398,6 +411,8 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
     bool _isTappingMode = false, _isMoveMode = false, _isLineMode = false;
   bool _isMapControlActive = true;
   bool _dedupeMapRenderItems = true;
+  String _lastKakaoMarkerDedupeLogKey = '';
+  String _lastKakaoLineDedupeLogKey = '';
   bool _isFreeLineMode = false;
   bool _isModalOpen = false;
   bool _isHoveringUI = false;
@@ -497,12 +512,20 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
 
     final data = snap.data()!;
     final lines = List<dynamic>.from(data['lines'] ?? []);
-    final idx = lines.indexWhere((l) => l is Map && l['id'] == line.id);
+    final canonicalId = _lineCanonicalId(line);
+    final idx = lines.indexWhere((l) =>
+        l is Map &&
+        (l['id'] == line.id || (canonicalId.isNotEmpty && _lineCanonicalId(l) == canonicalId)));
+    final lineJson = line.toJson();
 
     if (idx != -1) {
-      lines[idx] = line.toJson();
+      final existing = lines[idx];
+      if (existing is Map && existing.containsKey('isVisible')) {
+        lineJson['isVisible'] = existing['isVisible'];
+      }
+      lines[idx] = lineJson;
     } else if (addIfMissing) {
-      lines.add(line.toJson());
+      lines.add(lineJson);
     } else {
       return false;
     }
@@ -807,6 +830,7 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
     for (final entry in markers.entries) {
       final site = entry.value;
       if (site.id == markerId ||
+          site.canonicalMarkerId == markerId ||
           site.originalMarkerId == markerId ||
           site.sourceMarkerId == markerId ||
           site.parentMarkerId == markerId) return entry;
@@ -819,12 +843,14 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
     if (markerId.isEmpty) return false;
     return mapKey == markerId ||
         site.id == markerId ||
+        site.canonicalMarkerId == markerId ||
         site.originalMarkerId == markerId ||
         site.sourceMarkerId == markerId ||
         site.parentMarkerId == markerId ||
         mapKey.endsWith(markerId) ||
         site.id.endsWith(markerId) ||
         markerId.endsWith(site.id) ||
+        (site.canonicalMarkerId != null && markerId.endsWith(site.canonicalMarkerId!)) ||
         (site.originalMarkerId != null && markerId.endsWith(site.originalMarkerId!)) ||
         (site.sourceMarkerId != null && markerId.endsWith(site.sourceMarkerId!));
   }
@@ -851,9 +877,11 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
   List<String> _moveMarkerCandidates(Map data, Map target) {
     final values = [
       data['markerId'],
+      data['canonicalMarkerId'],
       data['originalMarkerId'],
       data['sourceMarkerId'],
       target['markerId'],
+      target['canonicalMarkerId'],
       target['originalMarkerId'],
       target['sourceMarkerId'],
       target['parentMarkerId'],
@@ -874,28 +902,31 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
     if (markerId.isEmpty) return false;
     final id = marker['id']?.toString() ?? '';
     final markerJsonId = marker['markerId']?.toString() ?? '';
+    final canonicalMarkerId = marker['canonicalMarkerId']?.toString() ?? '';
     final originalMarkerId = marker['originalMarkerId']?.toString() ?? '';
     final sourceMarkerId = marker['sourceMarkerId']?.toString() ?? '';
     final parentMarkerId = marker['parentMarkerId']?.toString() ?? '';
 
     return id == markerId ||
         markerJsonId == markerId ||
+        canonicalMarkerId == markerId ||
         originalMarkerId == markerId ||
         sourceMarkerId == markerId ||
         parentMarkerId == markerId ||
         id.endsWith(markerId) ||
         markerJsonId.endsWith(markerId) ||
+        canonicalMarkerId.endsWith(markerId) ||
         (id.isNotEmpty && markerId.endsWith(id)) ||
         (originalMarkerId.isNotEmpty && markerId.endsWith(originalMarkerId)) ||
         (sourceMarkerId.isNotEmpty && markerId.endsWith(sourceMarkerId));
   }
 
   String _syncOriginalMarkerId(String markerId, SiteData site) {
-    return site.originalMarkerId ?? site.sourceMarkerId ?? site.parentMarkerId ?? markerId;
+    return site.canonicalMarkerId ?? site.originalMarkerId ?? site.sourceMarkerId ?? site.parentMarkerId ?? markerId;
   }
 
   bool _isOriginalMarkerForSharedSync(SiteData site) {
-    return site.originalMarkerId == null && site.sourceMarkerId == null && site.parentMarkerId == null;
+    return site.canonicalMarkerId == null && site.originalMarkerId == null && site.sourceMarkerId == null && site.parentMarkerId == null;
   }
 
   bool _matchesSharedMarkerJson(Map marker, String markerId, String originalMarkerId) {
@@ -903,6 +934,7 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
 
     final id = marker['id']?.toString() ?? '';
     final markerJsonId = marker['markerId']?.toString() ?? '';
+    final canonicalMarkerId = marker['canonicalMarkerId']?.toString() ?? '';
     final markerOriginalId = marker['originalMarkerId']?.toString() ?? '';
     final sourceMarkerId = marker['sourceMarkerId']?.toString() ?? '';
     final parentMarkerId = marker['parentMarkerId']?.toString() ?? '';
@@ -910,6 +942,7 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
     if (markerId.isNotEmpty &&
         (id == markerId ||
             markerJsonId == markerId ||
+            canonicalMarkerId == markerId ||
             markerOriginalId == markerId ||
             sourceMarkerId == markerId ||
             parentMarkerId == markerId)) {
@@ -920,6 +953,7 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
 
     return id == originalMarkerId ||
         markerJsonId == originalMarkerId ||
+        canonicalMarkerId == originalMarkerId ||
         markerOriginalId == originalMarkerId ||
         markerJsonId.endsWith(originalMarkerId);
   }
@@ -935,11 +969,13 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
 
     final id = marker['id']?.toString() ?? '';
     final markerJsonId = marker['markerId']?.toString() ?? '';
+    final canonicalMarkerId = marker['canonicalMarkerId']?.toString() ?? '';
     final originalMarkerId = marker['originalMarkerId']?.toString() ?? '';
     final sourceMarkerId = marker['sourceMarkerId']?.toString() ?? '';
 
     return id == newMarkerId ||
         markerJsonId == newMarkerId ||
+        canonicalMarkerId == newMarkerId ||
         originalMarkerId == newMarkerId ||
         sourceMarkerId == newMarkerId ||
         (marker['parentMarkerId']?.toString() ?? '') == newMarkerId ||
@@ -1121,6 +1157,16 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
 
   String _cleanMarkerId(dynamic value) => value?.toString().trim() ?? '';
 
+  String _lineCanonicalId(dynamic line) {
+    if (line is LineData) {
+      return _cleanMarkerId(line.canonicalLineId ?? line.originalLineId ?? line.sourceLineId ?? line.id);
+    }
+    if (line is Map) {
+      return _cleanMarkerId(line['canonicalLineId'] ?? line['originalLineId'] ?? line['sourceLineId'] ?? line['id']);
+    }
+    return '';
+  }
+
   String canonicalMarkerIdForOwnedMarker(dynamic marker) {
     if (marker is SiteData) return _cleanMarkerId(marker.id);
     if (marker is Map) return _cleanMarkerId(marker['id'] ?? marker['markerId']);
@@ -1129,10 +1175,10 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
 
   String canonicalMarkerIdForSharedCopy(dynamic marker) {
     if (marker is SiteData) {
-      return _cleanMarkerId(marker.originalMarkerId ?? marker.sourceMarkerId ?? marker.parentMarkerId);
+      return _cleanMarkerId(marker.canonicalMarkerId ?? marker.originalMarkerId ?? marker.sourceMarkerId ?? marker.parentMarkerId);
     }
     if (marker is Map) {
-      return _cleanMarkerId(marker['originalMarkerId'] ?? marker['sourceMarkerId'] ?? marker['parentMarkerId']);
+      return _cleanMarkerId(marker['canonicalMarkerId'] ?? marker['originalMarkerId'] ?? marker['sourceMarkerId'] ?? marker['parentMarkerId']);
     }
     return '';
   }
@@ -1141,11 +1187,13 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
     if (canonicalSourceId.isEmpty) return false;
     if (marker is SiteData) {
       return _cleanMarkerId(marker.originalMarkerId) == canonicalSourceId ||
+          _cleanMarkerId(marker.canonicalMarkerId) == canonicalSourceId ||
           _cleanMarkerId(marker.sourceMarkerId) == canonicalSourceId ||
           _cleanMarkerId(marker.parentMarkerId) == canonicalSourceId;
     }
     if (marker is Map) {
       return _cleanMarkerId(marker['originalMarkerId']) == canonicalSourceId ||
+          _cleanMarkerId(marker['canonicalMarkerId']) == canonicalSourceId ||
           _cleanMarkerId(marker['sourceMarkerId']) == canonicalSourceId ||
           _cleanMarkerId(marker['parentMarkerId']) == canonicalSourceId;
     }
@@ -1169,9 +1217,9 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
   List<String> _markerLinkIdsFromJson(dynamic marker) {
     final values = <dynamic>[];
     if (marker is SiteData) {
-      values.addAll([marker.originalMarkerId, marker.sourceMarkerId, marker.parentMarkerId]);
+      values.addAll([marker.canonicalMarkerId, marker.originalMarkerId, marker.sourceMarkerId, marker.parentMarkerId]);
     } else if (marker is Map) {
-      values.addAll([marker['originalMarkerId'], marker['sourceMarkerId'], marker['parentMarkerId']]);
+      values.addAll([marker['canonicalMarkerId'], marker['originalMarkerId'], marker['sourceMarkerId'], marker['parentMarkerId']]);
     }
     return values.map(_cleanMarkerId).where((id) => id.isNotEmpty).toSet().toList();
   }
@@ -1375,6 +1423,7 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
     return [
       marker['id'],
       marker['markerId'],
+      marker['canonicalMarkerId'],
       marker['originalMarkerId'],
       marker['sourceMarkerId'],
       marker['parentMarkerId'],
@@ -2323,10 +2372,12 @@ String _colorToHex(Color color) {
 }
 
 String _firstNonEmptyMarkerSource(SiteData site) {
+  final canonical = site.canonicalMarkerId?.trim();
   final original = site.originalMarkerId?.trim();
   final source = site.sourceMarkerId?.trim();
   final parent = site.parentMarkerId?.trim();
 
+  if (canonical != null && canonical.isNotEmpty) return canonical;
   if (original != null && original.isNotEmpty) return original;
   if (source != null && source.isNotEmpty) return source;
   if (parent != null && parent.isNotEmpty) return parent;
@@ -2421,6 +2472,7 @@ Map<String, dynamic> _siteToMarkerJson(
     'duplicateTeams': <String>[teamName],
     'duplicateGroupNames': <String>[group.name],
     'isDeduped': false,
+    if (site.canonicalMarkerId != null) 'canonicalMarkerId': site.canonicalMarkerId,
     if (site.originalMarkerId != null) 'originalMarkerId': site.originalMarkerId,
     if (site.sourceMarkerId != null) 'sourceMarkerId': site.sourceMarkerId,
     if (site.parentMarkerId != null) 'parentMarkerId': site.parentMarkerId,
@@ -2429,6 +2481,7 @@ Map<String, dynamic> _siteToMarkerJson(
       'groupName': group.name,
       'groupKey': groupKey,
       'markerId': site.id,
+      'canonicalMarkerId': site.canonicalMarkerId,
       'originalMarkerId': site.originalMarkerId,
       'sourceMarkerId': site.sourceMarkerId,
       'parentMarkerId': site.parentMarkerId,
@@ -2472,6 +2525,13 @@ String _linePathHash(LineData line) {
 }
 
 String _lineDisplayKey(LineData line, {required String ownerTeam}) {
+  final canonicalLineId = [
+    line.canonicalLineId,
+    line.originalLineId,
+    line.sourceLineId,
+  ].map((id) => id?.trim() ?? '').firstWhere((id) => id.isNotEmpty, orElse: () => '');
+  if (canonicalLineId.isNotEmpty) return 'canonical:$canonicalLineId';
+
   final pathHash = _linePathHash(line);
   final normalizedMarkerIds = line.markerIds.map(_normalizeSharedMarkerId).where((id) => id.isNotEmpty).join('>');
   if (normalizedMarkerIds.isNotEmpty) {
@@ -2507,6 +2567,7 @@ Map<String, dynamic> _lineToJson(String id, LineData line, {required String owne
   final pathHash = _linePathHash(line);
   final lineJson = <String, dynamic>{
     'id': id,
+    'lineId': line.id,
     'title': line.title,
     'description': line.description,
     'color': color,
@@ -2521,6 +2582,9 @@ Map<String, dynamic> _lineToJson(String id, LineData line, {required String owne
     'duplicateTitles': <String>[line.title],
     'duplicateVisibleStates': <String, bool>{ownerTeam: line.isVisible},
     'isDeduped': false,
+    if (line.canonicalLineId != null) 'canonicalLineId': line.canonicalLineId,
+    if (line.originalLineId != null) 'originalLineId': line.originalLineId,
+    if (line.sourceLineId != null) 'sourceLineId': line.sourceLineId,
     '_baseDisplayKey': displayKey,
     '_renderPriority': _lineRenderPriority(ownerTeam: ownerTeam),
   };
@@ -2559,52 +2623,134 @@ Map<String, dynamic> _mergeMarkerDuplicateMetadata(Map<String, dynamic> existing
   return representative;
 }
 
+String _cleanRenderId(dynamic value) => value?.toString().trim() ?? '';
+
+List<String> _markerOwnRenderIds(Map<String, dynamic> marker) {
+  return [
+    marker['rawId'],
+    marker['markerId'],
+    marker['id'],
+  ].map(_cleanRenderId).where((id) => id.isNotEmpty).toSet().toList();
+}
+
+List<String> _markerLinkRenderIds(Map<String, dynamic> marker) {
+  return [
+    marker['canonicalMarkerId'],
+    marker['originalMarkerId'],
+    marker['sourceMarkerId'],
+    marker['parentMarkerId'],
+  ].map(_cleanRenderId).where((id) => id.isNotEmpty).toSet().toList();
+}
+
+void _logKakaoDedupe(String kind, int rawCount, int renderedCount) {
+  final removed = rawCount - renderedCount;
+  if (removed <= 0) return;
+  final key = '$rawCount:$renderedCount';
+  if (kind == 'markers') {
+    if (_lastKakaoMarkerDedupeLogKey == key) return;
+    _lastKakaoMarkerDedupeLogKey = key;
+  } else {
+    if (_lastKakaoLineDedupeLogKey == key) return;
+    _lastKakaoLineDedupeLogKey = key;
+  }
+  debugPrint('[KAKAO_DEDUPE] $kind raw=$rawCount rendered=$renderedCount removed=$removed');
+}
+
+String _chooseMarkerCanonicalId(List<Map<String, dynamic>> component) {
+  final linkIds = component.expand(_markerLinkRenderIds).toSet().toList();
+  if (linkIds.isNotEmpty) return linkIds.first;
+
+  final sorted = component.toList()
+    ..sort((a, b) {
+      final aPriority = (a['_renderPriority'] as num?)?.toInt() ?? 99;
+      final bPriority = (b['_renderPriority'] as num?)?.toInt() ?? 99;
+      return aPriority.compareTo(bPriority);
+    });
+  final representative = sorted.first;
+  return _cleanRenderId(
+    representative['rawId'] ?? representative['markerId'] ?? representative['id'],
+  );
+}
+
 List<Map<String, dynamic>> _dedupeMarkerJsonList(List<Map<String, dynamic>> rawMarkers) {
   if (!_dedupeMapRenderItems) return rawMarkers.map(_cleanRenderMetadata).toList();
 
-  final result = <Map<String, dynamic>>[];
-  final sharedSourceKeys = rawMarkers
-      .map((marker) => (marker['_baseDisplayKey'] ?? marker['displayKey'] ?? '').toString())
-      .where((displayKey) => displayKey.startsWith('shared:') && displayKey.length > 'shared:'.length)
-      .map((displayKey) => displayKey.substring('shared:'.length))
-      .toSet();
+  final parent = List<int>.generate(rawMarkers.length, (index) => index);
 
-  for (final marker in rawMarkers) {
-    var baseDisplayKey = (marker['_baseDisplayKey'] ?? marker['displayKey'] ?? marker['id'] ?? '').toString();
-    final markerId = (marker['markerId'] ?? '').toString();
-    if (!baseDisplayKey.startsWith('shared:') && markerId.isNotEmpty && sharedSourceKeys.contains(markerId)) {
-      baseDisplayKey = 'shared:$markerId';
-      marker['_baseDisplayKey'] = baseDisplayKey;
-      marker['displayKey'] = baseDisplayKey;
-      _applyMarkerRenderKey(marker);
+  int find(int index) {
+    while (parent[index] != index) {
+      parent[index] = parent[parent[index]];
+      index = parent[index];
     }
-    var matchIndex = -1;
-    var hasSameBaseKey = false;
-
-    for (var i = 0; i < result.length; i++) {
-      final existingBaseKey = (result[i]['_baseDisplayKey'] ?? result[i]['displayKey'] ?? result[i]['id'] ?? '').toString();
-      if (existingBaseKey != baseDisplayKey) continue;
-
-      hasSameBaseKey = true;
-      if (_isSameMarkerRenderPosition(result[i], marker)) {
-        matchIndex = i;
-        break;
-      }
-    }
-
-    if (matchIndex != -1) {
-      result[matchIndex] = _mergeMarkerDuplicateMetadata(result[matchIndex], marker);
-      continue;
-    }
-
-    if (hasSameBaseKey) {
-      marker['displayKey'] = '$baseDisplayKey@${_markerCoordHashFromJson(marker)}';
-      _applyMarkerRenderKey(marker);
-    }
-    result.add(marker);
+    return index;
   }
 
-  return result.map(_cleanRenderMetadata).toList();
+  void union(int a, int b) {
+    final rootA = find(a);
+    final rootB = find(b);
+    if (rootA != rootB) parent[rootB] = rootA;
+  }
+
+  final ownIdToIndexes = <String, List<int>>{};
+  final linkIdToIndexes = <String, List<int>>{};
+
+  for (var index = 0; index < rawMarkers.length; index++) {
+    final marker = rawMarkers[index];
+    for (final id in _markerOwnRenderIds(marker)) {
+      ownIdToIndexes.putIfAbsent(id, () => <int>[]).add(index);
+    }
+    for (final id in _markerLinkRenderIds(marker)) {
+      linkIdToIndexes.putIfAbsent(id, () => <int>[]).add(index);
+    }
+  }
+
+  for (final entry in linkIdToIndexes.entries) {
+    final linked = entry.value;
+    for (var i = 1; i < linked.length; i++) {
+      union(linked.first, linked[i]);
+    }
+    for (final ownIndex in ownIdToIndexes[entry.key] ?? const <int>[]) {
+      union(linked.first, ownIndex);
+    }
+  }
+
+  final components = <int, List<Map<String, dynamic>>>{};
+  for (var index = 0; index < rawMarkers.length; index++) {
+    components.putIfAbsent(find(index), () => <Map<String, dynamic>>[]).add(rawMarkers[index]);
+  }
+
+  final result = components.values.map((component) {
+    final sorted = component.toList()
+      ..sort((a, b) {
+        final aPriority = (a['_renderPriority'] as num?)?.toInt() ?? 99;
+        final bPriority = (b['_renderPriority'] as num?)?.toInt() ?? 99;
+        return aPriority.compareTo(bPriority);
+      });
+    final representative = Map<String, dynamic>.from(sorted.first);
+    final canonicalId = _chooseMarkerCanonicalId(component);
+    final hasLink = component.any((marker) => _markerLinkRenderIds(marker).isNotEmpty);
+
+    if (hasLink && canonicalId.isNotEmpty) representative['canonicalMarkerId'] ??= canonicalId;
+    representative['displayKey'] = hasLink && canonicalId.isNotEmpty
+        ? 'canonical:$canonicalId'
+        : (representative['_baseDisplayKey'] ?? representative['displayKey'] ?? representative['id']).toString();
+    representative['duplicateCount'] = component.length;
+    representative['duplicateTeams'] = _stableStringList(
+      component.expand((marker) => List<dynamic>.from(marker['duplicateTeams'] ?? [marker['teamName']])),
+    );
+    representative['duplicateGroupNames'] = _stableStringList(
+      component.expand((marker) => List<dynamic>.from(marker['duplicateGroupNames'] ?? [marker['groupName']])),
+    );
+    representative['componentMarkerIds'] = _stableStringList(
+      component.expand((marker) => [..._markerOwnRenderIds(marker), ..._markerLinkRenderIds(marker)]),
+    );
+    representative['isDeduped'] = component.length > 1;
+    _applyMarkerRenderKey(representative);
+    return representative;
+  }).map(_cleanRenderMetadata).toList();
+
+  _logKakaoDedupe('markers', rawMarkers.length, result.length);
+  return result;
 }
 
 Map<String, dynamic> _mergeLineDuplicateMetadata(Map<String, dynamic> existing, Map<String, dynamic> incoming) {
@@ -2637,41 +2783,118 @@ Map<String, dynamic> _mergeLineDuplicateMetadata(Map<String, dynamic> existing, 
   return representative;
 }
 
+List<String> _lineOwnRenderIds(Map<String, dynamic> line) {
+  return [
+    line['lineId'],
+    line['id'],
+  ].map(_cleanRenderId).where((id) => id.isNotEmpty).toSet().toList();
+}
+
+List<String> _lineLinkRenderIds(Map<String, dynamic> line) {
+  return [
+    line['canonicalLineId'],
+    line['originalLineId'],
+    line['sourceLineId'],
+  ].map(_cleanRenderId).where((id) => id.isNotEmpty).toSet().toList();
+}
+
+String _chooseLineCanonicalId(List<Map<String, dynamic>> component) {
+  final linkIds = component.expand(_lineLinkRenderIds).toSet().toList();
+  if (linkIds.isNotEmpty) return linkIds.first;
+
+  final sorted = component.toList()
+    ..sort((a, b) {
+      final aPriority = (a['_renderPriority'] as num?)?.toInt() ?? 99;
+      final bPriority = (b['_renderPriority'] as num?)?.toInt() ?? 99;
+      return aPriority.compareTo(bPriority);
+    });
+  return _cleanRenderId(sorted.first['lineId'] ?? sorted.first['id']);
+}
+
 List<Map<String, dynamic>> _dedupeLineJsonList(List<Map<String, dynamic>> rawLines) {
   if (!_dedupeMapRenderItems) return rawLines.map(_cleanRenderMetadata).toList();
 
-  final result = <Map<String, dynamic>>[];
+  final parent = List<int>.generate(rawLines.length, (index) => index);
 
-  for (final line in rawLines) {
-    final baseDisplayKey = (line['_baseDisplayKey'] ?? line['displayKey'] ?? line['id'] ?? '').toString();
-    final pathHash = (line['pathHash'] ?? '').toString();
-    var matchIndex = -1;
-    var hasSameBaseKey = false;
-
-    for (var i = 0; i < result.length; i++) {
-      final existingBaseKey = (result[i]['_baseDisplayKey'] ?? result[i]['displayKey'] ?? result[i]['id'] ?? '').toString();
-      if (existingBaseKey != baseDisplayKey) continue;
-
-      hasSameBaseKey = true;
-      if ((result[i]['pathHash'] ?? '').toString() == pathHash) {
-        matchIndex = i;
-        break;
-      }
+  int find(int index) {
+    while (parent[index] != index) {
+      parent[index] = parent[parent[index]];
+      index = parent[index];
     }
-
-    if (matchIndex != -1) {
-      result[matchIndex] = _mergeLineDuplicateMetadata(result[matchIndex], line);
-      continue;
-    }
-
-    if (hasSameBaseKey && pathHash.isNotEmpty) {
-      line['displayKey'] = '$baseDisplayKey@$pathHash';
-      _applyLineRenderKey(line);
-    }
-    result.add(line);
+    return index;
   }
 
-  return result.map(_cleanRenderMetadata).toList();
+  void union(int a, int b) {
+    final rootA = find(a);
+    final rootB = find(b);
+    if (rootA != rootB) parent[rootB] = rootA;
+  }
+
+  final ownIdToIndexes = <String, List<int>>{};
+  final linkIdToIndexes = <String, List<int>>{};
+
+  for (var index = 0; index < rawLines.length; index++) {
+    final line = rawLines[index];
+    for (final id in _lineOwnRenderIds(line)) {
+      ownIdToIndexes.putIfAbsent(id, () => <int>[]).add(index);
+    }
+    for (final id in _lineLinkRenderIds(line)) {
+      linkIdToIndexes.putIfAbsent(id, () => <int>[]).add(index);
+    }
+  }
+
+  for (final entry in linkIdToIndexes.entries) {
+    final linked = entry.value;
+    for (var i = 1; i < linked.length; i++) {
+      union(linked.first, linked[i]);
+    }
+    for (final ownIndex in ownIdToIndexes[entry.key] ?? const <int>[]) {
+      union(linked.first, ownIndex);
+    }
+  }
+
+  final components = <int, List<Map<String, dynamic>>>{};
+  for (var index = 0; index < rawLines.length; index++) {
+    components.putIfAbsent(find(index), () => <Map<String, dynamic>>[]).add(rawLines[index]);
+  }
+
+  final result = components.values.map((component) {
+    final sorted = component.toList()
+      ..sort((a, b) {
+        final aPriority = (a['_renderPriority'] as num?)?.toInt() ?? 99;
+        final bPriority = (b['_renderPriority'] as num?)?.toInt() ?? 99;
+        return aPriority.compareTo(bPriority);
+      });
+    final representative = Map<String, dynamic>.from(sorted.first);
+    final canonicalId = _chooseLineCanonicalId(component);
+    final hasLink = component.any((line) => _lineLinkRenderIds(line).isNotEmpty);
+
+    if (hasLink && canonicalId.isNotEmpty) representative['canonicalLineId'] ??= canonicalId;
+    representative['displayKey'] = hasLink && canonicalId.isNotEmpty
+        ? 'canonical:$canonicalId'
+        : (representative['_baseDisplayKey'] ?? representative['displayKey'] ?? representative['id']).toString();
+    representative['pathHash'] = representative['pathHash'] ?? '';
+    representative['duplicateCount'] = component.length;
+    representative['duplicateTeams'] = _stableStringList(
+      component.expand((line) => List<dynamic>.from(line['duplicateTeams'] ?? const [])),
+    );
+    representative['duplicateTitles'] = _stableStringList(
+      component.expand((line) => List<dynamic>.from(line['duplicateTitles'] ?? const [])),
+    );
+    representative['duplicateVisibleStates'] = <String, bool>{
+      for (final line in component)
+        ...Map<String, bool>.from(line['duplicateVisibleStates'] ?? const <String, bool>{}),
+    };
+    representative['componentLineIds'] = _stableStringList(
+      component.expand((line) => [..._lineOwnRenderIds(line), ..._lineLinkRenderIds(line)]),
+    );
+    representative['isDeduped'] = component.length > 1;
+    _applyLineRenderKey(representative);
+    return representative;
+  }).map(_cleanRenderMetadata).toList();
+
+  _logKakaoDedupe('lines', rawLines.length, result.length);
+  return result;
 }
 
 List<Map<String, dynamic>> _buildMarkerJsonList({bool dedupe = true}) {
@@ -2686,7 +2909,7 @@ List<Map<String, dynamic>> _buildMarkerJsonList({bool dedupe = true}) {
     );
 
     if (group.isVisible) {
-      final scope = site.originalMarkerId != null || site.sourceMarkerId != null || site.parentMarkerId != null ? 'received' : 'own';
+      final scope = site.canonicalMarkerId != null || site.originalMarkerId != null || site.sourceMarkerId != null || site.parentMarkerId != null ? 'received' : 'own';
       if (_verboseMapDebug) debugPrint('MARKER_RENDER markerId=$id groupName=${group.name} groupKey=${group.name} scope=$scope originalMarkerId=${site.originalMarkerId} sourceMarkerId=${site.sourceMarkerId} updateTarget=${widget.teamName}|${group.name}|${site.id}');
       markers.add(_siteToMarkerJson(id, site, group, scope: scope, teamName: widget.teamName));
     }
@@ -2707,7 +2930,7 @@ List<Map<String, dynamic>> _buildMarkerJsonList({bool dedupe = true}) {
         );
 
         if (group.isVisible) {
-          final scope = site.originalMarkerId != null || site.sourceMarkerId != null || site.parentMarkerId != null || group.name.contains('/') ? 'shared' : 'own';
+          final scope = site.canonicalMarkerId != null || site.originalMarkerId != null || site.sourceMarkerId != null || site.parentMarkerId != null || group.name.contains('/') ? 'shared' : 'own';
           if (_verboseMapDebug) debugPrint('MARKER_RENDER markerId=${teamDocId}_$id groupName=${group.name} groupKey=${group.name} scope=$scope originalMarkerId=${site.originalMarkerId} sourceMarkerId=${site.sourceMarkerId} updateTarget=$teamDocId|${group.name}|${site.id}');
           markers.add(_siteToMarkerJson('${teamDocId}_$id', site, group, scope: scope, teamName: teamDocId));
         }
@@ -3673,6 +3896,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
           id: id, lat: pos.latitude, lng: pos.longitude,
           title: tCtrl.text, description: dCtrl.text, address: aCtrl.text,
           group: selectedGroupForSave, photos: serverPhotos,
+          canonicalMarkerId: existingData?.canonicalMarkerId,
           originalMarkerId: existingData?.originalMarkerId,
           sourceMarkerId: existingData?.sourceMarkerId,
           parentMarkerId: existingData?.parentMarkerId,
@@ -5051,6 +5275,9 @@ void _showCreateMenu() {
                         markerIds: existingLine?.markerIds ?? (isFreeDraw ? [] : List.from(_tempLineMarkerIds)),
                         colorValue: selectedColor.value,
                         isVisible: existingLine?.isVisible ?? true,
+                        canonicalLineId: existingLine?.canonicalLineId ?? existingLine?.originalLineId ?? existingLine?.sourceLineId ?? id,
+                        originalLineId: existingLine?.originalLineId ?? existingLine?.canonicalLineId ?? existingLine?.sourceLineId ?? id,
+                        sourceLineId: existingLine?.sourceLineId ?? existingLine?.canonicalLineId ?? existingLine?.originalLineId ?? id,
                       );
                       Navigator.pop(ctx); 
 
@@ -6333,7 +6560,7 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
                     trailing: ElevatedButton(
                       onPressed: () {
                         Navigator.pop(ctx);
-                        _showAiTeamSelectionSheet(gName, manholes); // 👉 배포할 팀 선택 시트 호출
+                        _showAiTeamSelectionSheet(doc.id, gName, manholes); // 👉 배포할 팀 선택 시트 호출
                       },
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white),
                       child: const Text("가져오기"),
@@ -6362,7 +6589,7 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
     }
   }
   // ✅ 2. 선 그리기 때와 완벽히 동일한 UI! (FilterChip 팀 선택)
-  void _showAiTeamSelectionSheet(String aiGroupName, List<dynamic> aiManholes) {
+  void _showAiTeamSelectionSheet(String aiDocumentId, String aiGroupName, List<dynamic> aiManholes) {
     if (!canUseAdminTools) return;
 
     List<String> selectedTargetTeams = [widget.teamName]; // 기본값: 내 팀
@@ -6419,7 +6646,7 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
                 ElevatedButton(
                   onPressed: () async {
                     Navigator.pop(ctx);
-                    await _distributeAiDataToTeams(selectedTargetTeams, aiGroupName, aiManholes);
+                    await _distributeAiDataToTeams(selectedTargetTeams, aiDocumentId, aiGroupName, aiManholes);
                   },
                   style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 45), backgroundColor: Colors.green),
                   child: const Text("배포 완료", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -6433,7 +6660,13 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
   }
 
   // ✅ 3. 선택된 여러 팀에 트랜잭션으로 안전하게 한 번에 꽂아줌
-Future<void> _distributeAiDataToTeams(List<String> targetTeams, String aiGroupName, List<dynamic> aiManholes) async {
+String _safeAiToken(String value) => value.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+
+String _aiCanonicalMarkerId(String aiDocumentId, int index) {
+  return 'AI_${_safeAiToken(aiDocumentId)}_${index + 1}';
+}
+
+Future<void> _distributeAiDataToTeams(List<String> targetTeams, String aiDocumentId, String aiGroupName, List<dynamic> aiManholes) async {
     if (!canUseAdminTools) return;
 
     setState(() { _isGlobalProcessing = true; _processingText = "선택한 팀으로 데이터 배포 중..."; });
@@ -6460,9 +6693,9 @@ Future<void> _distributeAiDataToTeams(List<String> targetTeams, String aiGroupNa
           // 🚨 마커 데이터 일괄 추가 - 소속 그룹 색상도 빨간색으로 맞춤!
           for (int i = 0; i < aiManholes.length; i++) {
             var m = aiManholes[i];
-            String id = "AI_${targetTeam}_${DateTime.now().millisecondsSinceEpoch}_$i";
-            
-            markers.add({
+            final canonicalId = _aiCanonicalMarkerId(aiDocumentId, i);
+            final id = 'Sent_AI_${_safeAiToken(targetTeam)}_${_safeAiToken(canonicalId)}';
+            final markerPayload = {
               'id': id,
               'lat': m['lat'],
               'lng': m['lng'],
@@ -6471,8 +6704,28 @@ Future<void> _distributeAiDataToTeams(List<String> targetTeams, String aiGroupNa
               'address': "주소 확인 필요 (AI)", 
               'group': {'name': newGroupName, 'colorValue': Colors.red.value, 'isVisible': true},
               'photos': [],
-              'isChecked': false
-            });
+              'isChecked': false,
+              'canonicalMarkerId': canonicalId,
+              'originalMarkerId': canonicalId,
+              'sourceMarkerId': canonicalId,
+            };
+            final existingIndex = markers.indexWhere((item) =>
+                item is Map &&
+                (item['id'] == id ||
+                    item['canonicalMarkerId'] == canonicalId ||
+                    item['originalMarkerId'] == canonicalId ||
+                    item['sourceMarkerId'] == canonicalId ||
+                    item['parentMarkerId'] == canonicalId));
+
+            if (existingIndex != -1) {
+              final existing = markers[existingIndex];
+              if (existing is Map && (existing['id']?.toString() ?? '').isNotEmpty) {
+                markerPayload['id'] = existing['id'];
+              }
+              markers[existingIndex] = {...Map<String, dynamic>.from(existing as Map), ...markerPayload};
+            } else {
+              markers.add(markerPayload);
+            }
           }
 
           transaction.update(docRef, {'groups': groups, 'markers': markers});
@@ -6615,9 +6868,12 @@ Future<void> _distributeAiDataToTeams(List<String> targetTeams, String aiGroupNa
     final markersToSend = _markerDataMap.values
         .where((m) => m.group.name == group.name)
         .map((m) {
+          final canonicalId = (m.canonicalMarkerId ?? m.originalMarkerId ?? m.sourceMarkerId ?? m.parentMarkerId ?? m.id).trim();
           final markerJson = m.toJson();
           markerJson['id'] = m.id;
-          markerJson['originalMarkerId'] ??= m.id;
+          markerJson['canonicalMarkerId'] = canonicalId;
+          markerJson['originalMarkerId'] = canonicalId;
+          markerJson['sourceMarkerId'] = canonicalId;
           markerJson['group'] = targetGroup.toJson();
           return markerJson;
         })
@@ -6714,15 +6970,22 @@ Future<void> _distributeAiDataToTeams(List<String> targetTeams, String aiGroupNa
           // 2. 마커 복사해서 밀어 넣기
           for (int i = 0; i < markersToSend.length; i++) {
             var m = markersToSend[i];
+            final canonicalId = (m.canonicalMarkerId ?? m.originalMarkerId ?? m.sourceMarkerId ?? m.parentMarkerId ?? m.id).trim();
             var markerJson = m.toJson();
             markerJson['id'] = m.id;
-            markerJson['originalMarkerId'] ??= m.id;
+            markerJson['canonicalMarkerId'] = canonicalId;
+            markerJson['originalMarkerId'] = canonicalId;
+            markerJson['sourceMarkerId'] = canonicalId;
 
             int idx = markers.indexWhere((item) =>
                 item is Map &&
                 item['group'] is Map &&
                 item['group']['name'] == group.name &&
                 (item['id'] == m.id ||
+                    item['canonicalMarkerId'] == canonicalId ||
+                    item['originalMarkerId'] == canonicalId ||
+                    item['sourceMarkerId'] == canonicalId ||
+                    item['parentMarkerId'] == canonicalId ||
                     item['originalMarkerId'] == m.id ||
                     item['sourceMarkerId'] == m.id ||
                     item['parentMarkerId'] == m.id));
