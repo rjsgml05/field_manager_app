@@ -270,6 +270,33 @@ class _LoginScreenState extends State<LoginScreen> {
   // ✅ 로딩 상태를 관리하는 변수
   bool _isLoggingIn = false;
 
+  Future<void> _ensureTeamDocumentOnLogin(String teamName, String teamPw) async {
+    final docRef = FirebaseFirestore.instance.collection('teams').doc(teamName);
+
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final snapshot = await transaction.get(docRef);
+
+      if (!snapshot.exists) {
+        transaction.set(docRef, {
+          'teamName': teamName,
+          'teamPw': teamPw,
+          'isVisible': true,
+          'createdAt': FieldValue.serverTimestamp(),
+          'lastLoginAt': FieldValue.serverTimestamp(),
+          'groups': <Map<String, dynamic>>[],
+          'markers': <Map<String, dynamic>>[],
+          'lines': <Map<String, dynamic>>[],
+        });
+        return;
+      }
+
+      transaction.set(docRef, {
+        'teamName': teamName,
+        'lastLoginAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -301,18 +328,22 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 30),
                     ElevatedButton(
                       onPressed: _isLoggingIn ? null : () async { // ✅ 로딩 중 버튼 클릭 방지
-                        if (tCtrl.text.isEmpty || pCtrl.text.isEmpty) return;
+                        final teamName = tCtrl.text.trim();
+                        final teamPw = pCtrl.text;
+                        if (teamName.isEmpty || teamPw.isEmpty) return;
 
                         // ✅ 2. 로딩바 시작
                         setState(() { _isLoggingIn = true; });
 
                         try {
                           final prefs = await SharedPreferences.getInstance();
-                          bool admin = (tCtrl.text == "admin" && pCtrl.text == "1234");
+                          final bool admin = (teamName == "admin" && teamPw == "1234");
 
                           if (!admin) {
+                            await _ensureTeamDocumentOnLogin(teamName, teamPw);
+
                             List<String> registered = prefs.getStringList('registered_teams') ?? [];
-                            String entry = "${tCtrl.text}|${pCtrl.text}";
+                            String entry = "$teamName|$teamPw";
                             if (!registered.contains(entry)) {
                               registered.add(entry);
                               await prefs.setStringList('registered_teams', registered);
@@ -321,15 +352,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
                           await prefs.setBool('isLoggedIn', true);
                           await prefs.setBool('isAdmin', admin);
-                          await prefs.setString('teamName', tCtrl.text);
-                          await prefs.setString('teamPw', pCtrl.text);
+                          await prefs.setString('teamName', teamName);
+                          await prefs.setString('teamPw', teamPw);
 
                           // 약간의 지연 시간을 주어 로딩바가 보이게 함 (선택 사항)
                           await Future.delayed(const Duration(milliseconds: 500));
 
-                          widget.onLoginSuccess(admin, tCtrl.text, pCtrl.text);
+                          widget.onLoginSuccess(admin, teamName, teamPw);
                         } catch (e) {
+                          if (!mounted) return;
                           setState(() { _isLoggingIn = false; });
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("팀 등록에 실패했습니다. 네트워크 연결 후 다시 시도해 주세요.")),
+                          );
                           debugPrint("로그인 에러: $e");
                         }
                       },
