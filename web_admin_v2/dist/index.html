@@ -436,6 +436,129 @@
       background: #f97316;
     }
 
+    .place-search-panel {
+      position: absolute;
+      top: 62px;
+      right: 366px;
+      z-index: 18;
+      width: 360px;
+      max-height: calc(100vh - 86px);
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      overflow: hidden;
+      border: 1px solid rgba(217, 222, 231, 0.96);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.98);
+      box-shadow: var(--shadow);
+    }
+
+    .place-search-panel.hidden {
+      display: none;
+    }
+
+    .place-search-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .place-search-title {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 900;
+      color: #111827;
+    }
+
+    .place-search-fields {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 6px;
+    }
+
+    .place-search-input {
+      min-width: 0;
+      height: 34px;
+      padding: 0 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      color: #111827;
+      font-size: 13px;
+      font-weight: 800;
+      outline: none;
+    }
+
+    .place-search-input:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .place-search-action {
+      height: 34px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 7px;
+      background: #1f2937;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .place-search-action.secondary {
+      border: 1px solid #cbd5e1;
+      background: #fff;
+      color: #374151;
+    }
+
+    .place-search-message {
+      min-height: 16px;
+      margin: 0;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .place-search-results {
+      display: grid;
+      gap: 6px;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+
+    .place-search-result {
+      display: grid;
+      gap: 3px;
+      width: 100%;
+      padding: 9px 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+      color: #111827;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .place-search-result:hover,
+    .place-search-result:focus {
+      border-color: #2563eb;
+      background: #f8fafc;
+      outline: none;
+    }
+
+    .place-search-result-title {
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .place-search-result-address {
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.35;
+    }
+
     .readonly-badge {
       flex: 0 0 auto;
       padding: 7px 9px;
@@ -1638,6 +1761,11 @@
     right: 8px;
   }
 
+  .place-search-panel {
+    width: min(360px, calc(100% - 16px));
+    right: 8px;
+  }
+
   .drawing-select-dialog,
   .drawing-crop-dialog {
     height: calc(100vh - 20px);
@@ -1725,6 +1853,7 @@
     <button id="cadastralButton" class="map-button" type="button">지적편집도</button>
     <button id="drawingOverlayUploadButton" class="map-button" type="button">도면 올리기</button>
     <button id="aiImportButton" class="map-button" type="button">AI 탐지 가져오기</button>
+    <button id="placeSearchToggleButton" class="map-button" type="button">검색</button>
     <input
     id="drawingOverlayFileInput"
     type="file"
@@ -1733,6 +1862,20 @@
     >
     <span class="readonly-badge">READ ONLY</span>
   </div>
+
+<section id="placeSearchPanel" class="place-search-panel hidden" aria-label="카카오 장소 검색">
+  <div class="place-search-head">
+    <h2 class="place-search-title">장소 검색</h2>
+    <button id="placeSearchCloseButton" class="close-button" type="button" aria-label="Close place search">x</button>
+  </div>
+  <div class="place-search-fields">
+    <input id="placeSearchInput" class="place-search-input" type="text" placeholder="장소명, 지명, 주소" autocomplete="off">
+    <button id="placeSearchSubmitButton" class="place-search-action" type="button">검색</button>
+    <button id="placeSearchClearButton" class="place-search-action secondary" type="button">초기화</button>
+  </div>
+  <p id="placeSearchMessage" class="place-search-message"></p>
+  <div id="placeSearchResults" class="place-search-results" aria-live="polite"></div>
+</section>
 
 <section id="drawingQueuePanel" class="drawing-queue-panel hidden" aria-label="도면 작업 대기열">
   <div class="drawing-queue-head">
@@ -1863,7 +2006,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=4a2743b9e49b8da391510688eb04d69d&autoload=false"></script>
+  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=4a2743b9e49b8da391510688eb04d69d&autoload=false&libraries=services"></script>
   <script>
     console.log("[ADMIN_V2] init");
 
@@ -1952,6 +2095,10 @@
     var unsubscribeTeamsSnapshot = null;
     var lastAdminCanonicalMarkerLogKey = "";
     var lastAdminCanonicalLineLogKey = "";
+    var placeSearchService = null;
+    var placeSearchGeocoder = null;
+    var placeSearchResults = [];
+    var placeSearchRequestToken = 0;
 
     var adminRenderFrameId = null;
     var pendingAdminRenderOptions = {
@@ -2068,6 +2215,17 @@
   center: new kakao.maps.LatLng(BUSAN_CENTER.lat, BUSAN_CENTER.lng),
   level: 4
 });
+
+if (
+  kakao.maps.services &&
+  typeof kakao.maps.services.Places === "function" &&
+  typeof kakao.maps.services.Geocoder === "function"
+) {
+  placeSearchService = new kakao.maps.services.Places(map);
+  placeSearchGeocoder = new kakao.maps.services.Geocoder();
+} else {
+  console.error("[ADMIN_V2_SEARCH] Kakao services library unavailable");
+}
 
 setMapStatus("Map connected");
                         setTimeout(relayoutMap, 120);
@@ -9890,6 +10048,213 @@ var messages = {
       console.log("[ADMIN_V2_UI] action placeholder", actionName);
     }
 
+    function getPlaceSearchElement(id) {
+      return document.getElementById(id);
+    }
+
+    function setPlaceSearchMessage(message) {
+      var messageEl = getPlaceSearchElement("placeSearchMessage");
+      if (messageEl) {
+        messageEl.textContent = message || "";
+      }
+    }
+
+    function openPlaceSearchPanel() {
+      var panel = getPlaceSearchElement("placeSearchPanel");
+      var input = getPlaceSearchElement("placeSearchInput");
+      var button = getPlaceSearchElement("placeSearchToggleButton");
+
+      if (!panel) return;
+
+      panel.classList.remove("hidden");
+      if (button) {
+        button.classList.add("active");
+      }
+
+      if (input) {
+        setTimeout(function() {
+          input.focus();
+          input.select();
+        }, 0);
+      }
+    }
+
+    function closePlaceSearchPanel() {
+      var panel = getPlaceSearchElement("placeSearchPanel");
+      var button = getPlaceSearchElement("placeSearchToggleButton");
+
+      if (panel) {
+        panel.classList.add("hidden");
+      }
+
+      if (button) {
+        button.classList.remove("active");
+      }
+    }
+
+    function clearPlaceSearch() {
+      var input = getPlaceSearchElement("placeSearchInput");
+      var resultsEl = getPlaceSearchElement("placeSearchResults");
+
+      placeSearchRequestToken += 1;
+      placeSearchResults = [];
+
+      if (input) {
+        input.value = "";
+        input.focus();
+      }
+
+      if (resultsEl) {
+        resultsEl.innerHTML = "";
+      }
+
+      setPlaceSearchMessage("");
+    }
+
+    function normalizeAddressSearchResult(result, keyword) {
+      var roadAddress = result && result.road_address && result.road_address.address_name
+        ? result.road_address.address_name
+        : "";
+
+      return {
+        place_name: result.address_name || keyword,
+        address_name: result.address_name || "",
+        road_address_name: roadAddress,
+        x: result.x,
+        y: result.y,
+        sourceType: "address"
+      };
+    }
+
+    function searchKakaoPlaces() {
+      var input = getPlaceSearchElement("placeSearchInput");
+      var resultsEl = getPlaceSearchElement("placeSearchResults");
+      var keyword = input ? input.value.trim() : "";
+
+      if (!keyword) {
+        setPlaceSearchMessage("검색어를 입력하세요.");
+        return;
+      }
+
+      if (
+        !placeSearchService ||
+        !placeSearchGeocoder ||
+        !window.kakao ||
+        !kakao.maps ||
+        !kakao.maps.services
+      ) {
+        setPlaceSearchMessage("장소 검색 기능을 불러오지 못했습니다.");
+        return;
+      }
+
+      if (resultsEl) {
+        resultsEl.innerHTML = "";
+      }
+
+      setPlaceSearchMessage("검색 중입니다...");
+      placeSearchResults = [];
+      placeSearchRequestToken += 1;
+
+      var requestToken = placeSearchRequestToken;
+
+      placeSearchService.keywordSearch(keyword, function(results, status) {
+        if (requestToken !== placeSearchRequestToken) return;
+
+        if (status === kakao.maps.services.Status.OK && Array.isArray(results) && results.length > 0) {
+          renderPlaceSearchResults(results.slice(0, 15));
+          return;
+        }
+
+        if (status === kakao.maps.services.Status.ZERO_RESULT) {
+          placeSearchGeocoder.addressSearch(keyword, function(addressResults, addressStatus) {
+            if (requestToken !== placeSearchRequestToken) return;
+
+            if (
+              addressStatus === kakao.maps.services.Status.OK &&
+              Array.isArray(addressResults) &&
+              addressResults.length > 0
+            ) {
+              renderPlaceSearchResults(
+                addressResults.slice(0, 15).map(function(result) {
+                  return normalizeAddressSearchResult(result, keyword);
+                })
+              );
+              return;
+            }
+
+            setPlaceSearchMessage("검색 결과가 없습니다.");
+          });
+          return;
+        }
+
+        setPlaceSearchMessage("장소 검색 중 오류가 발생했습니다.");
+      });
+    }
+
+    function renderPlaceSearchResults(results) {
+      var resultsEl = getPlaceSearchElement("placeSearchResults");
+
+      placeSearchResults = Array.isArray(results) ? results : [];
+
+      if (!resultsEl) return;
+
+      resultsEl.innerHTML = "";
+
+      if (placeSearchResults.length === 0) {
+        setPlaceSearchMessage("검색 결과가 없습니다.");
+        return;
+      }
+
+      setPlaceSearchMessage(placeSearchResults.length + "개 결과");
+
+      placeSearchResults.forEach(function(place) {
+        var titleText = place.place_name || place.address_name || "검색 결과";
+        var addressText = place.road_address_name || place.address_name || "";
+        var button = document.createElement("button");
+        var title = document.createElement("span");
+        var address = document.createElement("span");
+
+        button.type = "button";
+        button.className = "place-search-result";
+        button.addEventListener("click", function(event) {
+          event.preventDefault();
+          event.stopPropagation();
+          selectPlaceSearchResult(place);
+        });
+
+        title.className = "place-search-result-title";
+        title.textContent = titleText;
+        address.className = "place-search-result-address";
+        address.textContent = addressText || "주소 정보 없음";
+
+        button.appendChild(title);
+        button.appendChild(address);
+        resultsEl.appendChild(button);
+      });
+    }
+
+    function selectPlaceSearchResult(place) {
+      if (!map || !window.kakao || !kakao.maps || !place) return;
+
+      var lat = Number(place.y);
+      var lng = Number(place.x);
+
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        setPlaceSearchMessage("장소 좌표를 확인할 수 없습니다.");
+        return;
+      }
+
+      var position = new kakao.maps.LatLng(lat, lng);
+
+      map.setCenter(position);
+
+      if (typeof map.getLevel === "function" && map.getLevel() > 3) {
+        map.setLevel(3);
+      }
+
+      setPlaceSearchMessage("선택 위치로 이동했습니다.");
+    }
+
     function bindEvents() {
       document.querySelector(".sidebar").addEventListener("click", function(event) {
         event.stopPropagation();
@@ -9902,6 +10267,16 @@ var messages = {
       });
       document.getElementById("infoCard").addEventListener("click", function(event) {
         event.stopPropagation();
+      });
+      document.getElementById("placeSearchPanel").addEventListener("click", function(event) {
+        event.stopPropagation();
+      });
+      document.getElementById("placeSearchPanel").addEventListener("keydown", function(event) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          closePlaceSearchPanel();
+        }
       });
       document.getElementById("sidebarToggle").addEventListener("click", function(event) {
         event.preventDefault();
@@ -9949,6 +10324,45 @@ document.getElementById("drawingOverlayUploadButton").addEventListener("click", 
 
 document.getElementById("aiImportButton").addEventListener("click", function() {
   showAiImportModal();
+});
+
+document.getElementById("placeSearchToggleButton").addEventListener("click", function(event) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  var panel = document.getElementById("placeSearchPanel");
+  if (panel && !panel.classList.contains("hidden")) {
+    closePlaceSearchPanel();
+    return;
+  }
+
+  openPlaceSearchPanel();
+});
+
+document.getElementById("placeSearchSubmitButton").addEventListener("click", function(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  searchKakaoPlaces();
+});
+
+document.getElementById("placeSearchClearButton").addEventListener("click", function(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  clearPlaceSearch();
+});
+
+document.getElementById("placeSearchCloseButton").addEventListener("click", function(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  closePlaceSearchPanel();
+});
+
+document.getElementById("placeSearchInput").addEventListener("keydown", function(event) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    event.stopPropagation();
+    searchKakaoPlaces();
+  }
 });
 
 document.getElementById("drawingOverlayFileInput").addEventListener("change", function(event) {
@@ -10123,6 +10537,7 @@ document.getElementById("drawingPinOverlay").addEventListener("click", function(
 
     document.addEventListener("keydown", function(event) {
   if (event.key === "Escape") {
+    closePlaceSearchPanel();
     closePhotoLightbox();
     closeMarkerDeleteModal();
     closeGroupCreateModal();
