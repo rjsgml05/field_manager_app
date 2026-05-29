@@ -2130,6 +2130,50 @@
       document.getElementById("adminStatusMessage").textContent = message;
     }
 
+    function markerCoordinateFallbackAddress(lat, lng) {
+      return "\uC704\uCE58: " + Number(lat).toFixed(4) + ", " + Number(lng).toFixed(4);
+    }
+
+    function resolveMovedMarkerAddress(lat, lng) {
+      return new Promise(function(resolve) {
+        var fallback = markerCoordinateFallbackAddress(lat, lng);
+
+        if (
+          !window.kakao ||
+          !kakao.maps ||
+          !kakao.maps.services ||
+          typeof kakao.maps.services.Geocoder !== "function"
+        ) {
+          resolve(fallback);
+          return;
+        }
+
+        var geocoder = placeSearchGeocoder || new kakao.maps.services.Geocoder();
+        geocoder.coord2Address(Number(lng), Number(lat), function(result, status) {
+          if (
+            status !== kakao.maps.services.Status.OK ||
+            !Array.isArray(result) ||
+            !result.length
+          ) {
+            resolve(fallback);
+            return;
+          }
+
+          var first = result[0] || {};
+          var roadAddress =
+            first.road_address && first.road_address.address_name
+              ? first.road_address.address_name
+              : "";
+          var jibunAddress =
+            first.address && first.address.address_name
+              ? first.address.address_name
+              : "";
+
+          resolve(roadAddress || jibunAddress || fallback);
+        });
+      });
+    }
+
         function relayoutMap() {
       if (!map || !window.kakao || !kakao.maps) return;
       map.relayout();
@@ -4224,22 +4268,40 @@ setMapStatus("Map connected");
 
     async function saveMovedMarkerPosition(marker, lat, lng) {
       if (!db) return false;
-      setAdminMessage("마커 위치 저장 중...");
-      var canonicalId = initiatingMarkerCanonicalId(marker);
+      setAdminMessage("\uC0C8 \uC8FC\uC18C \uD655\uC778 \uC911...");
+      var canonicalId = initiatingMarkerCanonicalId(marker) ||
+        cleanMarkerId(marker && (marker.markerId || marker.rawId || marker.id)) ||
+        ("move-" + markerMutationSequence);
       var sequence = ++markerMutationSequence;
-      var fields = canonicalMarkerFields(Object.assign({}, marker, { lat: lat, lng: lng }), marker);
+      var fields = canonicalMarkerFields(
+        Object.assign({}, marker, { lat: lat, lng: lng, address: "\uC8FC\uC18C \uD655\uC778 \uC911..." }),
+        marker
+      );
       pendingMarkerMutations[canonicalId] = {
         seq: sequence,
         initiatingMarker: marker,
         fields: fields,
         updateConnectedLines: true
       };
-      applyCanonicalSyncLocally(marker, fields, { updateConnectedLines: true }, "마커 위치 저장 중...");
+      applyCanonicalSyncLocally(marker, fields, { updateConnectedLines: true }, "\uC0C8 \uC8FC\uC18C \uD655\uC778 \uC911...");
 
       try {
+        var address = await resolveMovedMarkerAddress(lat, lng);
+        if (
+          !pendingMarkerMutations[canonicalId] ||
+          pendingMarkerMutations[canonicalId].seq !== sequence
+        ) {
+          console.log("[MARKER_MOVE_ADDRESS] skipped stale request canonicalId=" + canonicalId);
+          return false;
+        }
+
+        var changedState = { lat: lat, lng: lng, address: address };
+        fields = canonicalMarkerFields(Object.assign({}, marker, changedState), marker);
+        pendingMarkerMutations[canonicalId].fields = fields;
+        applyCanonicalSyncLocally(marker, fields, { updateConnectedLines: true }, "\uB9C8\uCEE4 \uC704\uCE58\uC640 \uC8FC\uC18C \uC800\uC7A5 \uC911...");
         var saved = await commitCanonicalMarkerMutation({
           initiatingMarker: marker,
-          changedState: { lat: lat, lng: lng },
+          changedState: changedState,
           updateConnectedLines: true,
           mutationType: "move"
         });
@@ -4247,7 +4309,7 @@ setMapStatus("Map connected");
         if (pendingMarkerMutations[canonicalId] && pendingMarkerMutations[canonicalId].seq === sequence) {
           delete pendingMarkerMutations[canonicalId];
         }
-        setAdminMessage("마커 위치가 저장되었습니다.");
+        setAdminMessage("\uB9C8\uCEE4 \uC704\uCE58\uC640 \uC8FC\uC18C\uAC00 \uC800\uC7A5\uB418\uC5C8\uC2B5\uB2C8\uB2E4.");
         console.log("[ADMIN_V2_MARKER_MOVE] updated", marker.markerId || marker.rawId || marker.id, lat, lng);
         return true;
       } catch (error) {
@@ -4262,7 +4324,14 @@ setMapStatus("Map connected");
     }
 
     function applyMarkerMoveLocally(marker, lat, lng) {
-      var fields = canonicalMarkerFields(Object.assign({}, marker, { lat: lat, lng: lng }), marker);
+      var fields = canonicalMarkerFields(
+        Object.assign({}, marker, {
+          lat: lat,
+          lng: lng,
+          address: markerCoordinateFallbackAddress(lat, lng)
+        }),
+        marker
+      );
       return applyCanonicalSyncLocally(marker, fields, { updateConnectedLines: true }, "마커 위치가 저장되었습니다.");
     }
 

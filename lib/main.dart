@@ -431,6 +431,8 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   
   // ✅ 관리자 전용: 전체 팀 데이터를 저장할 Map
   final Map<String, TeamData> _allTeamsMap = {};
+  final Map<String, int> _pendingMoveAddressSequences = {};
+  int _moveAddressSequence = 0;
 
   final ImagePicker _picker = ImagePicker();
   final List<String> _tempLineMarkerIds = [];
@@ -1131,6 +1133,8 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
       return false;
     }
 
+    final movedAddress = point == null ? null : await _getKoreanAddress(point.latitude, point.longitude);
+
     for (final doc in teamsSnapshot.docs) {
       if (doc.id == sourceTeamName) continue;
 
@@ -1153,6 +1157,7 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
             if (point != null) {
               marker['lat'] = point.latitude;
               marker['lng'] = point.longitude;
+              marker['address'] = movedAddress;
             }
             if (isChecked != null) {
               _setMarkerCheckFields(marker, isChecked);
@@ -1476,6 +1481,83 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
       'isChecked': overrides.containsKey('isChecked') ? overrides['isChecked'] == true : marker.isChecked,
     };
     return fields;
+  }
+
+  String _moveAddressSequenceKey(SiteData marker, String teamName) {
+    final canonicalId = _canonicalIdForMutation(marker);
+    if (canonicalId.isNotEmpty) return canonicalId;
+
+    final teamKey = _cleanMarkerId(teamName);
+    final markerKey = _cleanMarkerId(marker.id);
+    return '$teamKey:$markerKey';
+  }
+
+  Future<Map<String, dynamic>> _buildMovedMarkerCanonicalFields(
+    SiteData marker,
+    LatLng point,
+  ) async {
+    final newAddress = await _getKoreanAddress(point.latitude, point.longitude);
+    return _canonicalFieldsFromSite(marker, {
+      'lat': point.latitude,
+      'lng': point.longitude,
+      'address': newAddress,
+    });
+  }
+
+  Future<bool> _finalizeMovedMarkerCanonicalMutation({
+    required SiteData marker,
+    required LatLng point,
+    required String initiatingTeamName,
+  }) async {
+    final sequenceKey = _moveAddressSequenceKey(marker, initiatingTeamName);
+    final sequence = ++_moveAddressSequence;
+    _pendingMoveAddressSequences[sequenceKey] = sequence;
+
+    final pendingFields = _canonicalFieldsFromSite(marker, {
+      'lat': point.latitude,
+      'lng': point.longitude,
+      'address': '주소 확인 중...',
+    });
+    _applyCanonicalMarkerMutationLocally(
+      initiatingMarker: marker,
+      canonicalFields: pendingFields,
+      updateConnectedLines: true,
+      initiatingTeamName: initiatingTeamName,
+    );
+
+    try {
+      final fields = await _buildMovedMarkerCanonicalFields(marker, point);
+      if (_pendingMoveAddressSequences[sequenceKey] != sequence) {
+        if (_verboseMapDebug) debugPrint('[MARKER_MOVE_ADDRESS] skipped stale request canonicalId=$sequenceKey');
+        return true;
+      }
+
+      _applyCanonicalMarkerMutationLocally(
+        initiatingMarker: marker,
+        canonicalFields: fields,
+        updateConnectedLines: true,
+        initiatingTeamName: initiatingTeamName,
+      );
+
+      final saved = await _commitCanonicalMarkerMutation(
+        initiatingMarker: marker,
+        canonicalFields: fields,
+        updateConnectedLines: true,
+        mutationType: 'move',
+        initiatingTeamName: initiatingTeamName,
+      );
+      if (_verboseMapDebug) {
+        debugPrint('[MARKER_MOVE_ADDRESS] resolved canonicalId=$sequenceKey address=${fields['address']}');
+      }
+      return saved;
+    } catch (e) {
+      debugPrint('[MARKER_MOVE_ADDRESS] failed canonicalId=$sequenceKey error=$e');
+      return false;
+    } finally {
+      if (_pendingMoveAddressSequences[sequenceKey] == sequence) {
+        _pendingMoveAddressSequences.remove(sequenceKey);
+      }
+    }
   }
 
   void _applyCanonicalFieldsToSite(SiteData marker, Map<String, dynamic> fields) {
@@ -1982,21 +2064,11 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
           _updateConnectedLinePoints(_lineDataMap, markerId, point);
         }
       });
-      final fields = _canonicalFieldsFromSite(site, {'lat': point.latitude, 'lng': point.longitude});
-      _applyCanonicalMarkerMutationLocally(
-        initiatingMarker: site,
-        canonicalFields: fields,
-        updateConnectedLines: true,
+      return _finalizeMovedMarkerCanonicalMutation(
+        marker: site,
+        point: point,
         initiatingTeamName: teamName,
       );
-      final saved = await _commitCanonicalMarkerMutation(
-        initiatingMarker: site,
-        canonicalFields: fields,
-        updateConnectedLines: true,
-        mutationType: 'move',
-        initiatingTeamName: teamName,
-      );
-      return saved;
     }
 
     final team = _allTeamsMap[teamName];
@@ -2017,27 +2089,18 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
         _updateConnectedLinePoints(team.lines, markerId, point);
       }
     });
-    final fields = _canonicalFieldsFromSite(site, {'lat': point.latitude, 'lng': point.longitude});
-    _applyCanonicalMarkerMutationLocally(
-      initiatingMarker: site,
-      canonicalFields: fields,
-      updateConnectedLines: true,
+    return _finalizeMovedMarkerCanonicalMutation(
+      marker: site,
+      point: point,
       initiatingTeamName: teamName,
     );
-    final saved = await _commitCanonicalMarkerMutation(
-      initiatingMarker: site,
-      canonicalFields: fields,
-      updateConnectedLines: true,
-      mutationType: 'move',
-      initiatingTeamName: teamName,
-    );
-    return saved;
   }
 
   Future<bool> _saveMovedMarkerToTeamDoc(String teamName, String markerId, LatLng point, {String? groupName, List<String>? markerIds}) async {
     final docRef = FirebaseFirestore.instance.collection('teams').doc(teamName);
     bool updated = false;
     final candidates = markerIds == null || markerIds.isEmpty ? [markerId] : markerIds;
+    final movedAddress = await _getKoreanAddress(point.latitude, point.longitude);
 
     await FirebaseFirestore.instance.runTransaction((transaction) async {
       final snapshot = await transaction.get(docRef);
@@ -2056,6 +2119,7 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
       final savedMarkerId = marker['id']?.toString() ?? markerId;
       marker['lat'] = point.latitude;
       marker['lng'] = point.longitude;
+      marker['address'] = movedAddress;
       markers[markerIndex] = marker;
 
       final updates = <String, dynamic>{'markers': markers};
@@ -2159,18 +2223,9 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
           _updateConnectedLinePoints(_lineDataMap, actualId, point);
           if (actualId != markerId) _updateConnectedLinePoints(_lineDataMap, markerId, point);
         });
-        final fields = _canonicalFieldsFromSite(ownMarker, {'lat': point.latitude, 'lng': point.longitude});
-        _applyCanonicalMarkerMutationLocally(
-          initiatingMarker: ownMarker,
-          canonicalFields: fields,
-          updateConnectedLines: true,
-          initiatingTeamName: widget.teamName,
-        );
-        final canonicalSaved = await _commitCanonicalMarkerMutation(
-          initiatingMarker: ownMarker,
-          canonicalFields: fields,
-          updateConnectedLines: true,
-          mutationType: 'move',
+        final canonicalSaved = await _finalizeMovedMarkerCanonicalMutation(
+          marker: ownMarker,
+          point: point,
           initiatingTeamName: widget.teamName,
         );
         if (canonicalSaved) {
@@ -2217,18 +2272,9 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
           _updateConnectedLinePoints(entry.value.lines, actualId, point);
           if (actualId != localId) _updateConnectedLinePoints(entry.value.lines, localId, point);
         });
-        final fields = _canonicalFieldsFromSite(site, {'lat': point.latitude, 'lng': point.longitude});
-        _applyCanonicalMarkerMutationLocally(
-          initiatingMarker: site,
-          canonicalFields: fields,
-          updateConnectedLines: true,
-          initiatingTeamName: entry.key,
-        );
-        final canonicalSaved = await _commitCanonicalMarkerMutation(
-          initiatingMarker: site,
-          canonicalFields: fields,
-          updateConnectedLines: true,
-          mutationType: 'move',
+        final canonicalSaved = await _finalizeMovedMarkerCanonicalMutation(
+          marker: site,
+          point: point,
           initiatingTeamName: entry.key,
         );
         if (canonicalSaved) {
