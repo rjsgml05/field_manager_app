@@ -587,7 +587,16 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   String? _quickSelectedGroupName;
   int _quickGroupMode = 0; // 0 none, 1 selected, 2 quick create
 
-Future<String> _getKoreanAddress(double lat, double lng) async {
+bool _isValidMarkerAddress(String? address) {
+    final value = (address ?? '').trim();
+    return value.isNotEmpty &&
+        value != '주소 확인 중...' &&
+        value != '주소 정보 없음' &&
+        !value.startsWith('위치:') &&
+        !RegExp(r'^[-+]?\d+(\.\d+)?\s*,\s*[-+]?\d+(\.\d+)?$').hasMatch(value);
+  }
+
+Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
     try {
       if (kIsWeb) {
         final url = Uri.parse("https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&accept-language=ko&zoom=18&addressdetails=1");
@@ -606,9 +615,11 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
             // 이걸 제외하고 다시 합쳐서 읽기 편하게 만듭니다.
             if (parts.length > 2) {
               // '대한민국', '우편번호'를 제외한 앞부분만 필터링
-              return parts.take(parts.length - 2).join(',').trim();
+              final address = parts.take(parts.length - 2).join(',').trim();
+              return _isValidMarkerAddress(address) ? address : null;
             }
-            return data['display_name']; 
+            final address = data['display_name']?.toString().trim();
+            return _isValidMarkerAddress(address) ? address : null;
           }
         }
       } 
@@ -626,15 +637,19 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
           final data = jsonDecode(response.body);
           if (data['documents'] != null && (data['documents'] as List).isNotEmpty) {
             final doc = data['documents'][0];
-            if (doc['road_address'] != null) return doc['road_address']['address_name'];
-            if (doc['address'] != null) return doc['address']['address_name'];
+            final road = doc['road_address'];
+            final jibun = doc['address'];
+            final roadAddress = road is Map ? road['address_name']?.toString().trim() : null;
+            final jibunAddress = jibun is Map ? jibun['address_name']?.toString().trim() : null;
+            final address = _isValidMarkerAddress(roadAddress) ? roadAddress : jibunAddress;
+            return _isValidMarkerAddress(address) ? address : null;
           }
         }
       }
     } catch (e) {
       debugPrint("주소 변환 에러: $e");
     }
-    return "위치: ${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}";
+    return null;
   }
 
   String get _sKey => "${widget.teamName}_${widget.teamPw}";
@@ -1133,7 +1148,8 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
       return false;
     }
 
-    final movedAddress = point == null ? null : await _getKoreanAddress(point.latitude, point.longitude);
+    final movedAddress = point == null ? null : await _getKoreanAddressOrNull(point.latitude, point.longitude);
+    if (point != null && !_isValidMarkerAddress(movedAddress)) return false;
 
     for (final doc in teamsSnapshot.docs) {
       if (doc.id == sourceTeamName) continue;
@@ -1492,11 +1508,12 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
     return '$teamKey:$markerKey';
   }
 
-  Future<Map<String, dynamic>> _buildMovedMarkerCanonicalFields(
+  Future<Map<String, dynamic>?> _buildMovedMarkerCanonicalFields(
     SiteData marker,
     LatLng point,
   ) async {
-    final newAddress = await _getKoreanAddress(point.latitude, point.longitude);
+    final newAddress = await _getKoreanAddressOrNull(point.latitude, point.longitude);
+    if (!_isValidMarkerAddress(newAddress)) return null;
     return _canonicalFieldsFromSite(marker, {
       'lat': point.latitude,
       'lng': point.longitude,
@@ -1513,6 +1530,11 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
     final sequence = ++_moveAddressSequence;
     _pendingMoveAddressSequences[sequenceKey] = sequence;
 
+    final originalFields = _canonicalFieldsFromSite(marker, {
+      'lat': marker.lat,
+      'lng': marker.lng,
+      'address': marker.address,
+    });
     final pendingFields = _canonicalFieldsFromSite(marker, {
       'lat': point.latitude,
       'lng': point.longitude,
@@ -1527,6 +1549,20 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
 
     try {
       final fields = await _buildMovedMarkerCanonicalFields(marker, point);
+      if (fields == null) {
+        _applyCanonicalMarkerMutationLocally(
+          initiatingMarker: marker,
+          canonicalFields: originalFields,
+          updateConnectedLines: true,
+          initiatingTeamName: initiatingTeamName,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('새 위치의 주소를 찾지 못해 이동을 저장하지 않았습니다. 다시 시도해 주세요.')),
+          );
+        }
+        return false;
+      }
       if (_pendingMoveAddressSequences[sequenceKey] != sequence) {
         if (_verboseMapDebug) debugPrint('[MARKER_MOVE_ADDRESS] skipped stale request canonicalId=$sequenceKey');
         return true;
@@ -1552,6 +1588,12 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
       return saved;
     } catch (e) {
       debugPrint('[MARKER_MOVE_ADDRESS] failed canonicalId=$sequenceKey error=$e');
+      _applyCanonicalMarkerMutationLocally(
+        initiatingMarker: marker,
+        canonicalFields: originalFields,
+        updateConnectedLines: true,
+        initiatingTeamName: initiatingTeamName,
+      );
       return false;
     } finally {
       if (_pendingMoveAddressSequences[sequenceKey] == sequence) {
@@ -2059,10 +2101,6 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
           _markerDataMap.remove(entry.key);
           _markerDataMap[actualId] = site;
         }
-        site.position = point;
-        for (final markerId in markerIds) {
-          _updateConnectedLinePoints(_lineDataMap, markerId, point);
-        }
       });
       return _finalizeMovedMarkerCanonicalMutation(
         marker: site,
@@ -2084,10 +2122,6 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
         team.markers.remove(entry.key);
         team.markers[actualId] = site;
       }
-      site.position = point;
-      for (final markerId in markerIds) {
-        _updateConnectedLinePoints(team.lines, markerId, point);
-      }
     });
     return _finalizeMovedMarkerCanonicalMutation(
       marker: site,
@@ -2100,7 +2134,8 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
     final docRef = FirebaseFirestore.instance.collection('teams').doc(teamName);
     bool updated = false;
     final candidates = markerIds == null || markerIds.isEmpty ? [markerId] : markerIds;
-    final movedAddress = await _getKoreanAddress(point.latitude, point.longitude);
+    final movedAddress = await _getKoreanAddressOrNull(point.latitude, point.longitude);
+    if (!_isValidMarkerAddress(movedAddress)) return false;
 
     await FirebaseFirestore.instance.runTransaction((transaction) async {
       final snapshot = await transaction.get(docRef);
@@ -2219,9 +2254,6 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
             _markerDataMap.remove(ownEntry.key);
             _markerDataMap[actualId] = ownMarker;
           }
-          ownMarker.position = point;
-          _updateConnectedLinePoints(_lineDataMap, actualId, point);
-          if (actualId != markerId) _updateConnectedLinePoints(_lineDataMap, markerId, point);
         });
         final canonicalSaved = await _finalizeMovedMarkerCanonicalMutation(
           marker: ownMarker,
@@ -2268,9 +2300,6 @@ Future<String> _getKoreanAddress(double lat, double lng) async {
             entry.value.markers.remove(siteEntry.key);
             entry.value.markers[actualId] = site;
           }
-          site.position = point;
-          _updateConnectedLinePoints(entry.value.lines, actualId, point);
-          if (actualId != localId) _updateConnectedLinePoints(entry.value.lines, localId, point);
         });
         final canonicalSaved = await _finalizeMovedMarkerCanonicalMutation(
           marker: site,
@@ -3619,13 +3648,23 @@ Future<void> _loadData() async {
     if (groupName == null) return;
 
     final group = _userGroups.firstWhere((g) => g.name == groupName);
+    final address = await _getKoreanAddressOrNull(point.latitude, point.longitude);
+    if (!_isValidMarkerAddress(address)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('주소를 찾지 못해 마커를 생성하지 않았습니다. 다시 시도해 주세요.')),
+        );
+      }
+      return;
+    }
+
     final marker = SiteData(
       id: DateTime.now().toString(),
       lat: point.latitude,
       lng: point.longitude,
       title: _nextMarkerTitleForGroup(groupName),
       description: "",
-      address: await _getKoreanAddress(point.latitude, point.longitude),
+      address: address!,
       group: group,
       photos: const [],
     );
@@ -3710,7 +3749,12 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
     LatLng pos = newPoint ?? (existingData?.position ?? const LatLng(37.56, 126.97));
     String fetchedAddress = existingData?.address ?? "주소를 불러오는 중...";
     if (newPoint != null) {
-      fetchedAddress = await _getKoreanAddress(pos.latitude, pos.longitude);
+      fetchedAddress = await _getKoreanAddressOrNull(pos.latitude, pos.longitude) ?? "";
+      if (!_isValidMarkerAddress(fetchedAddress) && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('주소를 찾지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해 주세요.')),
+        );
+      }
     }
 
     String? selectedGroupName;
@@ -3955,6 +3999,14 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
       return; // 여기서 실행을 멈추어 저장이 안 되게 막음
     }
 
+    final addressForSave = aCtrl.text.trim();
+    if (!_isValidMarkerAddress(addressForSave)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('주소를 찾지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해 주세요.')),
+      );
+      return;
+    }
+
     Navigator.pop(ctx);
     
     // 로딩 화면 켜기
@@ -3975,7 +4027,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
         final renumberGroupNames = [previousGroupName, selectedGroupForSave.name];
         SiteData newData = SiteData(
           id: id, lat: pos.latitude, lng: pos.longitude,
-          title: tCtrl.text, description: dCtrl.text, address: aCtrl.text,
+          title: tCtrl.text, description: dCtrl.text, address: addressForSave,
           group: selectedGroupForSave, photos: serverPhotos,
           canonicalMarkerId: existingData?.canonicalMarkerId,
           originalMarkerId: existingData?.originalMarkerId,

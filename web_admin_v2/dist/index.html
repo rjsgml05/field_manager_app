@@ -2042,8 +2042,11 @@
     var pendingFreeLineOverlay = null;
     var markerMoveMode = false;
     var drawingPdfDocument = null;
+    var drawingPdfSourceKey = "";
     var drawingSelectionFileName = "";
     var drawingPagePreviewByNumber = {};
+    var drawingPdfHighResolutionByPage = {};
+    var drawingPdfHighResolutionPendingByPage = {};
     var drawingQueue = [];
     var activeDrawingQueueId = "";
     var drawingQueueSequence = 0;
@@ -2130,21 +2133,24 @@
       document.getElementById("adminStatusMessage").textContent = message;
     }
 
-    function markerCoordinateFallbackAddress(lat, lng) {
-      return "\uC704\uCE58: " + Number(lat).toFixed(4) + ", " + Number(lng).toFixed(4);
+    function isValidMarkerAddress(address) {
+      var value = String(address || "").trim();
+      return !!value &&
+        value !== "\uC8FC\uC18C \uD655\uC778 \uC911..." &&
+        value !== "\uC8FC\uC18C \uC815\uBCF4 \uC5C6\uC74C" &&
+        value.indexOf("\uC704\uCE58:") !== 0 &&
+        !/^[-+]?\d+(\.\d+)?\s*,\s*[-+]?\d+(\.\d+)?$/.test(value);
     }
 
-    function resolveMovedMarkerAddress(lat, lng) {
+    function resolveMarkerAddressOnly(lat, lng) {
       return new Promise(function(resolve) {
-        var fallback = markerCoordinateFallbackAddress(lat, lng);
-
         if (
           !window.kakao ||
           !kakao.maps ||
           !kakao.maps.services ||
           typeof kakao.maps.services.Geocoder !== "function"
         ) {
-          resolve(fallback);
+          resolve("");
           return;
         }
 
@@ -2155,21 +2161,22 @@
             !Array.isArray(result) ||
             !result.length
           ) {
-            resolve(fallback);
+            resolve("");
             return;
           }
 
           var first = result[0] || {};
           var roadAddress =
             first.road_address && first.road_address.address_name
-              ? first.road_address.address_name
+              ? String(first.road_address.address_name).trim()
               : "";
           var jibunAddress =
             first.address && first.address.address_name
-              ? first.address.address_name
+              ? String(first.address.address_name).trim()
               : "";
 
-          resolve(roadAddress || jibunAddress || fallback);
+          var resolved = roadAddress || jibunAddress || "";
+          resolve(isValidMarkerAddress(resolved) ? resolved : "");
         });
       });
     }
@@ -4286,12 +4293,18 @@ setMapStatus("Map connected");
       applyCanonicalSyncLocally(marker, fields, { updateConnectedLines: true }, "\uC0C8 \uC8FC\uC18C \uD655\uC778 \uC911...");
 
       try {
-        var address = await resolveMovedMarkerAddress(lat, lng);
+        var address = await resolveMarkerAddressOnly(lat, lng);
         if (
           !pendingMarkerMutations[canonicalId] ||
           pendingMarkerMutations[canonicalId].seq !== sequence
         ) {
           console.log("[MARKER_MOVE_ADDRESS] skipped stale request canonicalId=" + canonicalId);
+          return false;
+        }
+        if (!isValidMarkerAddress(address)) {
+          delete pendingMarkerMutations[canonicalId];
+          loadAdminMarkers();
+          setAdminMessage("\uC0C8 \uC704\uCE58\uC758 \uC8FC\uC18C\uB97C \uCC3E\uC9C0 \uBABB\uD574 \uC774\uB3D9\uC744 \uC800\uC7A5\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.");
           return false;
         }
 
@@ -4328,7 +4341,7 @@ setMapStatus("Map connected");
         Object.assign({}, marker, {
           lat: lat,
           lng: lng,
-          address: markerCoordinateFallbackAddress(lat, lng)
+          address: marker && marker.address
         }),
         marker
       );
@@ -6184,10 +6197,16 @@ groupSelect.addEventListener("change", function() {
   var addressInput = document.createElement("input");
   addressInput.className = "marker-edit-input";
   addressInput.type = "text";
-  addressInput.value =
-    "위치: " + Number(lat).toFixed(6) + ", " + Number(lng).toFixed(6);
+  addressInput.value = "\uC8FC\uC18C \uD655\uC778 \uC911...";
   addressLabel.appendChild(addressInput);
   form.appendChild(addressLabel);
+
+  var addressEditedByUser = false;
+  var addressLookupFinished = false;
+
+  addressInput.addEventListener("input", function() {
+    addressEditedByUser = true;
+  });
 
   dialog.appendChild(form);
 
@@ -6219,6 +6238,17 @@ groupSelect.addEventListener("change", function() {
     var markerTitle = titleInput.value.trim();
     var description = descriptionInput.value.trim();
     var address = addressInput.value.trim();
+
+    if (!addressLookupFinished && address === "\uC8FC\uC18C \uD655\uC778 \uC911...") {
+      setAdminMessage("\uC8FC\uC18C\uB97C \uD655\uC778 \uC911\uC785\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC800\uC7A5\uD574 \uC8FC\uC138\uC694.");
+      return;
+    }
+
+    if (!isValidMarkerAddress(address)) {
+      setAdminMessage("\uC2E4\uC81C \uC8FC\uC18C\uAC00 \uD655\uC778\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uC8FC\uC18C\uB97C \uC9C1\uC811 \uC785\uB825\uD558\uAC70\uB098 \uC704\uCE58\uB97C \uB2E4\uC2DC \uC120\uD0DD\uD574 \uC8FC\uC138\uC694.");
+      addressInput.focus();
+      return;
+    }
 
     if (!selectedGroupName) {
       setAdminMessage("그룹을 선택해 주세요.");
@@ -6338,6 +6368,20 @@ groupSelect.addEventListener("change", function() {
 
   document.body.appendChild(overlay);
   titleInput.focus();
+
+  resolveMarkerAddressOnly(lat, lng).then(function(address) {
+    addressLookupFinished = true;
+
+    if (!document.body.contains(overlay)) return;
+    if (addressEditedByUser) return;
+
+    if (isValidMarkerAddress(address)) {
+      addressInput.value = address;
+    } else {
+      addressInput.value = "";
+      setAdminMessage("\uC8FC\uC18C\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uB2E4\uC2DC \uC704\uCE58\uB97C \uC120\uD0DD\uD558\uAC70\uB098 \uC8FC\uC18C\uB97C \uC9C1\uC811 \uC785\uB825\uD574 \uC8FC\uC138\uC694.");
+    }
+  });
 }
 
 function closeGroupDeleteModal() {
@@ -8190,6 +8234,46 @@ async function renderPdfPageAsDataUrl(pdf, pageNumber, scale) {
   return canvas.toDataURL("image/png");
 }
 
+function buildDrawingPdfSourceKey(file) {
+  return [
+    String((file && file.name) || ""),
+    String((file && file.size) || 0),
+    String((file && file.lastModified) || 0)
+  ].join("::");
+}
+
+function getCachedHighResolutionPdfPage(pageNumber) {
+  var key = String(pageNumber);
+
+  if (drawingPdfHighResolutionByPage[key]) {
+    setAdminMessage("\uC900\uBE44\uB41C \uB3C4\uBA74 \uC774\uBBF8\uC9C0\uB97C \uB2E4\uC2DC \uC0AC\uC6A9\uD569\uB2C8\uB2E4.");
+    return Promise.resolve(drawingPdfHighResolutionByPage[key]);
+  }
+
+  if (drawingPdfHighResolutionPendingByPage[key]) {
+    return drawingPdfHighResolutionPendingByPage[key];
+  }
+
+  if (!drawingPdfDocument) {
+    return Promise.reject(new Error("PDF document is not loaded."));
+  }
+
+  setAdminMessage("\uC120\uD0DD\uD55C \uB3C4\uBA74\uC744 \uC791\uC5C5 \uC774\uBBF8\uC9C0\uB85C \uC900\uBE44 \uC911\uC785\uB2C8\uB2E4.");
+  drawingPdfHighResolutionPendingByPage[key] =
+    renderPdfPageAsDataUrl(drawingPdfDocument, pageNumber, 2)
+      .then(function(dataUrl) {
+        drawingPdfHighResolutionByPage[key] = dataUrl;
+        delete drawingPdfHighResolutionPendingByPage[key];
+        return dataUrl;
+      })
+      .catch(function(error) {
+        delete drawingPdfHighResolutionPendingByPage[key];
+        throw error;
+      });
+
+  return drawingPdfHighResolutionPendingByPage[key];
+}
+
 function queueDrawingItem(item) {
   drawingQueueSequence += 1;
 
@@ -8350,7 +8434,6 @@ async function renderPdfSelectionPages(pdf, fileName) {
   var grid = document.getElementById("drawingPageGrid");
   var title = document.getElementById("drawingSelectTitle");
 
-  drawingPagePreviewByNumber = {};
   grid.innerHTML = "";
   title.textContent = "PDF 도면 선택 - " + fileName;
 
@@ -8387,9 +8470,16 @@ async function renderPdfSelectionPages(pdf, fileName) {
     card.appendChild(bottom);
     grid.appendChild(card);
 
+    var previewKey = String(pageNumber);
+    var existingPreview = drawingPagePreviewByNumber[previewKey];
+    if (existingPreview) {
+      preview.src = existingPreview;
+      continue;
+    }
+
     try {
       var dataUrl = await renderPdfPageAsDataUrl(pdf, pageNumber, 0.3);
-      drawingPagePreviewByNumber[String(pageNumber)] = dataUrl;
+      drawingPagePreviewByNumber[previewKey] = dataUrl;
       preview.src = dataUrl;
     } catch (error) {
       console.error("[ADMIN_V2_PDF_THUMBNAIL] page failed", pageNumber, error);
@@ -8408,6 +8498,31 @@ async function openPdfDrawingSelector(file) {
   window.pdfjsLib.GlobalWorkerOptions.workerSrc =
     "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
+  var sourceKey = buildDrawingPdfSourceKey(file);
+  var canReuseCurrentDocument =
+    drawingPdfDocument &&
+    drawingPdfSourceKey &&
+    drawingPdfSourceKey === sourceKey;
+
+  if (canReuseCurrentDocument) {
+    setAdminMessage("\uC774\uBBF8 \uBD88\uB7EC\uC628 PDF\uB97C \uB2E4\uC2DC \uC0AC\uC6A9\uD569\uB2C8\uB2E4.");
+
+    document.getElementById("drawingSelectOverlay").classList.remove("hidden");
+
+    await renderPdfSelectionPages(
+      drawingPdfDocument,
+      drawingSelectionFileName
+    );
+
+    setAdminMessage("\uC791\uC5C5\uD560 \uB3C4\uBA74 \uD398\uC774\uC9C0\uB97C \uC120\uD0DD\uD574 \uC8FC\uC138\uC694.");
+    return;
+  }
+
+  drawingPdfSourceKey = "";
+  drawingPagePreviewByNumber = {};
+  drawingPdfHighResolutionByPage = {};
+  drawingPdfHighResolutionPendingByPage = {};
+
   setAdminMessage("PDF 페이지 미리보기를 불러오는 중입니다.");
 
   var bytes = await file.arrayBuffer();
@@ -8417,6 +8532,7 @@ async function openPdfDrawingSelector(file) {
   }).promise;
 
   drawingSelectionFileName = String(file.name || "PDF 도면");
+  drawingPdfSourceKey = sourceKey;
 
   document.getElementById("drawingSelectOverlay").classList.remove("hidden");
 
@@ -8446,11 +8562,7 @@ async function addSelectedPdfPagesToQueue() {
     for (var i = 0; i < selectedInputs.length; i += 1) {
       var pageNumber = Number(selectedInputs[i].value);
       var previewUrl = drawingPagePreviewByNumber[String(pageNumber)] || "";
-      var highResolutionUrl = await renderPdfPageAsDataUrl(
-        drawingPdfDocument,
-        pageNumber,
-        2
-      );
+      var highResolutionUrl = await getCachedHighResolutionPdfPage(pageNumber);
 
       queueDrawingItem({
         title: drawingSelectionFileName + " - " + pageNumber + "페이지",
