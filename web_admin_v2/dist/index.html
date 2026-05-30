@@ -2445,6 +2445,7 @@
     var focusedMarkerId = null;
     var selectedLineId = "";
     var lastSelectedLineClickAt = 0;
+    var pendingExistingLineShare = null;
     var markerEditState = { marker: null, saving: false };
     var markerDeleteState = { marker: null, deleting: false };
     var pendingMarkerMutations = {};
@@ -2828,12 +2829,14 @@ setMapStatus("Map connected");
   canonicalLineId: String(line.canonicalLineId || ""),
   originalLineId: String(line.originalLineId || ""),
   sourceLineId: String(line.sourceLineId || ""),
+  parentLineId: String(line.parentLineId || ""),
   groupName: String(line.groupName || ""),
   teamName: String(teamDocId || ADMIN_TEAM_DOC_ID),
   title: line.title || "Untitled line",
   description: line.description || "",
   markerIds: Array.isArray(line.markerIds) ? line.markerIds.map(String) : [],
   points: points,
+  colorValue: Number(line.colorValue || 0),
   color: colorValueToHex(line.colorValue, "#7C3AED"),
   isVisible: line.isVisible !== false
 };
@@ -3177,6 +3180,7 @@ setMapStatus("Map connected");
           line.canonicalLineId ||
           line.originalLineId ||
           line.sourceLineId ||
+          line.parentLineId ||
           ""
         ) || ""
       ).trim();
@@ -4986,6 +4990,19 @@ setMapStatus("Map connected");
     });
         actions.appendChild(settingButton);
 
+        if (isAdminOwnedOriginalLine(line)) {
+          var sendButton = document.createElement("button");
+          sendButton.type = "button";
+          sendButton.className = "tiny-button";
+          sendButton.textContent = "전송";
+          sendButton.addEventListener("click", function(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            openExistingLineShareModal(line);
+          });
+          actions.appendChild(sendButton);
+        }
+
         var deleteButton = document.createElement("button");
         deleteButton.type = "button";
         deleteButton.className = "tiny-button";
@@ -6089,12 +6106,58 @@ function lineCanonicalId(line) {
   if (!line) return "";
 
   return String(
+    line.canonicalLineId ||
     line.originalLineId ||
     line.sourceLineId ||
+    line.parentLineId ||
     line.lineId ||
     line.id ||
     ""
   ).trim();
+}
+
+function isAdminOwnedOriginalLine(line) {
+  if (!line) return false;
+
+  var teamName = String(line.teamName || "");
+  var rawLineId = String(line.lineId || "").trim();
+  var canonicalLineId = lineCanonicalId(line);
+
+  return (
+    teamName === ADMIN_TEAM_DOC_ID &&
+    !!rawLineId &&
+    (!canonicalLineId || canonicalLineId === rawLineId)
+  );
+}
+
+function buildLineShareSourceFromLine(line) {
+  if (!line) return null;
+
+  var canonicalLineId = lineCanonicalId(line) || String(line.lineId || "").trim();
+
+  if (!canonicalLineId) return null;
+
+  return {
+    id: String(line.lineId || canonicalLineId),
+    canonicalLineId: canonicalLineId,
+    originalLineId: canonicalLineId,
+    sourceLineId: canonicalLineId,
+    title: line.title || "Untitled line",
+    description: line.description || "",
+    markerIds: Array.isArray(line.markerIds) ? line.markerIds.map(String) : [],
+    points: Array.isArray(line.points)
+      ? line.points.map(function(point) {
+          return {
+            lat: Number(point && point.lat),
+            lng: Number(point && point.lng)
+          };
+        }).filter(function(point) {
+          return Number.isFinite(point.lat) && Number.isFinite(point.lng);
+        })
+      : [],
+    colorValue: Number(line.colorValue || hexToFlutterColorValue(line.color || "#7C3AED")),
+    isVisible: line.isVisible !== false
+  };
 }
 
 
@@ -6105,6 +6168,11 @@ async function sendFreeLineToSelectedTeams(targetTeamIds, sourceLine) {
 
   var canonicalLineId = lineCanonicalId(sourceLine);
   if (!canonicalLineId) return 0;
+  var sourceCopy = buildLineShareSourceFromLine(sourceLine) || Object.assign({}, sourceLine, {
+    canonicalLineId: canonicalLineId,
+    originalLineId: canonicalLineId,
+    sourceLineId: canonicalLineId
+  });
 
   var snapshot = await db.collection("teams").get();
   var batch = db.batch();
@@ -6120,20 +6188,28 @@ async function sendFreeLineToSelectedTeams(targetTeamIds, sourceLine) {
     var existingIndex = lines.findIndex(function(line) {
       return lineCanonicalId(line) === canonicalLineId;
     });
+    var previousCopy = existingIndex !== -1 ? lines[existingIndex] : null;
 
-    var lineCopy = Object.assign({}, sourceLine, {
-      id: "Sent_" + ADMIN_TEAM_DOC_ID + "_" + canonicalLineId,
+    var lineCopy = Object.assign({}, sourceCopy, {
+      id:
+        previousCopy && previousCopy.id
+          ? previousCopy.id
+          : "Sent_" + ADMIN_TEAM_DOC_ID + "_" + canonicalLineId,
+      canonicalLineId: canonicalLineId,
       originalLineId: canonicalLineId,
-      sourceLineId: canonicalLineId
+      sourceLineId: canonicalLineId,
+      parentLineId: canonicalLineId,
+      ownerTeam: doc.id,
+      sourceTeam: ADMIN_TEAM_DOC_ID,
+      sharedFromTeam: ADMIN_TEAM_DOC_ID,
+      isShared: true,
+      isVisible:
+        previousCopy && typeof previousCopy.isVisible === "boolean"
+          ? previousCopy.isVisible
+          : true
     });
 
     if (existingIndex !== -1) {
-      var existingLineId = String(lines[existingIndex].id || "").trim();
-
-      if (existingLineId) {
-        lineCopy.id = existingLineId;
-      }
-
       lines[existingIndex] = lineCopy;
     } else {
       lines.push(lineCopy);
@@ -6157,6 +6233,253 @@ async function sendFreeLineToSelectedTeams(targetTeamIds, sourceLine) {
   });
 
   return writeCount;
+}
+
+function closeExistingLineShareModal() {
+  var overlay = document.getElementById("existingLineShareOverlay");
+  if (overlay) overlay.remove();
+  pendingExistingLineShare = null;
+}
+
+async function shareExistingLineToSelectedTeams(sourceLine, selectedTeamIds) {
+  if (!db || !sourceLine || !Array.isArray(selectedTeamIds) || !selectedTeamIds.length) {
+    return 0;
+  }
+
+  if (!isAdminOwnedOriginalLine(sourceLine)) {
+    setAdminMessage("관리자 원본 선만 전송할 수 있습니다.");
+    return 0;
+  }
+
+  var canonicalLineId = lineCanonicalId(sourceLine);
+  var canonicalSourceLine = buildLineShareSourceFromLine(sourceLine);
+
+  if (!canonicalLineId || !canonicalSourceLine) {
+    setAdminMessage("전송할 선의 연결 정보를 찾을 수 없습니다.");
+    return 0;
+  }
+
+  var snapshot = await db.collection("teams").get();
+  var adminDoc = null;
+  var adminData = null;
+
+  snapshot.forEach(function(doc) {
+    if (doc.id === ADMIN_TEAM_DOC_ID) {
+      adminDoc = doc;
+      adminData = doc.data() || {};
+    }
+  });
+
+  if (adminDoc && adminData) {
+    var adminLines = Array.isArray(adminData.lines) ? adminData.lines.slice() : [];
+    var adminChanged = false;
+
+    adminLines = adminLines.map(function(rawLine) {
+      if (!rawLine) return rawLine;
+
+      var rawCanonicalId = rawLineCanonicalId(rawLine);
+      var rawLineId = String(rawLine.id || "").trim();
+
+      if (rawCanonicalId !== canonicalLineId && rawLineId !== String(sourceLine.lineId || "")) {
+        return rawLine;
+      }
+
+      var nextLine = Object.assign({}, rawLine, {
+        canonicalLineId: canonicalLineId,
+        originalLineId: rawLine.originalLineId || canonicalLineId,
+        sourceLineId: rawLine.sourceLineId || canonicalLineId
+      });
+
+      if (
+        nextLine.canonicalLineId !== rawLine.canonicalLineId ||
+        nextLine.originalLineId !== rawLine.originalLineId ||
+        nextLine.sourceLineId !== rawLine.sourceLineId
+      ) {
+        adminChanged = true;
+      }
+
+      canonicalSourceLine = buildLineShareSourceFromLine(nextLine) || canonicalSourceLine;
+      return nextLine;
+    });
+
+    if (adminChanged) {
+      await db.collection("teams").doc(ADMIN_TEAM_DOC_ID).update({
+        lines: adminLines
+      });
+    }
+  }
+
+  return sendFreeLineToSelectedTeams(selectedTeamIds, canonicalSourceLine);
+}
+
+function getExistingLineSharedTeamIds(sourceLine) {
+  var sharedTeamIds = {};
+  var canonicalLineId = lineCanonicalId(sourceLine);
+
+  if (!canonicalLineId) return sharedTeamIds;
+
+  allTeams.forEach(function(team) {
+    if (!team || team.docId === ADMIN_TEAM_DOC_ID || !Array.isArray(team.lines)) return;
+
+    var hasCopy = team.lines.some(function(line) {
+      return lineCanonicalId(line) === canonicalLineId;
+    });
+
+    if (hasCopy) {
+      sharedTeamIds[team.docId] = true;
+    }
+  });
+
+  return sharedTeamIds;
+}
+
+function openExistingLineShareModal(line) {
+  closeExistingLineShareModal();
+
+  if (!line) {
+    setAdminMessage("전송할 선 정보를 찾을 수 없습니다.");
+    return;
+  }
+
+  if (!isAdminOwnedOriginalLine(line)) {
+    setAdminMessage("관리자 원본 선만 전송할 수 있습니다.");
+    return;
+  }
+
+  pendingExistingLineShare = line;
+
+  var existingSharedTeams = getExistingLineSharedTeamIds(line);
+  var selectedTargetTeams = Object.assign({}, existingSharedTeams);
+
+  var overlay = document.createElement("div");
+  overlay.id = "existingLineShareOverlay";
+  overlay.className = "marker-edit-overlay";
+
+  var dialog = document.createElement("div");
+  dialog.className = "marker-edit-dialog";
+
+  var heading = document.createElement("h2");
+  heading.className = "marker-edit-title";
+  heading.textContent = "기존 선 전송";
+  dialog.appendChild(heading);
+
+  var description = document.createElement("p");
+  description.className = "marker-edit-photo-note";
+  description.textContent =
+    "'" + String(line.title || "선") + "'을 전송 또는 갱신할 팀을 선택하세요.";
+  dialog.appendChild(description);
+
+  var teamList = document.createElement("div");
+  teamList.className = "marker-edit-form";
+
+  var targetTeams = allTeams.filter(function(team) {
+    return team && team.docId !== ADMIN_TEAM_DOC_ID;
+  });
+
+  if (!targetTeams.length) {
+    var empty = document.createElement("p");
+    empty.className = "empty-text";
+    empty.textContent = "전송 가능한 팀이 없습니다.";
+    teamList.appendChild(empty);
+  } else {
+    targetTeams.forEach(function(team) {
+      var row = document.createElement("label");
+      row.className = "switch-row";
+      row.style.cursor = "pointer";
+
+      var main = document.createElement("div");
+      var teamName = document.createElement("div");
+      var teamStatus = document.createElement("div");
+      var checkbox = document.createElement("input");
+      var alreadySent = existingSharedTeams[team.docId] === true;
+
+      teamName.className = "row-title";
+      teamName.textContent = team.teamName || team.docId;
+      teamStatus.className = "row-sub";
+      teamStatus.textContent = alreadySent ? "이미 전송됨" : "신규";
+
+      main.appendChild(teamName);
+      main.appendChild(teamStatus);
+
+      checkbox.type = "checkbox";
+      checkbox.value = team.docId;
+      checkbox.checked = alreadySent;
+      checkbox.style.width = "20px";
+      checkbox.style.height = "20px";
+
+      checkbox.addEventListener("change", function() {
+        if (checkbox.checked) {
+          selectedTargetTeams[team.docId] = true;
+        } else {
+          delete selectedTargetTeams[team.docId];
+        }
+      });
+
+      row.appendChild(main);
+      row.appendChild(checkbox);
+      teamList.appendChild(row);
+    });
+  }
+
+  dialog.appendChild(teamList);
+
+  var actions = document.createElement("div");
+  actions.className = "marker-edit-actions";
+
+  var cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "marker-edit-button";
+  cancelButton.textContent = "취소";
+  cancelButton.addEventListener("click", closeExistingLineShareModal);
+  actions.appendChild(cancelButton);
+
+  var sendButton = document.createElement("button");
+  sendButton.type = "button";
+  sendButton.className = "marker-edit-button primary";
+  sendButton.textContent = "전송";
+  sendButton.addEventListener("click", async function() {
+    var targetTeamIds = Object.keys(selectedTargetTeams);
+
+    if (!targetTeamIds.length) {
+      setAdminMessage("전송 또는 갱신할 팀을 선택해 주세요.");
+      return;
+    }
+
+    sendButton.disabled = true;
+    cancelButton.disabled = true;
+    sendButton.textContent = "전송 중...";
+
+    try {
+      var sent = await shareExistingLineToSelectedTeams(line, targetTeamIds);
+
+      closeExistingLineShareModal();
+
+      setAdminMessage(
+        "선 '" +
+        String(line.title || "") +
+        "'을 선택한 팀 " +
+        sent +
+        "곳에 전송 또는 갱신했습니다."
+      );
+    } catch (error) {
+      console.error("[ADMIN_V2_EXISTING_LINE_SHARE] failed", error);
+      setAdminMessage("기존 선 전송에 실패했습니다.");
+      sendButton.disabled = false;
+      cancelButton.disabled = false;
+      sendButton.textContent = "전송";
+    }
+  });
+  actions.appendChild(sendButton);
+
+  dialog.appendChild(actions);
+  overlay.appendChild(dialog);
+  overlay.addEventListener("click", function(event) {
+    if (event.target === overlay) {
+      closeExistingLineShareModal();
+    }
+  });
+
+  document.body.appendChild(overlay);
 }
 
 function showFreeLineCreateModal() {
@@ -6300,11 +6623,13 @@ actions.className = "marker-edit-actions";
 
     try {
       var docRef = db.collection("teams").doc(ADMIN_TEAM_DOC_ID);
-      var lineId = "line_" + String(Date.now());
-      var newLine = {
+  var lineId = "line_" + String(Date.now());
+  var newLine = {
   id: lineId,
+  canonicalLineId: lineId,
   originalLineId: lineId,
   sourceLineId: lineId,
+  parentLineId: lineId,
   title: lineTitle,
   description: descriptionInput.value.trim(),
   markerIds: [],
@@ -8169,8 +8494,10 @@ function rawLineCanonicalId(line) {
   if (!line) return "";
 
   return String(
+    line.canonicalLineId ||
     line.originalLineId ||
     line.sourceLineId ||
+    line.parentLineId ||
     line.id ||
     line.lineId ||
     ""
@@ -8371,8 +8698,10 @@ function rawLineCanonicalId(line) {
   if (!line) return "";
 
   return String(
+    line.canonicalLineId ||
     line.originalLineId ||
     line.sourceLineId ||
+    line.parentLineId ||
     line.id ||
     line.lineId ||
     ""
