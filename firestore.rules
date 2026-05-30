@@ -1,0 +1,26 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /teams/{teamId} {
+      allow get, list, create: if true;
+
+      allow update: if request.resource.data.teamPw == resource.data.teamPw;
+
+      allow delete: if true;
+
+      match /archives/{archiveId} {
+        allow read, write: if true;
+      }
+    }
+
+    match /ai_detected/{document=**} {
+      allow read, write: if true;
+    }
+
+    match /drawing_page_library/{pageItemId} {
+      allow read, write: if true;
+    }
+  }
+}

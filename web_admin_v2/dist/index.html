@@ -1044,6 +1044,12 @@
   gap: 8px;
 }
 
+.drawing-queue-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .drawing-queue-title {
   margin: 0;
   font-size: 14px;
@@ -1070,6 +1076,7 @@
 }
 
 .drawing-queue-item {
+  position: relative;
   display: grid;
   grid-template-columns: 58px 1fr;
   gap: 8px;
@@ -1082,6 +1089,16 @@
 .drawing-queue-item.active {
   border-color: #16a34a;
   background: #f0fdf4;
+}
+
+.drawing-queue-item.selectable {
+  cursor: pointer;
+}
+
+.drawing-queue-item.selected {
+  outline: 3px solid #dc2626;
+  outline-offset: -3px;
+  background: #fff1f2;
 }
 
 .drawing-queue-thumb {
@@ -1142,6 +1159,34 @@
   border-color: #dc2626;
   background: #dc2626;
   color: #fff;
+}
+
+.drawing-small-button.hidden {
+  display: none;
+}
+
+.drawing-queue-check-overlay {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 2px solid #dc2626;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  cursor: pointer;
+}
+
+.drawing-queue-check {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #dc2626;
+  cursor: pointer;
 }
 
 .drawing-select-overlay {
@@ -1273,9 +1318,19 @@
   color: #fff;
 }
 
+.drawing-dialog-button.danger {
+  border-color: #fecaca;
+  background: #fff1f2;
+  color: #dc2626;
+}
+
 .drawing-dialog-button:disabled {
   cursor: wait;
   opacity: 0.6;
+}
+
+.drawing-dialog-button.hidden {
+  display: none;
 }
 
 .drawing-crop-overlay {
@@ -1475,6 +1530,147 @@
   gap: 8px;
 }
 
+.drawing-library-list {
+  min-height: 180px;
+  max-height: min(560px, 62vh);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  overflow: auto;
+  padding: 4px;
+}
+
+.drawing-library-card {
+  position: relative;
+  display: grid;
+  grid-template-rows: 132px auto;
+  overflow: hidden;
+  border: 1px solid #d7deea;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.drawing-library-card.selectable {
+  cursor: pointer;
+}
+
+.drawing-library-card.selected {
+  outline: 3px solid #16a34a;
+  outline-offset: -3px;
+  background: #f0fdf4;
+}
+
+.drawing-library-card.delete-selectable.selected {
+  outline-color: #dc2626;
+  background: #fff1f2;
+}
+
+.drawing-library-thumb {
+  width: 100%;
+  height: 132px;
+  object-fit: cover;
+  background: #e5e7eb;
+}
+
+.drawing-library-body {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.drawing-library-title {
+  color: #111827;
+  font-size: 14px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.drawing-library-meta {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.drawing-library-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.drawing-library-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 24px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.drawing-select-message {
+  min-height: 18px;
+  margin: 0;
+  padding: 0 2px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.4;
+}
+
+.drawing-select-message.error {
+  color: #dc2626;
+}
+
+.drawing-select-message.success {
+  color: #16a34a;
+}
+
+.drawing-library-check-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.drawing-library-check-overlay {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 2px solid #16a34a;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.2);
+  cursor: pointer;
+}
+
+.drawing-library-card.delete-selectable .drawing-library-check-overlay {
+  border-color: #dc2626;
+}
+
+.drawing-library-check {
+  width: 19px;
+  height: 19px;
+  margin: 0;
+  accent-color: #16a34a;
+  cursor: pointer;
+}
+
+.drawing-library-card.delete-selectable .drawing-library-check {
+  accent-color: #dc2626;
+}
+
 .drawing-map-control-pin {
   width: 28px;
   height: 28px;
@@ -1499,6 +1695,24 @@
   pointer-events: none;
 }
 
+.drawing-aligned-overlay-anchor.move-mode {
+  pointer-events: auto;
+}
+
+.drawing-aligned-overlay-drag-wrapper {
+  position: relative;
+  width: 0;
+  height: 0;
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+}
+
+.drawing-aligned-overlay-rotation-wrapper {
+  position: relative;
+  width: 0;
+  height: 0;
+}
+
 .drawing-aligned-overlay-image {
   position: absolute;
   top: 0;
@@ -1510,6 +1724,66 @@
   pointer-events: none;
   user-select: none;
   transform-origin: 0 0;
+}
+
+.drawing-aligned-overlay-image.move-mode {
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.drawing-aligned-overlay-image.move-mode.dragging {
+  cursor: grabbing;
+}
+
+.drawing-aligned-overlay-rotate-handle {
+  position: absolute;
+  z-index: 20;
+  display: none;
+  width: 30px;
+  height: 30px;
+  border: 3px solid #ffffff;
+  border-radius: 999px;
+  background: #f59e0b;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.35);
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.drawing-aligned-overlay-rotate-handle::after {
+  content: "↻";
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.drawing-aligned-overlay-rotate-handle.dragging {
+  cursor: grabbing;
+  background: #ea580c;
+}
+
+.drawing-aligned-overlay-rotate-handle.visible {
+  display: block;
+}
+
+.drawing-aligned-overlay-rotate-handle.left,
+.drawing-aligned-overlay-rotate-handle.right,
+.drawing-aligned-overlay-rotate-handle.bottom-left,
+.drawing-aligned-overlay-rotate-handle.bottom-right {
+  transform: translate(-50%, -50%);
+}
+
+.drawing-trace-button.active,
+.drawing-small-button.active {
+  border-color: #16a34a;
+  background: #dcfce7;
+  color: #166534;
 }
 
 .drawing-object-overlay {
@@ -1854,6 +2128,7 @@
     <button id="drawingOverlayUploadButton" class="map-button" type="button">도면 올리기</button>
     <button id="aiImportButton" class="map-button" type="button">AI 탐지 가져오기</button>
     <button id="placeSearchToggleButton" class="map-button" type="button">검색</button>
+    <button id="lineLabelToggleButton" class="map-button" type="button" aria-pressed="false">라벨 OFF</button>
     <input
     id="drawingOverlayFileInput"
     type="file"
@@ -1880,13 +2155,45 @@
 <section id="drawingQueuePanel" class="drawing-queue-panel hidden" aria-label="도면 작업 대기열">
   <div class="drawing-queue-head">
     <h2 class="drawing-queue-title">도면 작업 대기열</h2>
-    <button id="drawingQueueCloseButton" class="close-button" type="button" aria-label="Close drawing queue">x</button>
+    <div class="drawing-queue-head-actions">
+      <button id="drawingQueueDeleteModeButton" class="drawing-small-button danger" type="button">대기열 삭제</button>
+      <button id="drawingQueueDeleteCancelButton" class="drawing-small-button hidden" type="button">선택 취소</button>
+      <button id="drawingQueueDeleteConfirmButton" class="drawing-small-button danger hidden" type="button">선택 삭제</button>
+      <button id="drawingQueueCloseButton" class="close-button" type="button" aria-label="Close drawing queue">x</button>
+    </div>
   </div>
 
   <div id="drawingQueueList" class="drawing-queue-list">
     <p class="drawing-queue-empty">선택된 도면이 없습니다.</p>
   </div>
 </section>
+
+<div id="drawingLibraryOverlay" class="drawing-select-overlay hidden" aria-label="PDF 페이지 보관함">
+  <section class="drawing-select-dialog">
+    <div class="drawing-select-header">
+      <h2 class="drawing-select-title">PDF 변환 페이지 보관함</h2>
+      <button id="drawingLibraryCloseButton" class="close-button" type="button" aria-label="Close drawing library">x</button>
+    </div>
+
+    <p class="drawing-select-description">
+      PDF에서 선택해 고화질로 변환해 둔 페이지를 바로 작업 대기열에 추가할 수 있습니다.
+    </p>
+
+    <p id="drawingLibraryMessage" class="drawing-select-message" aria-live="polite"></p>
+
+    <div class="drawing-select-actions">
+      <button id="drawingLibraryNewUploadButton" class="drawing-dialog-button primary" type="button">새 PDF 열기</button>
+      <button id="drawingLibrarySelectQueueButton" class="drawing-dialog-button" type="button">대기열 추가</button>
+      <button id="drawingLibrarySelectDeleteButton" class="drawing-dialog-button danger" type="button">저장 데이터 삭제</button>
+      <button id="drawingLibraryCancelQueueButton" class="drawing-dialog-button hidden" type="button">선택 취소</button>
+      <button id="drawingLibraryConfirmQueueButton" class="drawing-dialog-button primary hidden" type="button">선택 완료</button>
+    </div>
+
+    <div id="drawingLibraryList" class="drawing-library-list">
+      <p class="drawing-library-empty">저장된 PDF 페이지를 불러오는 중입니다.</p>
+    </div>
+  </section>
+</div>
 
 <div id="drawingSelectOverlay" class="drawing-select-overlay hidden" aria-label="PDF 도면 선택">
   <section class="drawing-select-dialog">
@@ -1899,13 +2206,16 @@
       작업할 도면 페이지를 여러 장 선택하세요. 선택한 페이지는 작업 대기열에 저장되며, 다음 단계에서 필요한 범위를 자른 뒤 기준핀으로 지도에 맞춥니다.
     </p>
 
+    <p id="drawingSelectMessage" class="drawing-select-message" aria-live="polite"></p>
+
     <div id="drawingPageGrid" class="drawing-page-grid">
       <p class="drawing-queue-empty">PDF 페이지를 불러오는 중입니다.</p>
     </div>
 
     <div class="drawing-select-actions">
       <button id="drawingSelectCancelButton" class="drawing-dialog-button" type="button">취소</button>
-      <button id="drawingAddQueueButton" class="drawing-dialog-button primary" type="button">선택 도면 대기열 추가</button>
+      <button id="drawingSavePagesButton" class="drawing-dialog-button" type="button">선택 페이지 고화질 변환·저장</button>
+      <button id="drawingAddQueueButton" class="drawing-dialog-button primary" type="button">이번만 작업 대기열 추가</button>
     </div>
   </section>
 </div>
@@ -1948,9 +2258,9 @@
     </div>
 
     <p class="drawing-pin-description">
-  용적도와 지적편집도에서 공통으로 확인 가능한 필지 경계 모서리·경계선 교차점 등을 선택하세요.
-  이 기준점은 두 지도를 맞추기 위한 점이며, 실제 마커 위치를 찍는 단계가 아닙니다.
-  서로 떨어진 비직선 위치로 최소 3개를 지정해야 합니다.
+  용적도와 지적편집도에서 공통으로 확인 가능한 필지 경계 모서리와 경계선 교차점을 선택하세요.
+  기본 정합에는 서로 떨어진 기준점 4개가 필요합니다.
+  가능하면 작업 구역을 둘러싸는 네 방향에서 선택하고, 5개 이상 지정하면 모든 핀을 함께 사용해 전체 오차가 가장 작도록 정합합니다.
 </p>
 
 <div id="drawingPinStage" class="drawing-pin-stage">
@@ -1960,7 +2270,7 @@
 </div>
 
     <div class="drawing-pin-actions">
-      <div id="drawingPinInfo" class="drawing-pin-info">기준핀 0개 / 최소 3개 필요</div>
+      <div id="drawingPinInfo" class="drawing-pin-info">기준핀 0개 / 최소 4개 필요</div>
 
       <div class="drawing-pin-buttons">
         <button id="drawingPinUndoButton" class="drawing-dialog-button" type="button">마지막 핀 삭제</button>
@@ -1991,6 +2301,14 @@
   <button id="drawingOverlayClearButton" class="drawing-small-button danger" type="button">
     도면 제거
   </button>
+
+  <button id="drawingOverlayMoveModeButton" class="drawing-small-button" type="button">
+    도면 이동
+  </button>
+
+  <button id="drawingOverlayMoveResetButton" class="drawing-small-button" type="button">
+    이동/회전 초기화
+  </button>
 </div>
 
 <section id="infoCard" class="info-card hidden" aria-label="Marker information">
@@ -2005,6 +2323,7 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=4a2743b9e49b8da391510688eb04d69d&autoload=false&libraries=services"></script>
   <script>
@@ -2023,11 +2342,13 @@
     };
 
     var db = null;
+    var storage = null;
     var map = null;
     var markerObjects = {};
     var markerImageCache = {};
     var lineOverlays = {};
     var lineLabelOverlays = {};
+    var showAllLineLabels = false;
     var allTeams = [];
     var ownTeam = null;
     var teamVisibility = {};
@@ -2050,6 +2371,13 @@
     var drawingQueue = [];
     var activeDrawingQueueId = "";
     var drawingQueueSequence = 0;
+    var drawingLibrarySelectionMode = false;
+    var drawingLibrarySelectionAction = "";
+    var drawingLibrarySelectedPageIds = {};
+    var drawingLibraryLoadedItems = [];
+    var drawingQueueDeleteMode = false;
+    var drawingQueueSelectedIds = {};
+    var DRAWING_MIN_CONTROL_POINTS = 4;
 
     var drawingCropState = {
         queueId: "",
@@ -2083,8 +2411,34 @@
     var drawingControlMapOverlays = [];
     var drawingAlignedOverlay = null;
     var drawingAlignedOverlayImage = null;
+    var drawingAlignedOverlayDragWrapper = null;
+    var drawingAlignedOverlayRotationWrapper = null;
+    var drawingAlignedOverlayRotateHandleLeft = null;
+    var drawingAlignedOverlayRotateHandleRight = null;
+    var drawingAlignedOverlayRotateHandleBottomLeft = null;
+    var drawingAlignedOverlayRotateHandleBottomRight = null;
     var drawingAlignedOverlayQueueId = "";
     var drawingMarkerTraceMode = false;
+    var drawingOverlayMoveMode = false;
+    var drawingOverlayMoveState = {
+      dragging: false,
+      pointerId: null,
+      startClientX: 0,
+      startClientY: 0,
+      deltaX: 0,
+      deltaY: 0
+    };
+    var drawingOverlayRotationState = {
+      dragging: false,
+      pointerId: null,
+      startClientX: 0,
+      startClientY: 0,
+      centerClientX: 0,
+      centerClientY: 0,
+      startPointerAngleDeg: 0,
+      startRotationDeg: 0,
+      previewRotationDeg: 0
+    };
 
     var suppressNextMapClick = false; 
     var cadastralOverlayEnabled = false;
@@ -2186,6 +2540,10 @@
       map.relayout();
     }
 
+    function isMapObjectSelectionBlocked() {
+      return freeLineCreateMode === true;
+    }
+
     function flushAdminRender() {
       adminRenderFrameId = null;
 
@@ -2244,6 +2602,7 @@
       try {
         firebase.initializeApp(firebaseConfig);
         db = firebase.firestore();
+        storage = firebase.storage();
         setFirebaseStatus("Ready");
         console.log("[ADMIN_V2] firebase ready");
       } catch (error) {
@@ -2283,12 +2642,32 @@ setMapStatus("Map connected");
             window.addEventListener("resize", function() {
               setTimeout(function() {
                 relayoutMap();
-                updateDrawingAlignedOverlayTransform();
+                updateDrawingAlignedOverlayTransform({ rebaseAnchor: true });
               }, 60);
             });
 
             kakao.maps.event.addListener(map, "idle", function() {
-              updateDrawingAlignedOverlayTransform();
+              if (drawingAlignedOverlay) {
+                updateDrawingAlignedOverlayTransform({ rebaseAnchor: true });
+              }
+            });
+
+            kakao.maps.event.addListener(map, "dragstart", function() {
+              if (drawingAlignedOverlay) {
+                updateDrawingAlignedOverlayTransform({ rebaseAnchor: true });
+              }
+            });
+
+            kakao.maps.event.addListener(map, "dragend", function() {
+              if (drawingAlignedOverlay) {
+                updateDrawingAlignedOverlayTransform({ rebaseAnchor: true });
+              }
+            });
+
+            kakao.maps.event.addListener(map, "zoom_changed", function() {
+              if (drawingAlignedOverlay) {
+                updateDrawingAlignedOverlayTransform({ rebaseAnchor: true });
+              }
             });
 
   kakao.maps.event.addListener(map, "click", function(mouseEvent) {
@@ -2297,16 +2676,20 @@ setMapStatus("Map connected");
     return;
   }
 
-  if (drawingPinState.awaitingMapPoint) {
-    captureDrawingMapPin(mouseEvent.latLng);
-    return;
-  }
-
   if (freeLineCreateMode) {
     addPendingFreeLinePoint(
       mouseEvent.latLng.getLat(),
       mouseEvent.latLng.getLng()
     );
+    return;
+  }
+
+  if (drawingOverlayMoveMode) {
+    return;
+  }
+
+  if (drawingPinState.awaitingMapPoint) {
+    captureDrawingMapPin(mouseEvent.latLng);
     return;
   }
 
@@ -3110,6 +3493,7 @@ setMapStatus("Map connected");
       markerObj.__draggable = markerMoveMode;
 
       kakao.maps.event.addListener(markerObj, "click", function() {
+        if (isMapObjectSelectionBlocked()) return;
         if (markerMoveMode) return;
         showMarkerInfo(markerObj.__data);
       });
@@ -3245,6 +3629,7 @@ setMapStatus("Map connected");
         lineOverlays[line.id] = overlay;
 
         kakao.maps.event.addListener(overlay, "click", function() {
+          if (isMapObjectSelectionBlocked()) return;
           focusLine(line);
         });
       });
@@ -3259,65 +3644,95 @@ setMapStatus("Map connected");
       renderLineLabels(lines);
     }
 
+    function shouldShowLineLabel(line) {
+      return (
+        showAllLineLabels === true &&
+        line &&
+        line.points &&
+        line.points.length >= 2 &&
+        line.title
+      );
+    }
+
+    function updateLineLabelToggleButton() {
+      var button = document.getElementById("lineLabelToggleButton");
+
+      if (!button) return;
+
+      button.classList.toggle("active", showAllLineLabels);
+      button.textContent = showAllLineLabels ? "라벨 ON" : "라벨 OFF";
+      button.setAttribute(
+        "aria-pressed",
+        showAllLineLabels ? "true" : "false"
+      );
+    }
+
+    function updateAllLineLabelVisibility() {
+      renderLineLabels(dedupeVisibleLines(getVisibleLines()));
+    }
+
         function renderLineLabels(lines) {
-      var selectedLine = null;
+      var keep = {};
+      var labelLines = [];
 
-      (lines || []).some(function(line) {
-        if (
-          line &&
-          line.id === selectedLineId &&
-          line.points &&
-          line.points.length >= 2 &&
-          line.title
-        ) {
-          selectedLine = line;
-          return true;
-        }
+      (lines || []).forEach(function(line) {
+        if (!shouldShowLineLabel(line)) return;
 
-        return false;
+        keep[line.id] = true;
+        labelLines.push(line);
       });
 
       Object.keys(lineLabelOverlays).forEach(function(id) {
-        if (selectedLine && id === selectedLine.id) return;
+        if (keep[id]) return;
 
         lineLabelOverlays[id].setMap(null);
         delete lineLabelOverlays[id];
       });
 
-      if (!selectedLine) return;
+      labelLines.forEach(function(line) {
+        var position = lineLabelPosition(line);
+        var signature = [
+          line.id,
+          line.displayKey,
+          line.title,
+          line.color,
+          line.duplicateCount || 1,
+          position.lat,
+          position.lng
+        ].join("|");
 
-      var position = lineLabelPosition(selectedLine);
-      var signature = [
-        selectedLine.id,
-        selectedLine.displayKey,
-        selectedLine.title,
-        selectedLine.color,
-        selectedLine.duplicateCount || 1,
-        position.lat,
-        position.lng
-      ].join("|");
+        var overlay = lineLabelOverlays[line.id];
 
-      var overlay = lineLabelOverlays[selectedLine.id];
+        if (overlay && overlay.__signature === signature) {
+          overlay.setMap(map);
+          return;
+        }
 
-      if (overlay && overlay.__signature === signature) return;
-      if (overlay) overlay.setMap(null);
+        if (overlay) overlay.setMap(null);
 
-      var label = document.createElement("div");
-      label.className = "line-label";
-      label.textContent = selectedLine.title;
-      label.title = selectedLine.description || selectedLine.title;
-      label.style.borderColor = selectedLine.color;
+        var label = document.createElement("div");
+        label.className = "line-label";
+        label.textContent = line.title;
+        label.title = line.description || line.title;
+        label.style.borderColor = line.color;
+        label.addEventListener("click", function(event) {
+          if (!isMapObjectSelectionBlocked()) return;
 
-      overlay = new kakao.maps.CustomOverlay({
-        map: map,
-        position: new kakao.maps.LatLng(position.lat, position.lng),
-        content: label,
-        yAnchor: 0.5,
-        zIndex: 4
+          event.preventDefault();
+          event.stopPropagation();
+        });
+
+        overlay = new kakao.maps.CustomOverlay({
+          map: map,
+          position: new kakao.maps.LatLng(position.lat, position.lng),
+          content: label,
+          yAnchor: 0.5,
+          zIndex: 4
+        });
+
+        overlay.__signature = signature;
+        lineLabelOverlays[line.id] = overlay;
       });
-
-      overlay.__signature = signature;
-      lineLabelOverlays[selectedLine.id] = overlay;
     }
 
     function lineLabelPosition(line) {
@@ -3356,6 +3771,7 @@ setMapStatus("Map connected");
     }
 
     function focusMarker(marker) {
+      if (isMapObjectSelectionBlocked()) return;
       if (!map) return;
       if (typeof map.getLevel === "function" && map.getLevel() > TARGET_MARKER_LEVEL) {
         map.setLevel(TARGET_MARKER_LEVEL);
@@ -3371,6 +3787,7 @@ setMapStatus("Map connected");
     }
 
         function focusLine(line) {
+      if (isMapObjectSelectionBlocked()) return;
       if (!map || !line || !line.points || !line.points.length) return;
 
       var now = Date.now();
@@ -5622,6 +6039,12 @@ function setFreeLineCreateMode(enabled) {
     });
 
     closeMarkerInfo();
+
+    if (selectedLineId) {
+      selectedLineId = "";
+      renderMapLines(getVisibleLines());
+    }
+
     setAdminMessage("지도 빈 공간을 순서대로 클릭하여 선을 그리세요.");
   } else {
     pendingFreeLinePoints = [];
@@ -5983,6 +6406,14 @@ function setMarkerCreateMode(enabled) {
     closeMarkerInfo();
     setAdminMessage("지도에서 마커를 추가할 위치를 클릭하세요.");
   } else {
+    if (drawingMarkerTraceMode) {
+      drawingMarkerTraceMode = false;
+
+      if (drawingOverlayMoveMode) {
+        setDrawingOverlayMoveMode(false);
+      }
+    }
+
     setAdminMessage("마커 추가 모드가 종료되었습니다.");
   }
 }
@@ -8187,17 +8618,55 @@ function closeDrawingSelectModal() {
   }
 }
 
+function setDrawingSelectMessage(message, type) {
+  var element = document.getElementById("drawingSelectMessage");
+  if (!element) return;
+
+  element.textContent = String(message || "");
+  element.classList.remove("error", "success");
+
+  if (type === "error") {
+    element.classList.add("error");
+  } else if (type === "success") {
+    element.classList.add("success");
+  }
+}
+
 function showDrawingQueuePanel() {
   var panel = document.getElementById("drawingQueuePanel");
   if (panel) {
     panel.classList.remove("hidden");
   }
+
+  updateDrawingQueueDeleteButtons();
 }
 
 function hideDrawingQueuePanel() {
   var panel = document.getElementById("drawingQueuePanel");
   if (panel) {
     panel.classList.add("hidden");
+  }
+
+  drawingQueueDeleteMode = false;
+  drawingQueueSelectedIds = {};
+  updateDrawingQueueDeleteButtons();
+}
+
+function updateDrawingQueueDeleteButtons() {
+  var startButton = document.getElementById("drawingQueueDeleteModeButton");
+  var cancelButton = document.getElementById("drawingQueueDeleteCancelButton");
+  var confirmButton = document.getElementById("drawingQueueDeleteConfirmButton");
+
+  if (startButton) {
+    startButton.classList.toggle("hidden", drawingQueueDeleteMode);
+  }
+
+  if (cancelButton) {
+    cancelButton.classList.toggle("hidden", !drawingQueueDeleteMode);
+  }
+
+  if (confirmButton) {
+    confirmButton.classList.toggle("hidden", !drawingQueueDeleteMode);
   }
 }
 
@@ -8281,22 +8750,35 @@ function queueDrawingItem(item) {
   id: "drawing_queue_" + drawingQueueSequence,
   title: item.title || ("도면 " + drawingQueueSequence),
   sourceType: item.sourceType || "image",
+  sourceFileName: item.sourceFileName || item.title || "도면",
   pageNumber: item.pageNumber || null,
   previewUrl: item.previewUrl || "",
-  sourceImageUrl: item.imageUrl || item.previewUrl || "",
-  croppedImageUrl: "",
-  cropRect: null,
-  controlPoints: [],
-  status: "범위 선택 전"
+  sourceImageUrl: item.sourceImageUrl || item.imageUrl || item.previewUrl || "",
+  croppedImageUrl: item.croppedImageUrl || "",
+  croppedWidth: Number(item.croppedWidth || 0),
+  croppedHeight: Number(item.croppedHeight || 0),
+  cropRect: item.cropRect || null,
+  controlPoints: Array.isArray(item.controlPoints) ? item.controlPoints.slice() : [],
+  libraryDrawingId: item.libraryDrawingId || "",
+  libraryPageId: item.libraryPageId || "",
+  libraryImageUrl: item.libraryImageUrl || "",
+  libraryThumbnailUrl: item.libraryThumbnailUrl || "",
+  fromLibrary: item.fromLibrary === true,
+  manualMapOffsetLat: Number(item.manualMapOffsetLat || 0),
+  manualMapOffsetLng: Number(item.manualMapOffsetLng || 0),
+  manualRotationDeg: Number(item.manualRotationDeg || 0),
+  status: item.status || "범위 선택 전"
 });
 
   renderDrawingQueue();
+  return drawingQueue[drawingQueue.length - 1];
 }
 
 function removeDrawingQueueItem(queueId) {
   drawingQueue = drawingQueue.filter(function(item) {
     return item.id !== queueId;
   });
+  delete drawingQueueSelectedIds[queueId];
 
     if (activeDrawingQueueId === queueId) {
     activeDrawingQueueId = "";
@@ -8312,6 +8794,9 @@ function removeDrawingQueueItem(queueId) {
   renderDrawingQueue();
 
   if (!drawingQueue.length) {
+    drawingQueueDeleteMode = false;
+    drawingQueueSelectedIds = {};
+    updateDrawingQueueDeleteButtons();
     setAdminMessage("도면 작업 대기열이 비었습니다.");
   }
 }
@@ -8327,6 +8812,108 @@ function selectDrawingQueueItem(queueId) {
 
   renderDrawingQueue();
   openDrawingCropModal(queueId);
+}
+
+function drawingControlPointStatusText(count) {
+  count = Number(count) || 0;
+
+  if (count <= 0) {
+    return "기준핀 0개 / 최소 " + DRAWING_MIN_CONTROL_POINTS + "개 필요";
+  }
+
+  if (count < DRAWING_MIN_CONTROL_POINTS) {
+    return "기준핀 " + count + "개 / " + (DRAWING_MIN_CONTROL_POINTS - count) + "개 더 필요";
+  }
+
+  if (count === DRAWING_MIN_CONTROL_POINTS) {
+    return "기준핀 " + count + "개 / 배치 가능";
+  }
+
+  return "기준핀 " + count + "개 / 전체 핀 최소오차 정합 적용";
+}
+
+function drawingAlignmentStatusText(transform) {
+  if (!transform) return "";
+
+  return "지적편집도 위 배치 완료 / 정합점 " +
+    transform.usedPointCount +
+    "개 / 평균오차 " +
+    transform.averageErrorPixels.toFixed(1) +
+    "px";
+}
+
+function hasDrawingManualOffset(item) {
+  return (
+    Math.abs(Number((item && item.manualMapOffsetLat) || 0)) > 0 ||
+    Math.abs(Number((item && item.manualMapOffsetLng) || 0)) > 0
+  );
+}
+
+function hasDrawingManualRotation(item) {
+  return Math.abs(Number((item && item.manualRotationDeg) || 0)) > 0.000001;
+}
+
+function beginDrawingQueueDeleteSelection() {
+  if (!drawingQueue.length) {
+    setAdminMessage("삭제할 도면 작업 대기열이 없습니다.");
+    return;
+  }
+
+  drawingQueueDeleteMode = true;
+  drawingQueueSelectedIds = {};
+
+  updateDrawingQueueDeleteButtons();
+  renderDrawingQueue();
+
+  setAdminMessage(
+    "현재 작업 대기열에서 제거할 항목을 체크한 뒤 선택 삭제를 누르세요."
+  );
+}
+
+function cancelDrawingQueueDeleteSelection() {
+  drawingQueueDeleteMode = false;
+  drawingQueueSelectedIds = {};
+
+  updateDrawingQueueDeleteButtons();
+  renderDrawingQueue();
+
+  setAdminMessage("도면 작업 대기열 삭제 선택을 취소했습니다.");
+}
+
+function confirmDrawingQueueDeleteSelection() {
+  var selectedIds = Object.keys(drawingQueueSelectedIds).filter(function(id) {
+    return drawingQueueSelectedIds[id] === true;
+  });
+
+  if (!selectedIds.length) {
+    setAdminMessage("대기열에서 삭제할 항목을 선택해 주세요.");
+    return;
+  }
+
+  var confirmed = window.confirm(
+    "선택한 작업 대기열 " +
+      selectedIds.length +
+      "개를 제거할까요?\n" +
+      "Firebase에 저장된 원본 PDF 페이지는 삭제되지 않습니다."
+  );
+
+  if (!confirmed) return;
+
+  selectedIds.forEach(function(queueId) {
+    removeDrawingQueueItem(queueId);
+  });
+
+  drawingQueueDeleteMode = false;
+  drawingQueueSelectedIds = {};
+
+  updateDrawingQueueDeleteButtons();
+  renderDrawingQueue();
+
+  setAdminMessage(
+    "선택한 작업 대기열 " +
+      selectedIds.length +
+      "개를 제거했습니다. Firebase 저장 데이터는 유지됩니다."
+  );
 }
 
 function renderDrawingQueue() {
@@ -8352,6 +8939,58 @@ function renderDrawingQueue() {
       "drawing-queue-item" +
       (item.id === activeDrawingQueueId ? " active" : "");
 
+    if (drawingQueueDeleteMode) {
+      row.classList.add("selectable");
+
+      if (drawingQueueSelectedIds[item.id] === true) {
+        row.classList.add("selected");
+      }
+
+      var checkWrap = document.createElement("label");
+      checkWrap.className = "drawing-queue-check-overlay";
+
+      var checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.className = "drawing-queue-check";
+      checkbox.checked = drawingQueueSelectedIds[item.id] === true;
+
+      function applyQueueSelectedState(isSelected) {
+        if (isSelected) {
+          drawingQueueSelectedIds[item.id] = true;
+          row.classList.add("selected");
+        } else {
+          delete drawingQueueSelectedIds[item.id];
+          row.classList.remove("selected");
+        }
+
+        checkbox.checked = isSelected;
+      }
+
+      checkbox.addEventListener("change", function(event) {
+        event.stopPropagation();
+        applyQueueSelectedState(checkbox.checked);
+      });
+
+      checkWrap.addEventListener("click", function(event) {
+        event.stopPropagation();
+      });
+
+      row.addEventListener("click", function(event) {
+        if (
+          event.target === checkbox ||
+          event.target === checkWrap ||
+          checkWrap.contains(event.target)
+        ) {
+          return;
+        }
+
+        applyQueueSelectedState(drawingQueueSelectedIds[item.id] !== true);
+      });
+
+      checkWrap.appendChild(checkbox);
+      row.appendChild(checkWrap);
+    }
+
     var thumb = document.createElement("img");
     thumb.className = "drawing-queue-thumb";
     thumb.src = item.previewUrl;
@@ -8366,7 +9005,22 @@ function renderDrawingQueue() {
 
     var status = document.createElement("div");
     status.className = "drawing-queue-status";
-    status.textContent = item.status;
+    var statusParts = [item.status];
+
+    if (hasDrawingManualOffset(item)) {
+      statusParts.push("수동 위치 보정 적용됨");
+    }
+
+    if (hasDrawingManualRotation(item)) {
+      statusParts.push(
+        "회전 " +
+        (Number(item.manualRotationDeg || 0) >= 0 ? "+" : "") +
+        Number(item.manualRotationDeg || 0).toFixed(2) +
+        "°"
+      );
+    }
+
+    status.textContent = statusParts.join(" / ");
 
     var actions = document.createElement("div");
     actions.className = "drawing-queue-actions";
@@ -8392,7 +9046,7 @@ function renderDrawingQueue() {
     var pinButton = document.createElement("button");
     pinButton.type = "button";
     pinButton.className = "drawing-small-button primary";
-    pinButton.textContent = item.controlPoints.length >= 3
+    pinButton.textContent = item.controlPoints.length >= DRAWING_MIN_CONTROL_POINTS
       ? "기준핀 수정"
       : "기준핀 지정";
 
@@ -8402,7 +9056,7 @@ function renderDrawingQueue() {
 
     actions.appendChild(pinButton);
 
-    if (item.controlPoints.length >= 3) {
+    if (item.controlPoints.length >= DRAWING_MIN_CONTROL_POINTS) {
       var alignButton = document.createElement("button");
       alignButton.type = "button";
       alignButton.className = "drawing-small-button primary";
@@ -8418,11 +9072,15 @@ function renderDrawingQueue() {
     }
   }
 
-  actions.appendChild(deleteButton);
+  if (!drawingQueueDeleteMode) {
+    actions.appendChild(deleteButton);
+  }
 
 info.appendChild(name);
 info.appendChild(status);
-info.appendChild(actions);
+if (!drawingQueueDeleteMode) {
+  info.appendChild(actions);
+}
 
     row.appendChild(thumb);
     row.appendChild(info);
@@ -8430,10 +9088,777 @@ info.appendChild(actions);
   });
 }
 
+function closeDrawingLibrary() {
+  var overlay = document.getElementById("drawingLibraryOverlay");
+  if (overlay) overlay.classList.add("hidden");
+
+  drawingLibrarySelectionAction = "";
+  drawingLibrarySelectionMode = false;
+  drawingLibrarySelectedPageIds = {};
+  updateDrawingLibrarySelectionButtons();
+  setDrawingLibraryMessage("");
+}
+
+function dataUrlToBlob(dataUrl) {
+  var parts = String(dataUrl || "").split(",");
+  var header = parts[0] || "";
+  var data = parts[1] || "";
+  var mimeMatch = header.match(/data:([^;]+);base64/i);
+  var mimeType = mimeMatch ? mimeMatch[1] : "image/png";
+  var binary = atob(data);
+  var bytes = new Uint8Array(binary.length);
+
+  for (var i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
+  return new Blob([bytes], { type: mimeType });
+}
+
+function loadImageFromUrl(url) {
+  return new Promise(function(resolve, reject) {
+    var image = new Image();
+    image.onload = function() { resolve(image); };
+    image.onerror = function() { reject(new Error("IMAGE_LOAD_FAILED")); };
+    image.crossOrigin = "anonymous";
+    image.src = url;
+  });
+}
+
+function canvasToBlob(canvas, mimeType, quality) {
+  return new Promise(function(resolve, reject) {
+    canvas.toBlob(function(blob) {
+      if (blob) {
+        resolve(blob);
+      } else {
+        reject(new Error("CANVAS_BLOB_FAILED"));
+      }
+    }, mimeType, quality);
+  });
+}
+
+async function createDrawingThumbnailBlob(imageDataUrl) {
+  var image = await loadImageFromUrl(imageDataUrl);
+  var maxWidth = 280;
+  var sourceWidth = image.naturalWidth || image.width || 1;
+  var sourceHeight = image.naturalHeight || image.height || 1;
+  var scale = Math.min(1, maxWidth / sourceWidth);
+  var canvas = document.createElement("canvas");
+  var context = canvas.getContext("2d");
+
+  canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+  canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  return canvasToBlob(canvas, "image/jpeg", 0.8);
+}
+
+function createDrawingPageLibraryId() {
+  return "drawing_page_" + Date.now() + "_" + Math.random().toString(36).slice(2, 10);
+}
+
+async function uploadConvertedPdfPageImages(pageItemId, pageImageDataUrl) {
+  if (!storage) throw new Error("STORAGE_NOT_READY");
+
+  var imagePath = "drawing_page_library/" + pageItemId + "/page.png";
+  var thumbnailPath = "drawing_page_library/" + pageItemId + "/thumbnail.jpg";
+  var imageRef = storage.ref().child(imagePath);
+  var thumbnailRef = storage.ref().child(thumbnailPath);
+  var imageBlob = dataUrlToBlob(pageImageDataUrl);
+  var thumbnailBlob = await createDrawingThumbnailBlob(pageImageDataUrl);
+
+  await imageRef.put(imageBlob, { contentType: "image/png" });
+
+  try {
+    await thumbnailRef.put(thumbnailBlob, { contentType: "image/jpeg" });
+  } catch (error) {
+    try {
+      await imageRef.delete();
+    } catch (deleteError) {
+      console.warn("[ADMIN_V2_DRAWING_PAGE_LIBRARY_ORPHAN]", deleteError);
+    }
+    throw error;
+  }
+
+  return {
+    imageUrl: await imageRef.getDownloadURL(),
+    thumbnailUrl: await thumbnailRef.getDownloadURL(),
+    imageStoragePath: imagePath,
+    thumbnailStoragePath: thumbnailPath
+  };
+}
+
+function getDataUrlImageSize(dataUrl) {
+  return new Promise(function(resolve, reject) {
+    var image = new Image();
+    image.onload = function() {
+      resolve({
+        width: image.naturalWidth || image.width || 0,
+        height: image.naturalHeight || image.height || 0
+      });
+    };
+    image.onerror = function() {
+      reject(new Error("IMAGE_SIZE_LOAD_FAILED"));
+    };
+    image.src = dataUrl;
+  });
+}
+
+async function findExistingDrawingPageLibraryItem(sourcePdfKey, pageNumber) {
+  if (!db || !sourcePdfKey || !Number.isFinite(Number(pageNumber))) {
+    return null;
+  }
+
+  var snapshot = await db.collection("drawing_page_library")
+    .where("sourcePdfKey", "==", sourcePdfKey)
+    .get();
+  var found = null;
+
+  snapshot.forEach(function(doc) {
+    if (found) return;
+
+    var data = doc.data() || {};
+    if (
+      data.isDeleted !== true &&
+      Number(data.pageNumber) === Number(pageNumber)
+    ) {
+      found = Object.assign({ id: doc.id }, data);
+    }
+  });
+
+  return found;
+}
+
+async function saveConvertedPdfPageToLibrary(options) {
+  options = options || {};
+
+  if (
+    !db ||
+    !storage ||
+    !options.sourcePdfKey ||
+    !Number.isFinite(Number(options.pageNumber)) ||
+    !options.imageDataUrl
+  ) {
+    throw new Error("DRAWING_PAGE_LIBRARY_SAVE_INFO_INVALID");
+  }
+
+  var pageNumber = Number(options.pageNumber);
+  var existing = await findExistingDrawingPageLibraryItem(
+    options.sourcePdfKey,
+    pageNumber
+  );
+
+  if (existing) {
+    return existing;
+  }
+
+  var pageItemId = createDrawingPageLibraryId();
+  var uploaded = null;
+
+  try {
+    var imageSize = await getDataUrlImageSize(options.imageDataUrl);
+    uploaded = await uploadConvertedPdfPageImages(
+      pageItemId,
+      options.imageDataUrl
+    );
+
+    var sourcePdfName = options.sourcePdfName || "PDF 도면";
+    var metadata = {
+      id: pageItemId,
+      title: sourcePdfName + " - " + pageNumber + "페이지",
+      sourcePdfName: sourcePdfName,
+      sourcePdfKey: options.sourcePdfKey,
+      pageNumber: pageNumber,
+      imageUrl: uploaded.imageUrl,
+      thumbnailUrl: uploaded.thumbnailUrl,
+      imageStoragePath: uploaded.imageStoragePath,
+      thumbnailStoragePath: uploaded.thumbnailStoragePath,
+      width: imageSize.width,
+      height: imageSize.height,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      createdBy: ADMIN_TEAM_DOC_ID,
+      isDeleted: false
+    };
+
+    await db.collection("drawing_page_library").doc(pageItemId).set(metadata);
+    return metadata;
+  } catch (error) {
+    if (uploaded) {
+      try {
+        await storage.ref().child(uploaded.imageStoragePath).delete();
+        await storage.ref().child(uploaded.thumbnailStoragePath).delete();
+      } catch (deleteError) {
+        console.warn("[ADMIN_V2_DRAWING_PAGE_LIBRARY_CLEANUP]", deleteError);
+      }
+    }
+
+    throw error;
+  }
+}
+
+function formatDrawingLibraryTime(value) {
+  if (!value) return "";
+
+  var date = value && typeof value.toDate === "function"
+    ? value.toDate()
+    : new Date(value);
+
+  if (!date || Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("ko-KR");
+}
+
+function drawingPageLibrarySortValue(item) {
+  return {
+    sourcePdfName: String(
+      (item && (item.sourcePdfName || item.sourceFileName || item.title)) ||
+        ""
+    ),
+    sourcePdfKey: String((item && item.sourcePdfKey) || ""),
+    pageNumber: Number((item && item.pageNumber) || 0),
+    createdAt:
+      item &&
+      item.createdAt &&
+      typeof item.createdAt.toMillis === "function"
+        ? item.createdAt.toMillis()
+        : 0
+  };
+}
+
+function compareDrawingPageLibraryItems(a, b) {
+  var aValue = drawingPageLibrarySortValue(a);
+  var bValue = drawingPageLibrarySortValue(b);
+  var nameCompare = aValue.sourcePdfName.localeCompare(
+    bValue.sourcePdfName,
+    "ko"
+  );
+
+  if (nameCompare !== 0) return nameCompare;
+
+  var keyCompare = aValue.sourcePdfKey.localeCompare(
+    bValue.sourcePdfKey,
+    "ko"
+  );
+
+  if (keyCompare !== 0) return keyCompare;
+
+  if (aValue.pageNumber !== bValue.pageNumber) {
+    return aValue.pageNumber - bValue.pageNumber;
+  }
+
+  return aValue.createdAt - bValue.createdAt;
+}
+
+function setDrawingLibraryMessage(message, type) {
+  var element = document.getElementById("drawingLibraryMessage");
+  if (!element) return;
+
+  element.textContent = String(message || "");
+  element.classList.remove("error", "success");
+
+  if (type === "error") {
+    element.classList.add("error");
+  } else if (type === "success") {
+    element.classList.add("success");
+  }
+}
+
+function updateDrawingLibrarySelectionButtons() {
+  var queueButton = document.getElementById("drawingLibrarySelectQueueButton");
+  var deleteButton = document.getElementById("drawingLibrarySelectDeleteButton");
+  var confirmButton = document.getElementById("drawingLibraryConfirmQueueButton");
+  var cancelButton = document.getElementById("drawingLibraryCancelQueueButton");
+  var uploadButton = document.getElementById("drawingLibraryNewUploadButton");
+  var isSelectionMode = drawingLibrarySelectionAction !== "";
+
+  drawingLibrarySelectionMode = isSelectionMode;
+
+  if (queueButton) {
+    queueButton.classList.toggle("hidden", isSelectionMode);
+  }
+
+  if (deleteButton) {
+    deleteButton.classList.toggle("hidden", isSelectionMode);
+  }
+
+  if (confirmButton) {
+    confirmButton.classList.toggle("hidden", !isSelectionMode);
+    confirmButton.textContent =
+      drawingLibrarySelectionAction === "delete"
+        ? "선택 삭제"
+        : "선택 완료";
+  }
+
+  if (cancelButton) {
+    cancelButton.classList.toggle("hidden", !isSelectionMode);
+  }
+
+  if (uploadButton) {
+    uploadButton.disabled = isSelectionMode;
+  }
+}
+
+async function beginDrawingLibraryQueueSelection() {
+  if (!drawingLibraryLoadedItems.length) {
+    setDrawingLibraryMessage("저장된 페이지 목록을 다시 확인하는 중입니다.", "");
+    await loadDrawingLibrary();
+  }
+
+  if (!drawingLibraryLoadedItems.length) {
+    setDrawingLibraryMessage("대기열에 추가할 저장 페이지가 없습니다.", "error");
+    return;
+  }
+
+  drawingLibrarySelectionAction = "queue";
+  drawingLibrarySelectionMode = true;
+  drawingLibrarySelectedPageIds = {};
+
+  updateDrawingLibrarySelectionButtons();
+  renderDrawingLibrary(drawingLibraryLoadedItems);
+  setDrawingLibraryMessage(
+    "작업 대기열에 넣을 페이지를 선택한 뒤 선택 완료를 누르세요.",
+    ""
+  );
+}
+
+async function beginDrawingLibraryDeleteSelection() {
+  if (!drawingLibraryLoadedItems.length) {
+    setDrawingLibraryMessage("저장된 페이지 목록을 다시 확인하는 중입니다.", "");
+    await loadDrawingLibrary();
+  }
+
+  if (!drawingLibraryLoadedItems.length) {
+    setDrawingLibraryMessage("삭제할 저장 페이지가 없습니다.", "error");
+    return;
+  }
+
+  drawingLibrarySelectionAction = "delete";
+  drawingLibrarySelectionMode = true;
+  drawingLibrarySelectedPageIds = {};
+
+  updateDrawingLibrarySelectionButtons();
+  renderDrawingLibrary(drawingLibraryLoadedItems);
+  setDrawingLibraryMessage(
+    "Firebase에서 삭제할 저장 페이지를 체크한 뒤 선택 삭제를 누르세요.",
+    "error"
+  );
+}
+
+function cancelDrawingLibraryQueueSelection() {
+  drawingLibrarySelectionAction = "";
+  drawingLibrarySelectionMode = false;
+  drawingLibrarySelectedPageIds = {};
+
+  updateDrawingLibrarySelectionButtons();
+  renderDrawingLibrary(drawingLibraryLoadedItems);
+  setDrawingLibraryMessage("");
+}
+
+async function confirmDrawingLibraryQueueSelection() {
+  var selectedItems = drawingLibraryLoadedItems
+    .filter(function(item) {
+      return drawingLibrarySelectedPageIds[item.id] === true;
+    })
+    .sort(compareDrawingPageLibraryItems);
+
+  if (!selectedItems.length) {
+    setDrawingLibraryMessage(
+      drawingLibrarySelectionAction === "delete"
+        ? "삭제할 저장 페이지를 선택해 주세요."
+        : "작업 대기열에 추가할 페이지를 선택해 주세요.",
+      "error"
+    );
+    return;
+  }
+
+  if (drawingLibrarySelectionAction === "delete") {
+    await deleteDrawingPageLibraryItems(selectedItems);
+    return;
+  }
+
+  selectedItems.forEach(function(item) {
+    addSavedPdfPageToQueue(item);
+  });
+
+  drawingLibrarySelectionAction = "";
+  drawingLibrarySelectionMode = false;
+  drawingLibrarySelectedPageIds = {};
+  updateDrawingLibrarySelectionButtons();
+  showDrawingQueuePanel();
+  renderDrawingQueue();
+
+  setAdminMessage(
+    "저장된 PDF 페이지 " +
+    selectedItems.length +
+    "장을 페이지 순서대로 작업 대기열에 추가했습니다. 필요한 범위를 선택하세요."
+  );
+}
+
+function renderDrawingLibrary(items) {
+  var list = document.getElementById("drawingLibraryList");
+  if (!list) return;
+
+  items = Array.isArray(items) ? items : [];
+
+  if (!drawingLibrarySelectionMode) {
+    drawingLibraryLoadedItems = items.slice();
+  }
+
+  list.innerHTML = "";
+
+  if (!items.length) {
+    var empty = document.createElement("p");
+    empty.className = "drawing-library-empty";
+    empty.textContent = "저장된 PDF 페이지가 없습니다. 새 PDF를 열어 필요한 페이지만 저장하세요.";
+    list.appendChild(empty);
+    return;
+  }
+
+  items.forEach(function(item) {
+    var card = document.createElement("article");
+    card.className = "drawing-library-card";
+
+    var thumb = document.createElement("img");
+    thumb.className = "drawing-library-thumb";
+    thumb.alt = item.title || "저장 PDF 페이지";
+    thumb.src = item.thumbnailUrl || item.imageUrl || "";
+
+    var body = document.createElement("div");
+    body.className = "drawing-library-body";
+
+    var title = document.createElement("div");
+    title.className = "drawing-library-title";
+    title.textContent = item.title || "저장 PDF 페이지";
+
+    var meta = document.createElement("div");
+    meta.className = "drawing-library-meta";
+    meta.textContent = [
+      item.sourcePdfName || "",
+      item.pageNumber ? item.pageNumber + "페이지" : "",
+      formatDrawingLibraryTime(item.updatedAt || item.createdAt)
+    ].filter(Boolean).join(" / ");
+
+    var actions = document.createElement("div");
+    actions.className = "drawing-library-actions";
+
+    body.appendChild(title);
+    body.appendChild(meta);
+
+    if (drawingLibrarySelectionMode) {
+      card.classList.add("selectable");
+
+      if (drawingLibrarySelectionAction === "delete") {
+        card.classList.add("delete-selectable");
+      }
+
+      if (drawingLibrarySelectedPageIds[item.id] === true) {
+        card.classList.add("selected");
+      }
+
+      var checkOverlay = document.createElement("label");
+      checkOverlay.className = "drawing-library-check-overlay";
+
+      var checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.className = "drawing-library-check";
+      checkbox.checked = drawingLibrarySelectedPageIds[item.id] === true;
+
+      function applySelectedState(isSelected) {
+        if (isSelected) {
+          drawingLibrarySelectedPageIds[item.id] = true;
+          card.classList.add("selected");
+        } else {
+          delete drawingLibrarySelectedPageIds[item.id];
+          card.classList.remove("selected");
+        }
+
+        checkbox.checked = isSelected;
+        var selectedCount = Object.keys(drawingLibrarySelectedPageIds).length;
+        setDrawingLibraryMessage("선택된 페이지 " + selectedCount + "장", "");
+      }
+
+      checkbox.addEventListener("change", function(event) {
+        event.stopPropagation();
+        applySelectedState(checkbox.checked);
+      });
+
+      checkOverlay.addEventListener("click", function(event) {
+        event.stopPropagation();
+      });
+
+      card.addEventListener("click", function(event) {
+        if (
+          event.target === checkbox ||
+          event.target === checkOverlay ||
+          checkOverlay.contains(event.target)
+        ) {
+          return;
+        }
+
+        applySelectedState(drawingLibrarySelectedPageIds[item.id] !== true);
+      });
+
+      checkOverlay.appendChild(checkbox);
+      card.appendChild(checkOverlay);
+    } else {
+      var useButton = document.createElement("button");
+      useButton.type = "button";
+      useButton.className = "drawing-small-button primary";
+      useButton.textContent = "작업 대기열 추가";
+      useButton.addEventListener("click", function() {
+        addSavedPdfPageToQueue(item);
+      });
+
+      var deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "drawing-small-button danger";
+      deleteButton.textContent = "삭제";
+      deleteButton.addEventListener("click", function() {
+        deleteDrawingPageLibraryItem(item);
+      });
+
+      actions.appendChild(useButton);
+      actions.appendChild(deleteButton);
+      body.appendChild(actions);
+    }
+
+    card.appendChild(thumb);
+    card.appendChild(body);
+    list.appendChild(card);
+  });
+}
+
+async function loadDrawingLibrary() {
+  var list = document.getElementById("drawingLibraryList");
+
+  if (!db) {
+    drawingLibraryLoadedItems = [];
+    updateDrawingLibrarySelectionButtons();
+    if (list) {
+      list.innerHTML = '<p class="drawing-library-empty">Firebase 연결 후 PDF 페이지 보관함을 사용할 수 있습니다.</p>';
+    }
+    return;
+  }
+
+  if (list) {
+    list.innerHTML = '<p class="drawing-library-empty">저장된 PDF 페이지를 불러오는 중입니다.</p>';
+  }
+
+  try {
+    var snapshot = await db.collection("drawing_page_library").get();
+    var items = [];
+
+    snapshot.forEach(function(doc) {
+      var data = doc.data() || {};
+      if (data.isDeleted === true) return;
+      items.push(Object.assign({ id: doc.id }, data));
+    });
+
+    items.sort(compareDrawingPageLibraryItems);
+
+    drawingLibraryLoadedItems = items.slice();
+    renderDrawingLibrary(drawingLibraryLoadedItems);
+    updateDrawingLibrarySelectionButtons();
+
+    if (!items.length) {
+      setAdminMessage("저장된 PDF 페이지가 없습니다. 새 PDF를 열어 필요한 페이지만 저장하세요.");
+    }
+  } catch (error) {
+    console.error("[ADMIN_V2_DRAWING_PAGE_LIBRARY_LOAD] failed", error);
+    drawingLibraryLoadedItems = [];
+    updateDrawingLibrarySelectionButtons();
+    if (list) {
+      list.innerHTML = '<p class="drawing-library-empty">PDF 페이지 보관함을 불러오지 못했습니다.</p>';
+    }
+    if (error && (error.code === "permission-denied" || error.code === "storage/unauthorized")) {
+      setAdminMessage("PDF 페이지 보관함 권한이 없습니다. Firestore 규칙을 확인하세요.");
+    } else {
+      setAdminMessage("PDF 페이지 보관함을 불러오지 못했습니다.");
+    }
+  }
+}
+
+function openDrawingLibrary() {
+  var overlay = document.getElementById("drawingLibraryOverlay");
+
+  drawingLibrarySelectionAction = "";
+  drawingLibrarySelectionMode = false;
+  drawingLibrarySelectedPageIds = {};
+  updateDrawingLibrarySelectionButtons();
+  setDrawingLibraryMessage("");
+
+  if (overlay) overlay.classList.remove("hidden");
+  setAdminMessage("저장된 PDF 페이지를 불러오는 중입니다.");
+  loadDrawingLibrary();
+}
+
+function addSavedPdfPageToQueue(pageItem) {
+  if (!pageItem || !pageItem.imageUrl) {
+    setAdminMessage("저장된 PDF 페이지 이미지 정보를 찾을 수 없습니다.");
+    return;
+  }
+
+  var queuedItem = queueDrawingItem({
+    title: pageItem.title ||
+      ((pageItem.sourcePdfName || "PDF 도면") +
+      " - " +
+      String(pageItem.pageNumber || "") +
+      "페이지"),
+    sourceType: "saved_pdf_page",
+    sourceFileName: pageItem.sourcePdfName || "PDF 도면",
+    pageNumber: pageItem.pageNumber || null,
+    sourceImageUrl: pageItem.imageUrl,
+    imageUrl: pageItem.imageUrl,
+    croppedImageUrl: "",
+    previewUrl: pageItem.thumbnailUrl || pageItem.imageUrl,
+    croppedWidth: 0,
+    croppedHeight: 0,
+    cropRect: null,
+    libraryPageId: pageItem.id,
+    libraryImageUrl: pageItem.imageUrl,
+    libraryThumbnailUrl: pageItem.thumbnailUrl || "",
+    fromLibrary: true,
+    controlPoints: [],
+    status: "저장된 고화질 페이지 / 범위 선택 전"
+  });
+
+  closeDrawingLibrary();
+  showDrawingQueuePanel();
+  activeDrawingQueueId = queuedItem.id;
+  renderDrawingQueue();
+  setAdminMessage("저장된 PDF 페이지를 작업 대기열에 추가했습니다. 필요한 범위를 선택하세요.");
+}
+
+async function deleteDrawingPageLibraryItem(item) {
+  if (!db || !storage || !item || !item.id) return;
+
+  if (!window.confirm("PDF 페이지 보관함에서 이 페이지를 삭제할까요?")) return;
+
+  setAdminMessage("저장된 PDF 페이지를 삭제하는 중입니다.");
+
+  try {
+    if (item.imageStoragePath) {
+      try {
+        await storage.ref().child(item.imageStoragePath).delete();
+      } catch (error) {
+        console.warn("[ADMIN_V2_DRAWING_PAGE_LIBRARY_IMAGE_DELETE]", error);
+      }
+    }
+
+    if (item.thumbnailStoragePath) {
+      try {
+        await storage.ref().child(item.thumbnailStoragePath).delete();
+      } catch (error) {
+        console.warn("[ADMIN_V2_DRAWING_PAGE_LIBRARY_THUMB_DELETE]", error);
+      }
+    }
+
+    await db.collection("drawing_page_library").doc(item.id).delete();
+    await loadDrawingLibrary();
+    setAdminMessage("저장된 PDF 페이지를 삭제했습니다.");
+  } catch (error) {
+    console.error("[ADMIN_V2_DRAWING_PAGE_LIBRARY_DELETE] failed", error);
+    if (error && error.code === "permission-denied") {
+      setAdminMessage("PDF 페이지 삭제 권한이 없습니다. Firebase Storage/Firestore 규칙을 확인하세요.");
+    } else {
+      setAdminMessage("PDF 페이지 삭제에 실패했습니다. 다시 시도해 주세요.");
+    }
+  }
+}
+
+async function deleteDrawingPageLibraryItems(items) {
+  if (!db || !storage || !Array.isArray(items) || !items.length) {
+    return false;
+  }
+
+  var confirmed = window.confirm(
+    "선택한 PDF 저장 페이지 " +
+      items.length +
+      "장을 Firebase에서 삭제할까요?\n" +
+      "삭제 후에는 복구할 수 없습니다."
+  );
+
+  if (!confirmed) return false;
+
+  setDrawingLibraryMessage(
+    "선택한 PDF 저장 페이지를 삭제하는 중입니다.",
+    ""
+  );
+  setAdminMessage("선택한 PDF 저장 페이지를 삭제하는 중입니다.");
+
+  try {
+    for (var i = 0; i < items.length; i += 1) {
+      var item = items[i];
+
+      if (item.imageStoragePath) {
+        try {
+          await storage.ref().child(item.imageStoragePath).delete();
+        } catch (imageError) {
+          console.warn(
+            "[ADMIN_V2_DRAWING_PAGE_LIBRARY_BULK_IMAGE_DELETE]",
+            item.id,
+            imageError
+          );
+        }
+      }
+
+      if (item.thumbnailStoragePath) {
+        try {
+          await storage.ref().child(item.thumbnailStoragePath).delete();
+        } catch (thumbnailError) {
+          console.warn(
+            "[ADMIN_V2_DRAWING_PAGE_LIBRARY_BULK_THUMB_DELETE]",
+            item.id,
+            thumbnailError
+          );
+        }
+      }
+
+      await db.collection("drawing_page_library").doc(item.id).delete();
+    }
+
+    drawingLibrarySelectionAction = "";
+    drawingLibrarySelectionMode = false;
+    drawingLibrarySelectedPageIds = {};
+
+    await loadDrawingLibrary();
+    updateDrawingLibrarySelectionButtons();
+
+    setDrawingLibraryMessage("선택한 저장 페이지를 삭제했습니다.", "success");
+    setAdminMessage(
+      "선택한 PDF 저장 페이지 " +
+        items.length +
+        "장을 삭제했습니다."
+    );
+
+    return true;
+  } catch (error) {
+    console.error(
+      "[ADMIN_V2_DRAWING_PAGE_LIBRARY_BULK_DELETE] failed",
+      error
+    );
+
+    var errorMessage =
+      error &&
+      (
+        error.code === "permission-denied" ||
+        error.code === "storage/unauthorized"
+      )
+        ? "PDF 페이지 삭제 권한이 없습니다. Firebase Storage/Firestore 규칙을 확인하세요."
+        : "선택한 PDF 페이지 삭제에 실패했습니다. 다시 시도해 주세요.";
+
+    setDrawingLibraryMessage(errorMessage, "error");
+    setAdminMessage(errorMessage);
+
+    return false;
+  }
+}
+
 async function renderPdfSelectionPages(pdf, fileName) {
   var grid = document.getElementById("drawingPageGrid");
   var title = document.getElementById("drawingSelectTitle");
 
+  setDrawingSelectMessage("PDF 페이지 미리보기를 불러오는 중입니다.");
   grid.innerHTML = "";
   title.textContent = "PDF 도면 선택 - " + fileName;
 
@@ -8487,6 +9912,8 @@ async function renderPdfSelectionPages(pdf, fileName) {
       checkbox.disabled = true;
     }
   }
+
+  setDrawingSelectMessage("저장하거나 작업할 페이지를 선택하세요.");
 }
 
 async function openPdfDrawingSelector(file) {
@@ -8508,6 +9935,7 @@ async function openPdfDrawingSelector(file) {
     setAdminMessage("\uC774\uBBF8 \uBD88\uB7EC\uC628 PDF\uB97C \uB2E4\uC2DC \uC0AC\uC6A9\uD569\uB2C8\uB2E4.");
 
     document.getElementById("drawingSelectOverlay").classList.remove("hidden");
+    setDrawingSelectMessage("");
 
     await renderPdfSelectionPages(
       drawingPdfDocument,
@@ -8535,6 +9963,7 @@ async function openPdfDrawingSelector(file) {
   drawingPdfSourceKey = sourceKey;
 
   document.getElementById("drawingSelectOverlay").classList.remove("hidden");
+  setDrawingSelectMessage("");
 
   await renderPdfSelectionPages(
     drawingPdfDocument,
@@ -8550,13 +9979,22 @@ async function addSelectedPdfPagesToQueue() {
   );
 
   if (!selectedInputs.length) {
-    setAdminMessage("대기열에 추가할 페이지를 선택해 주세요.");
+    var noSelectionMessage = "대기열에 추가할 PDF 페이지를 선택해 주세요.";
+    setDrawingSelectMessage(noSelectionMessage, "error");
+    setAdminMessage(noSelectionMessage);
     return;
   }
 
   var button = document.getElementById("drawingAddQueueButton");
-  button.disabled = true;
-  button.textContent = "고해상도 도면 생성 중...";
+  var progressMessage = "선택한 PDF 페이지를 작업 이미지로 준비하는 중입니다.";
+
+  setDrawingSelectMessage(progressMessage);
+  setAdminMessage(progressMessage);
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "고해상도 도면 생성 중...";
+  }
 
   try {
     for (var i = 0; i < selectedInputs.length; i += 1) {
@@ -8567,6 +10005,7 @@ async function addSelectedPdfPagesToQueue() {
       queueDrawingItem({
         title: drawingSelectionFileName + " - " + pageNumber + "페이지",
         sourceType: "pdf",
+        sourceFileName: drawingSelectionFileName,
         pageNumber: pageNumber,
         previewUrl: previewUrl,
         imageUrl: highResolutionUrl
@@ -8582,10 +10021,112 @@ async function addSelectedPdfPagesToQueue() {
     );
   } catch (error) {
     console.error("[ADMIN_V2_PDF_QUEUE_HIGH_RES] failed", error);
-    setAdminMessage("선택한 PDF 도면을 대기열에 추가하지 못했습니다.");
+    var errorMessage = "선택한 PDF 도면을 대기열에 추가하지 못했습니다.";
+    setDrawingSelectMessage(errorMessage, "error");
+    setAdminMessage(errorMessage);
   } finally {
-    button.disabled = false;
-    button.textContent = "선택 도면 대기열 추가";
+    if (button) {
+      button.disabled = false;
+      button.textContent = "이번만 작업 대기열 추가";
+    }
+  }
+}
+
+async function saveSelectedPdfPagesToLibrary() {
+  var selectedInputs = Array.from(
+    document.querySelectorAll(".drawing-page-check:checked")
+  ).sort(function(a, b) {
+    return Number(a.value) - Number(b.value);
+  });
+
+  if (!selectedInputs.length) {
+    var noSelectionMessage = "저장할 PDF 페이지를 선택해 주세요.";
+    setDrawingSelectMessage(noSelectionMessage, "error");
+    setAdminMessage(noSelectionMessage);
+    return;
+  }
+
+  if (!db || !storage) {
+    var firebaseMessage = "Firebase 연결 후 PDF 페이지 보관함에 저장할 수 있습니다.";
+    setDrawingSelectMessage(firebaseMessage, "error");
+    setAdminMessage(firebaseMessage);
+    return;
+  }
+
+  var button = document.getElementById("drawingSavePagesButton");
+  var progressMessage = "선택한 PDF 페이지를 고화질로 변환하고 저장하는 중입니다.";
+
+  setDrawingSelectMessage(progressMessage);
+  setAdminMessage(progressMessage);
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "고화질 변환·저장 중...";
+  }
+
+  var savedCount = 0;
+  var reusedCount = 0;
+
+  try {
+    for (var i = 0; i < selectedInputs.length; i += 1) {
+      var pageNumber = Number(selectedInputs[i].value);
+      var beforeExisting = await findExistingDrawingPageLibraryItem(
+        drawingPdfSourceKey,
+        pageNumber
+      );
+      var highResolutionUrl = await getCachedHighResolutionPdfPage(pageNumber);
+
+      await saveConvertedPdfPageToLibrary({
+        sourcePdfName: drawingSelectionFileName,
+        sourcePdfKey: drawingPdfSourceKey,
+        pageNumber: pageNumber,
+        imageDataUrl: highResolutionUrl,
+        previewDataUrl: drawingPagePreviewByNumber[String(pageNumber)] || ""
+      });
+
+      if (beforeExisting) {
+        reusedCount += 1;
+      } else {
+        savedCount += 1;
+      }
+    }
+
+    await loadDrawingLibrary();
+    var successMessage =
+      "선택한 PDF 페이지 " +
+      selectedInputs.length +
+      "장을 보관함에 반영했습니다. 신규 저장 " +
+      savedCount +
+      "장 / 기존 재사용 " +
+      reusedCount +
+      "장입니다.";
+
+    setDrawingSelectMessage(successMessage, "success");
+    setAdminMessage(successMessage);
+
+    await new Promise(function(resolve) {
+      setTimeout(resolve, 700);
+    });
+
+    closeDrawingSelectModal();
+    openDrawingLibrary();
+  } catch (error) {
+    console.error("[ADMIN_V2_DRAWING_PAGE_LIBRARY_SAVE] failed", error);
+    var errorMessage = "";
+
+    if (error && (error.code === "permission-denied" || error.code === "storage/unauthorized")) {
+      errorMessage = "PDF 페이지 저장 권한이 없습니다. Firebase Storage/Firestore 규칙을 확인하세요.";
+    } else {
+      errorMessage = "선택한 PDF 페이지를 저장하지 못했습니다. 다시 시도해 주세요.";
+    }
+
+    setDrawingSelectMessage(errorMessage, "error");
+    setAdminMessage(errorMessage);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "선택 페이지 고화질 변환·저장";
+    }
   }
 }
 
@@ -8610,6 +10151,7 @@ async function handleDrawingOverlayFileSelect(event) {
       queueDrawingItem({
         title: fileName,
         sourceType: "image",
+        sourceFileName: fileName,
         previewUrl: imageUrl,
         imageUrl: imageUrl
       });
@@ -8839,6 +10381,11 @@ function getDrawingQueueItem(queueId) {
   });
 }
 
+function getActiveDrawingAlignedQueueItem() {
+  if (!drawingAlignedOverlayQueueId) return null;
+  return getDrawingQueueItem(drawingAlignedOverlayQueueId);
+}
+
 function openDrawingCropModal(queueId) {
   var item = getDrawingQueueItem(queueId);
 
@@ -8876,6 +10423,7 @@ function openDrawingCropModal(queueId) {
     closeDrawingCropModal();
   };
 
+  image.crossOrigin = "anonymous";
   image.src = item.sourceImageUrl;
 }
 function drawDrawingCropCanvas() {
@@ -9081,6 +10629,16 @@ function confirmDrawingCropSelection() {
   item.previewUrl = item.croppedImageUrl;
   item.cropRect = rect;
   item.cropQuad = points;
+  item.croppedWidth = cropCanvas.width;
+  item.croppedHeight = cropCanvas.height;
+  item.libraryDrawingId = "";
+  item.libraryPageId = "";
+  item.libraryImageUrl = "";
+  item.libraryThumbnailUrl = "";
+  item.fromLibrary = false;
+  item.manualMapOffsetLat = 0;
+  item.manualMapOffsetLng = 0;
+  item.manualRotationDeg = 0;
   item.controlPoints = [];
   item.status = "범위 선택 완료 / 기준핀 대기";
 
@@ -9163,6 +10721,7 @@ function openDrawingPinModal(queueId) {
     closeDrawingPinModal();
   };
 
+  image.crossOrigin = "anonymous";
   image.src = item.croppedImageUrl;
 }
 
@@ -9293,9 +10852,7 @@ function captureDrawingMapPin(latLng) {
 
   cancelDrawingMapPinCapture();
 
-  item.status = item.controlPoints.length >= 3
-    ? "기준핀 " + item.controlPoints.length + "개 / 정합 가능"
-    : "기준핀 " + item.controlPoints.length + "개 / 최소 3개 필요";
+  item.status = drawingControlPointStatusText(item.controlPoints.length);
 
   renderDrawingQueue();
   renderDrawingControlMapOverlays(item);
@@ -9307,9 +10864,9 @@ function captureDrawingMapPin(latLng) {
   openDrawingPinModal(item.id);
 
   setAdminMessage(
-    item.controlPoints.length >= 3
-      ? "기준핀 " + item.controlPoints.length + "개가 저장되었습니다. 정합을 진행할 수 있습니다."
-      : "기준핀 " + item.controlPoints.length + "개가 저장되었습니다. 최소 3개가 필요합니다."
+    item.controlPoints.length >= DRAWING_MIN_CONTROL_POINTS
+      ? "기준핀 " + item.controlPoints.length + "개가 저장되었습니다. 모든 기준핀을 사용해 최소오차 정합을 진행할 수 있습니다."
+      : "기준핀 " + item.controlPoints.length + "개가 저장되었습니다. " + (DRAWING_MIN_CONTROL_POINTS - item.controlPoints.length) + "개를 더 지정해 주세요."
   );
 
   return true;
@@ -9321,9 +10878,7 @@ function updateDrawingPinInfo() {
 
   if (!item || !info) return;
 
-  info.textContent = item.controlPoints.length >= 3
-    ? "기준핀 " + item.controlPoints.length + "개 / 정합 가능"
-    : "기준핀 " + item.controlPoints.length + "개 / 최소 3개 필요";
+  info.textContent = drawingControlPointStatusText(item.controlPoints.length);
 }
 
 function removeLastDrawingControlPoint() {
@@ -9333,15 +10888,11 @@ function removeLastDrawingControlPoint() {
 
   item.controlPoints.pop();
 
-  item.status = item.controlPoints.length >= 3
-    ? "기준핀 " + item.controlPoints.length + "개 / 정합 가능"
-    : "기준핀 " + item.controlPoints.length + "개 / 최소 3개 필요";
+  item.status = drawingControlPointStatusText(item.controlPoints.length);
 
     if (drawingAlignedOverlayQueueId === item.id) {
-    if (item.controlPoints.length >= 3) {
+    if (item.controlPoints.length >= DRAWING_MIN_CONTROL_POINTS) {
       updateDrawingAlignedOverlayTransform();
-    } else {
-      clearDrawingAlignedOverlay();
     }
   }
 
@@ -9357,6 +10908,9 @@ function resetDrawingControlPoints() {
   if (!item) return;
 
   item.controlPoints = [];
+  item.manualMapOffsetLat = 0;
+  item.manualMapOffsetLng = 0;
+  item.manualRotationDeg = 0;
   item.status = "범위 선택 완료 / 기준핀 대기";
 
     cancelDrawingMapPinCapture();
@@ -9448,31 +11002,114 @@ function solveDrawingLinear3(matrix, values) {
   return [rows[0][3], rows[1][3], rows[2][3]];
 }
 
+function solveDrawingLeastSquaresCoefficients(sourceRows, targetValues) {
+  var normalMatrix = [
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0]
+  ];
+  var normalValues = [0, 0, 0];
+
+  sourceRows.forEach(function(row, index) {
+    var value = Number(targetValues[index]);
+
+    if (!Number.isFinite(value)) return;
+
+    for (var i = 0; i < 3; i += 1) {
+      normalValues[i] += row[i] * value;
+
+      for (var j = 0; j < 3; j += 1) {
+        normalMatrix[i][j] += row[i] * row[j];
+      }
+    }
+  });
+
+  return solveDrawingLinear3(normalMatrix, normalValues);
+}
+
+function calculateDrawingAlignmentErrors(
+  controlPoints,
+  sourceRows,
+  targetPixels,
+  xCoefficients,
+  yCoefficients
+) {
+  var totalError = 0;
+  var maxError = 0;
+  var perPointErrors = controlPoints.map(function(point, index) {
+    var sourceRow = sourceRows[index];
+    var targetPixel = targetPixels[index];
+    var predictedX =
+      xCoefficients[0] * sourceRow[0] +
+      xCoefficients[1] * sourceRow[1] +
+      xCoefficients[2];
+    var predictedY =
+      yCoefficients[0] * sourceRow[0] +
+      yCoefficients[1] * sourceRow[1] +
+      yCoefficients[2];
+    var errorPixels = Math.sqrt(
+      Math.pow(predictedX - targetPixel.x, 2) +
+      Math.pow(predictedY - targetPixel.y, 2)
+    );
+
+    totalError += errorPixels;
+    maxError = Math.max(maxError, errorPixels);
+
+    return {
+      index: index,
+      errorPixels: errorPixels
+    };
+  });
+
+  return {
+    averageErrorPixels: perPointErrors.length ? totalError / perPointErrors.length : 0,
+    maxErrorPixels: maxError,
+    perPointErrors: perPointErrors
+  };
+}
+
 function calculateDrawingAffineTransform(item) {
   if (
     !map ||
     !item ||
     !Array.isArray(item.controlPoints) ||
-    item.controlPoints.length < 3
+    item.controlPoints.length < DRAWING_MIN_CONTROL_POINTS
   ) {
     return null;
   }
 
-  var controlPoints = item.controlPoints.slice(0, 3);
+  var controlPoints = item.controlPoints.slice();
+  var hasInvalidPoint = controlPoints.some(function(point) {
+    return (
+      !Number.isFinite(Number(point.imageX)) ||
+      !Number.isFinite(Number(point.imageY)) ||
+      !Number.isFinite(Number(point.lat)) ||
+      !Number.isFinite(Number(point.lng))
+    );
+  });
+
+  if (hasInvalidPoint) {
+    return null;
+  }
+
   var projection = map.getProjection();
   var anchorPosition = new kakao.maps.LatLng(
-    controlPoints[0].lat,
-    controlPoints[0].lng
+    Number(controlPoints[0].lat),
+    Number(controlPoints[0].lng)
   );
   var anchorPixel = projection.containerPointFromCoords(anchorPosition);
 
-  var sourceMatrix = controlPoints.map(function(point) {
-    return [point.imageX, point.imageY, 1];
+  var sourceRows = controlPoints.map(function(point) {
+    return [
+      Number(point.imageX),
+      Number(point.imageY),
+      1
+    ];
   });
 
   var targetPixels = controlPoints.map(function(point) {
     var pixel = projection.containerPointFromCoords(
-      new kakao.maps.LatLng(point.lat, point.lng)
+      new kakao.maps.LatLng(Number(point.lat), Number(point.lng))
     );
 
     return {
@@ -9481,47 +11118,750 @@ function calculateDrawingAffineTransform(item) {
     };
   });
 
-  var xCoefficients = solveDrawingLinear3(
-    sourceMatrix,
+  var hasInvalidTarget = targetPixels.some(function(point) {
+    return !Number.isFinite(point.x) || !Number.isFinite(point.y);
+  });
+
+  if (hasInvalidTarget) {
+    return null;
+  }
+
+  var xCoefficients = solveDrawingLeastSquaresCoefficients(
+    sourceRows,
     targetPixels.map(function(point) {
       return point.x;
     })
   );
 
-  var yCoefficients = solveDrawingLinear3(
-    sourceMatrix,
+  var yCoefficients = solveDrawingLeastSquaresCoefficients(
+    sourceRows,
     targetPixels.map(function(point) {
       return point.y;
     })
   );
 
-  if (!xCoefficients || !yCoefficients) {
+  if (
+    !xCoefficients ||
+    !yCoefficients ||
+    xCoefficients.some(function(value) { return !Number.isFinite(value); }) ||
+    yCoefficients.some(function(value) { return !Number.isFinite(value); })
+  ) {
+    return null;
+  }
+
+  var errorMetrics = calculateDrawingAlignmentErrors(
+    controlPoints,
+    sourceRows,
+    targetPixels,
+    xCoefficients,
+    yCoefficients
+  );
+
+  var coefficients = {
+    a: Number(xCoefficients[0]),
+    b: Number(yCoefficients[0]),
+    c: Number(xCoefficients[1]),
+    d: Number(yCoefficients[1]),
+    e: Number(xCoefficients[2]),
+    f: Number(yCoefficients[2])
+  };
+
+  return {
+    position: anchorPosition,
+    anchorPixel: anchorPixel,
+    coefficients: coefficients,
+    cssMatrix: [
+      coefficients.a,
+      coefficients.b,
+      coefficients.c,
+      coefficients.d,
+      coefficients.e,
+      coefficients.f
+    ].map(function(value) {
+      return Number(value.toFixed(8));
+    }).join(","),
+    usedPointCount: controlPoints.length,
+    averageErrorPixels: errorMetrics.averageErrorPixels,
+    maxErrorPixels: errorMetrics.maxErrorPixels,
+    perPointErrors: errorMetrics.perPointErrors
+  };
+}
+
+function getDrawingAlignedImageSize(item) {
+  var width = Number(item && item.croppedWidth);
+  var height = Number(item && item.croppedHeight);
+
+  if (
+    Number.isFinite(width) &&
+    width > 0 &&
+    Number.isFinite(height) &&
+    height > 0
+  ) {
+    return { width: width, height: height };
+  }
+
+  if (
+    drawingAlignedOverlayImage &&
+    drawingAlignedOverlayImage.naturalWidth > 0 &&
+    drawingAlignedOverlayImage.naturalHeight > 0
+  ) {
+    return {
+      width: drawingAlignedOverlayImage.naturalWidth,
+      height: drawingAlignedOverlayImage.naturalHeight
+    };
+  }
+
+  width = Number(item && item.width);
+  height = Number(item && item.height);
+
+  if (
+    Number.isFinite(width) &&
+    width > 0 &&
+    Number.isFinite(height) &&
+    height > 0
+  ) {
+    return { width: width, height: height };
+  }
+
+  return null;
+}
+
+function rebaseDrawingAlignedOverlayTransform(item, transform) {
+  if (
+    !map ||
+    !transform ||
+    !transform.position ||
+    !transform.coefficients
+  ) {
+    return null;
+  }
+
+  var imageSize = getDrawingAlignedImageSize(item);
+  var container = document.getElementById("map");
+
+  if (!imageSize || !container || !container.clientWidth || !container.clientHeight) {
+    return null;
+  }
+
+  var projection = map.getProjection();
+  var originalAnchorPixel =
+    projection.containerPointFromCoords(transform.position);
+  var coefficients = transform.coefficients;
+  var a = coefficients.a;
+  var b = coefficients.b;
+  var c = coefficients.c;
+  var d = coefficients.d;
+  var e = coefficients.e;
+  var f = coefficients.f;
+  var determinant = a * d - b * c;
+
+  if (
+    !Number.isFinite(originalAnchorPixel.x) ||
+    !Number.isFinite(originalAnchorPixel.y) ||
+    Math.abs(determinant) < 0.0000001
+  ) {
+    return null;
+  }
+
+  var viewportCenter = {
+    x: container.clientWidth / 2,
+    y: container.clientHeight / 2
+  };
+  var targetX = viewportCenter.x - originalAnchorPixel.x - e;
+  var targetY = viewportCenter.y - originalAnchorPixel.y - f;
+  var sourceX = (d * targetX - c * targetY) / determinant;
+  var sourceY = (-b * targetX + a * targetY) / determinant;
+
+  if (!Number.isFinite(sourceX) || !Number.isFinite(sourceY)) {
+    return null;
+  }
+
+  sourceX = Math.max(0, Math.min(imageSize.width, sourceX));
+  sourceY = Math.max(0, Math.min(imageSize.height, sourceY));
+
+  var mappedOffsetX = a * sourceX + c * sourceY + e;
+  var mappedOffsetY = b * sourceX + d * sourceY + f;
+  var newAnchorPixel = new kakao.maps.Point(
+    originalAnchorPixel.x + mappedOffsetX,
+    originalAnchorPixel.y + mappedOffsetY
+  );
+  var newAnchorPosition =
+    projection.coordsFromContainerPoint(newAnchorPixel);
+  var rebasedE = e - mappedOffsetX;
+  var rebasedF = f - mappedOffsetY;
+
+  if (!newAnchorPosition) {
     return null;
   }
 
   return {
-    position: anchorPosition,
+    position: newAnchorPosition,
+    coefficients: {
+      a: a,
+      b: b,
+      c: c,
+      d: d,
+      e: rebasedE,
+      f: rebasedF
+    },
     cssMatrix: [
-      xCoefficients[0],
-      yCoefficients[0],
-      xCoefficients[1],
-      yCoefficients[1],
-      xCoefficients[2],
-      yCoefficients[2]
+      a,
+      b,
+      c,
+      d,
+      rebasedE,
+      rebasedF
     ].map(function(value) {
       return Number(value.toFixed(8));
     }).join(",")
   };
 }
 
+function drawingCoefficientsToCssMatrix(coefficients) {
+  return [
+    coefficients.a,
+    coefficients.b,
+    coefficients.c,
+    coefficients.d,
+    coefficients.e,
+    coefficients.f
+  ].map(function(value) {
+    return Number(Number(value).toFixed(8));
+  }).join(",");
+}
+
+function applyDrawingManualRotationToCoefficients(
+  coefficients,
+  item,
+  imageSize,
+  previewRotationDeg
+) {
+  if (!coefficients || !item || !imageSize) {
+    return coefficients;
+  }
+
+  var baseRotationDeg = Number(item.manualRotationDeg || 0);
+  var temporaryRotationDeg = Number(previewRotationDeg || 0);
+  var rotationDeg = baseRotationDeg + temporaryRotationDeg;
+
+  if (!Number.isFinite(rotationDeg) || Math.abs(rotationDeg) < 0.000001) {
+    return Object.assign({}, coefficients);
+  }
+
+  var radians = rotationDeg * Math.PI / 180;
+  var cosValue = Math.cos(radians);
+  var sinValue = Math.sin(radians);
+  var a = Number(coefficients.a);
+  var b = Number(coefficients.b);
+  var c = Number(coefficients.c);
+  var d = Number(coefficients.d);
+  var e = Number(coefficients.e);
+  var f = Number(coefficients.f);
+  var sourceCenterX = Number(imageSize.width) / 2;
+  var sourceCenterY = Number(imageSize.height) / 2;
+  var screenCenterX = a * sourceCenterX + c * sourceCenterY + e;
+  var screenCenterY = b * sourceCenterX + d * sourceCenterY + f;
+
+  return {
+    a: cosValue * a - sinValue * b,
+    b: sinValue * a + cosValue * b,
+    c: cosValue * c - sinValue * d,
+    d: sinValue * c + cosValue * d,
+    e:
+      cosValue * (e - screenCenterX) -
+      sinValue * (f - screenCenterY) +
+      screenCenterX,
+    f:
+      sinValue * (e - screenCenterX) +
+      cosValue * (f - screenCenterY) +
+      screenCenterY
+  };
+}
+
+function mapDrawingSourcePointWithCoefficients(
+  coefficients,
+  sourceX,
+  sourceY
+) {
+  return {
+    x:
+      coefficients.a * sourceX +
+      coefficients.c * sourceY +
+      coefficients.e,
+    y:
+      coefficients.b * sourceX +
+      coefficients.d * sourceY +
+      coefficients.f
+  };
+}
+
+function updateDrawingOverlayRotationHandlePositions(
+  coefficients,
+  imageSize
+) {
+  if (
+    !coefficients ||
+    !imageSize ||
+    !drawingAlignedOverlayRotateHandleLeft ||
+    !drawingAlignedOverlayRotateHandleRight ||
+    !drawingAlignedOverlayRotateHandleBottomLeft ||
+    !drawingAlignedOverlayRotateHandleBottomRight
+  ) {
+    return;
+  }
+
+  var topLeftPoint = mapDrawingSourcePointWithCoefficients(
+    coefficients,
+    0,
+    0
+  );
+  var topRightPoint = mapDrawingSourcePointWithCoefficients(
+    coefficients,
+    Number(imageSize.width),
+    0
+  );
+  var bottomLeftPoint = mapDrawingSourcePointWithCoefficients(
+    coefficients,
+    0,
+    Number(imageSize.height)
+  );
+  var bottomRightPoint = mapDrawingSourcePointWithCoefficients(
+    coefficients,
+    Number(imageSize.width),
+    Number(imageSize.height)
+  );
+
+  drawingAlignedOverlayRotateHandleLeft.style.left = topLeftPoint.x + "px";
+  drawingAlignedOverlayRotateHandleLeft.style.top = topLeftPoint.y + "px";
+  drawingAlignedOverlayRotateHandleRight.style.left = topRightPoint.x + "px";
+  drawingAlignedOverlayRotateHandleRight.style.top = topRightPoint.y + "px";
+  drawingAlignedOverlayRotateHandleBottomLeft.style.left =
+    bottomLeftPoint.x + "px";
+  drawingAlignedOverlayRotateHandleBottomLeft.style.top =
+    bottomLeftPoint.y + "px";
+  drawingAlignedOverlayRotateHandleBottomRight.style.left =
+    bottomRightPoint.x + "px";
+  drawingAlignedOverlayRotateHandleBottomRight.style.top =
+    bottomRightPoint.y + "px";
+}
+
+function updateDrawingOverlayRotationHandleVisibility() {
+  var visible = drawingOverlayMoveMode === true;
+
+  [
+    drawingAlignedOverlayRotateHandleLeft,
+    drawingAlignedOverlayRotateHandleRight,
+    drawingAlignedOverlayRotateHandleBottomLeft,
+    drawingAlignedOverlayRotateHandleBottomRight
+  ].forEach(function(handle) {
+    if (!handle) return;
+
+    handle.classList.toggle("visible", visible);
+  });
+}
+
+function applyDrawingManualMapOffset(position, item) {
+  if (!position || !item) return position;
+
+  var lat = Number(position.getLat());
+  var lng = Number(position.getLng());
+  var offsetLat = Number(item.manualMapOffsetLat || 0);
+  var offsetLng = Number(item.manualMapOffsetLng || 0);
+
+  return new kakao.maps.LatLng(
+    lat + offsetLat,
+    lng + offsetLng
+  );
+}
+
+function updateDrawingOverlayMovePreview(deltaX, deltaY) {
+  if (!drawingAlignedOverlayDragWrapper) return;
+
+  drawingAlignedOverlayDragWrapper.style.transform =
+    "translate3d(" +
+    Number(deltaX || 0) +
+    "px, " +
+    Number(deltaY || 0) +
+    "px, 0)";
+}
+
+function clearDrawingOverlayMovePreview() {
+  if (!drawingAlignedOverlayDragWrapper) return;
+
+  drawingAlignedOverlayDragWrapper.style.transform =
+    "translate3d(0, 0, 0)";
+}
+
+function updateDrawingOverlayMoveModeUi() {
+  var button = document.getElementById("drawingOverlayMoveModeButton");
+  var anchor = drawingAlignedOverlayImage
+    ? drawingAlignedOverlayImage.closest(".drawing-aligned-overlay-anchor")
+    : null;
+
+  if (button) {
+    button.classList.toggle("active", drawingOverlayMoveMode);
+    button.textContent = drawingOverlayMoveMode
+      ? "도면 이동 중"
+      : "도면 이동";
+  }
+
+  if (drawingAlignedOverlayImage) {
+    drawingAlignedOverlayImage.classList.toggle(
+      "move-mode",
+      drawingOverlayMoveMode
+    );
+    drawingAlignedOverlayImage.classList.toggle(
+      "dragging",
+      drawingOverlayMoveMode && drawingOverlayMoveState.dragging
+    );
+  }
+
+  if (anchor) {
+    anchor.classList.toggle("move-mode", drawingOverlayMoveMode);
+  }
+
+  updateDrawingOverlayRotationHandleVisibility();
+}
+
+function setDrawingOverlayMoveMode(enabled) {
+  if (enabled === true && (!drawingAlignedOverlay || !drawingAlignedOverlayImage)) {
+    setAdminMessage("먼저 용적도를 지도 위에 배치하세요.");
+    return;
+  }
+
+  drawingOverlayMoveMode = enabled === true;
+
+  drawingOverlayMoveState.dragging = false;
+  drawingOverlayMoveState.pointerId = null;
+  drawingOverlayRotationState.dragging = false;
+  drawingOverlayRotationState.pointerId = null;
+  drawingOverlayRotationState.previewRotationDeg = 0;
+
+  [
+    drawingAlignedOverlayRotateHandleLeft,
+    drawingAlignedOverlayRotateHandleRight,
+    drawingAlignedOverlayRotateHandleBottomLeft,
+    drawingAlignedOverlayRotateHandleBottomRight
+  ].forEach(function(handle) {
+    if (!handle) return;
+
+    handle.classList.remove("dragging");
+  });
+
+  clearDrawingOverlayMovePreview();
+  updateDrawingOverlayMoveModeUi();
+
+  if (map && typeof map.setDraggable === "function") {
+    map.setDraggable(!drawingOverlayMoveMode);
+  }
+
+  if (drawingAlignedOverlay) {
+    updateDrawingAlignedOverlayTransform({ rebaseAnchor: true });
+  }
+
+  setAdminMessage(
+    drawingOverlayMoveMode
+      ? "도면 이동 모드입니다. 도면을 드래그하여 상하좌우 위치를 미세 조정하세요."
+      : "도면 이동 모드를 종료했습니다. 지도 이동이 다시 활성화되었습니다."
+  );
+}
+
+function addDrawingOverlayManualOffsetFromPixels(deltaX, deltaY) {
+  var item = getActiveDrawingAlignedQueueItem();
+
+  if (
+    !item ||
+    !map ||
+    !Number.isFinite(deltaX) ||
+    !Number.isFinite(deltaY)
+  ) {
+    return;
+  }
+
+  var projection = map.getProjection();
+  var mapContainer = document.getElementById("map");
+
+  if (!projection || !mapContainer) return;
+
+  var centerX = mapContainer.clientWidth / 2;
+  var centerY = mapContainer.clientHeight / 2;
+  var before = projection.coordsFromContainerPoint(
+    new kakao.maps.Point(centerX, centerY)
+  );
+  var after = projection.coordsFromContainerPoint(
+    new kakao.maps.Point(centerX + deltaX, centerY + deltaY)
+  );
+
+  item.manualMapOffsetLat =
+    Number(item.manualMapOffsetLat || 0) +
+    (Number(after.getLat()) - Number(before.getLat()));
+  item.manualMapOffsetLng =
+    Number(item.manualMapOffsetLng || 0) +
+    (Number(after.getLng()) - Number(before.getLng()));
+
+  updateDrawingAlignedOverlayTransform({ rebaseAnchor: true });
+  renderDrawingQueue();
+}
+
+function resetDrawingOverlayManualOffset() {
+  var item = getActiveDrawingAlignedQueueItem();
+
+  if (!item) {
+    setAdminMessage("초기화할 정합 도면이 없습니다.");
+    return;
+  }
+
+  item.manualMapOffsetLat = 0;
+  item.manualMapOffsetLng = 0;
+  item.manualRotationDeg = 0;
+  drawingOverlayRotationState.dragging = false;
+  drawingOverlayRotationState.pointerId = null;
+  drawingOverlayRotationState.previewRotationDeg = 0;
+
+  clearDrawingOverlayMovePreview();
+  updateDrawingAlignedOverlayTransform({ rebaseAnchor: true });
+  renderDrawingQueue();
+
+  setAdminMessage(
+    "도면 수동 이동 및 회전값을 초기화했습니다. 자동 정합 위치로 복귀했습니다."
+  );
+}
+
+function getDrawingOverlayRotationCenterClientPoint() {
+  if (!drawingAlignedOverlayImage) return null;
+
+  var rect = drawingAlignedOverlayImage.getBoundingClientRect();
+
+  return {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2
+  };
+}
+
+function getDrawingPointerAngleDeg(
+  centerX,
+  centerY,
+  pointerX,
+  pointerY
+) {
+  return Math.atan2(
+    pointerY - centerY,
+    pointerX - centerX
+  ) * 180 / Math.PI;
+}
+
+function bindDrawingOverlayMoveEvents(image) {
+  if (!image) return;
+
+  image.addEventListener("pointerdown", function(event) {
+    if (!drawingOverlayMoveMode) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    drawingOverlayMoveState.dragging = true;
+    drawingOverlayMoveState.pointerId = event.pointerId;
+    drawingOverlayMoveState.startClientX = event.clientX;
+    drawingOverlayMoveState.startClientY = event.clientY;
+    drawingOverlayMoveState.deltaX = 0;
+    drawingOverlayMoveState.deltaY = 0;
+
+    image.classList.add("dragging");
+
+    if (typeof image.setPointerCapture === "function") {
+      image.setPointerCapture(event.pointerId);
+    }
+  });
+
+  image.addEventListener("pointermove", function(event) {
+    if (
+      !drawingOverlayMoveMode ||
+      !drawingOverlayMoveState.dragging ||
+      drawingOverlayMoveState.pointerId !== event.pointerId
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    drawingOverlayMoveState.deltaX =
+      event.clientX - drawingOverlayMoveState.startClientX;
+    drawingOverlayMoveState.deltaY =
+      event.clientY - drawingOverlayMoveState.startClientY;
+
+    updateDrawingOverlayMovePreview(
+      drawingOverlayMoveState.deltaX,
+      drawingOverlayMoveState.deltaY
+    );
+  });
+
+  function finishMove(event) {
+    if (
+      !drawingOverlayMoveState.dragging ||
+      drawingOverlayMoveState.pointerId !== event.pointerId
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    var deltaX = drawingOverlayMoveState.deltaX;
+    var deltaY = drawingOverlayMoveState.deltaY;
+
+    drawingOverlayMoveState.dragging = false;
+    drawingOverlayMoveState.pointerId = null;
+
+    image.classList.remove("dragging");
+    clearDrawingOverlayMovePreview();
+
+    if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1) {
+      return;
+    }
+
+    addDrawingOverlayManualOffsetFromPixels(deltaX, deltaY);
+    setAdminMessage(
+      "도면 위치를 미세 조정했습니다. 필요하면 이동 초기화로 자동 정합 위치에 복귀할 수 있습니다."
+    );
+  }
+
+  image.addEventListener("pointerup", finishMove);
+  image.addEventListener("pointercancel", finishMove);
+}
+
+function bindDrawingOverlayRotationHandleEvents(handle) {
+  if (!handle) return;
+
+  handle.addEventListener("pointerdown", function(event) {
+    if (!drawingOverlayMoveMode) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    var item = getActiveDrawingAlignedQueueItem();
+    var center = getDrawingOverlayRotationCenterClientPoint();
+
+    if (!item || !center) return;
+
+    drawingOverlayRotationState.dragging = true;
+    drawingOverlayRotationState.pointerId = event.pointerId;
+    drawingOverlayRotationState.startClientX = event.clientX;
+    drawingOverlayRotationState.startClientY = event.clientY;
+    drawingOverlayRotationState.centerClientX = center.x;
+    drawingOverlayRotationState.centerClientY = center.y;
+    drawingOverlayRotationState.startPointerAngleDeg =
+      getDrawingPointerAngleDeg(
+        center.x,
+        center.y,
+        event.clientX,
+        event.clientY
+      );
+    drawingOverlayRotationState.startRotationDeg =
+      Number(item.manualRotationDeg || 0);
+    drawingOverlayRotationState.previewRotationDeg = 0;
+
+    handle.classList.add("dragging");
+
+    if (typeof handle.setPointerCapture === "function") {
+      handle.setPointerCapture(event.pointerId);
+    }
+  });
+
+  handle.addEventListener("pointermove", function(event) {
+    if (
+      !drawingOverlayRotationState.dragging ||
+      drawingOverlayRotationState.pointerId !== event.pointerId
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    var currentAngleDeg =
+      getDrawingPointerAngleDeg(
+        drawingOverlayRotationState.centerClientX,
+        drawingOverlayRotationState.centerClientY,
+        event.clientX,
+        event.clientY
+      );
+    var deltaDeg =
+      currentAngleDeg -
+      drawingOverlayRotationState.startPointerAngleDeg;
+
+    while (deltaDeg > 180) deltaDeg -= 360;
+    while (deltaDeg < -180) deltaDeg += 360;
+
+    drawingOverlayRotationState.previewRotationDeg = deltaDeg;
+
+    requestAnimationFrame(function() {
+      updateDrawingAlignedOverlayTransform({ rebaseAnchor: true });
+    });
+  });
+
+  function finishRotation(event) {
+    if (
+      !drawingOverlayRotationState.dragging ||
+      drawingOverlayRotationState.pointerId !== event.pointerId
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    var item = getActiveDrawingAlignedQueueItem();
+    var deltaDeg =
+      Number(drawingOverlayRotationState.previewRotationDeg || 0);
+
+    drawingOverlayRotationState.dragging = false;
+    drawingOverlayRotationState.pointerId = null;
+    drawingOverlayRotationState.previewRotationDeg = 0;
+
+    handle.classList.remove("dragging");
+
+    if (item && Math.abs(deltaDeg) >= 0.01) {
+      item.manualRotationDeg =
+        Number(item.manualRotationDeg || 0) +
+        deltaDeg;
+    }
+
+    updateDrawingAlignedOverlayTransform({ rebaseAnchor: true });
+    renderDrawingQueue();
+
+    setAdminMessage(
+      "도면 회전을 미세 조정했습니다. 현재 수동 회전각: " +
+      Number((item && item.manualRotationDeg) || 0).toFixed(2) +
+      "°"
+    );
+  }
+
+  handle.addEventListener("pointerup", finishRotation);
+  handle.addEventListener("pointercancel", finishRotation);
+}
+
 function clearDrawingAlignedOverlay() {
+  if (drawingOverlayMoveMode) {
+    setDrawingOverlayMoveMode(false);
+  }
+
   if (drawingAlignedOverlay) {
     drawingAlignedOverlay.setMap(null);
   }
 
   drawingAlignedOverlay = null;
   drawingAlignedOverlayImage = null;
+  drawingAlignedOverlayDragWrapper = null;
+  drawingAlignedOverlayRotationWrapper = null;
+  drawingAlignedOverlayRotateHandleLeft = null;
+  drawingAlignedOverlayRotateHandleRight = null;
+  drawingAlignedOverlayRotateHandleBottomLeft = null;
+  drawingAlignedOverlayRotateHandleBottomRight = null;
   drawingAlignedOverlayQueueId = "";
+  drawingOverlayRotationState.dragging = false;
+  drawingOverlayRotationState.pointerId = null;
+  drawingOverlayRotationState.previewRotationDeg = 0;
 
   var toolbar = document.getElementById("drawingTraceToolbar");
   if (toolbar) {
@@ -9534,7 +11874,9 @@ function clearDrawingAlignedOverlay() {
   }
 }
 
-function updateDrawingAlignedOverlayTransform() {
+function updateDrawingAlignedOverlayTransform(options) {
+  options = options || {};
+
   if (
     !drawingAlignedOverlay ||
     !drawingAlignedOverlayImage ||
@@ -9548,9 +11890,40 @@ function updateDrawingAlignedOverlayTransform() {
 
   if (!transform) return;
 
-  drawingAlignedOverlay.setPosition(transform.position);
+  var appliedTransform = transform;
+
+  if (options.rebaseAnchor === true) {
+    var rebased = rebaseDrawingAlignedOverlayTransform(item, transform);
+
+    if (rebased) {
+      appliedTransform = Object.assign({}, transform, rebased);
+    }
+  }
+
+  var imageSize = getDrawingAlignedImageSize(item);
+  var rotatedCoefficients =
+    applyDrawingManualRotationToCoefficients(
+      appliedTransform.coefficients,
+      item,
+      imageSize,
+      drawingOverlayRotationState.dragging
+        ? drawingOverlayRotationState.previewRotationDeg
+        : 0
+    );
+  var finalPosition = applyDrawingManualMapOffset(
+    appliedTransform.position,
+    item
+  );
+
+  drawingAlignedOverlay.setPosition(finalPosition);
   drawingAlignedOverlayImage.style.transform =
-    "matrix(" + transform.cssMatrix + ")";
+    "matrix(" + drawingCoefficientsToCssMatrix(rotatedCoefficients) + ")";
+  updateDrawingOverlayRotationHandlePositions(
+    rotatedCoefficients,
+    imageSize
+  );
+  updateDrawingOverlayRotationHandleVisibility();
+  item.status = drawingAlignmentStatusText(transform);
 }
 
 function updateDrawingOverlayOpacity(value) {
@@ -9590,9 +11963,13 @@ function placeDrawingOverlayOnMap(queueId) {
     !map ||
     !item ||
     !item.croppedImageUrl ||
-    item.controlPoints.length < 3
+    item.controlPoints.length < DRAWING_MIN_CONTROL_POINTS
   ) {
-    setAdminMessage("정합 기준점 3개 이상을 지정한 뒤 지도에 배치하세요.");
+    setAdminMessage(
+      item && item.controlPoints && item.controlPoints.length === 3
+        ? "기존 3점 정합 항목입니다. 더 안정적인 배치를 위해 기준핀 1개를 추가한 뒤 배치 갱신하세요."
+        : "정합 기준점 4개 이상을 지정한 뒤 지도에 배치하세요."
+    );
     return;
   }
 
@@ -9602,28 +11979,92 @@ function placeDrawingOverlayOnMap(queueId) {
 
   if (!transform) {
     setAdminMessage(
-      "정합 기준점 3개가 한 직선에 가깝습니다. 필지 경계의 서로 떨어진 지점을 다시 선택하세요."
+      "정합 기준점 배치가 불안정합니다. 서로 떨어진 위치의 핀을 다시 선택하세요."
     );
     return;
   }
 
   clearDrawingAlignedOverlay();
 
+  var initialTransform =
+    rebaseDrawingAlignedOverlayTransform(item, transform) || transform;
+
   var anchor = document.createElement("div");
   anchor.className = "drawing-aligned-overlay-anchor";
 
+  var dragWrapper = document.createElement("div");
+  dragWrapper.className = "drawing-aligned-overlay-drag-wrapper";
+
+  var rotationWrapper = document.createElement("div");
+  rotationWrapper.className = "drawing-aligned-overlay-rotation-wrapper";
+
   var image = document.createElement("img");
   image.className = "drawing-aligned-overlay-image";
-  image.src = item.croppedImageUrl;
   image.alt = item.title + " 용적도 오버레이";
   image.style.opacity = "0.5";
   image.style.transform = "matrix(" + transform.cssMatrix + ")";
+  image.onload = function() {
+    if (
+      drawingAlignedOverlay &&
+      drawingAlignedOverlayQueueId === item.id
+    ) {
+      updateDrawingAlignedOverlayTransform({ rebaseAnchor: true });
+    }
+  };
+  image.src = item.croppedImageUrl;
 
-  anchor.appendChild(image);
+  var rotateHandleLeft = document.createElement("button");
+  rotateHandleLeft.type = "button";
+  rotateHandleLeft.className =
+    "drawing-aligned-overlay-rotate-handle left";
+  rotateHandleLeft.setAttribute(
+    "aria-label",
+    "도면 좌측 회전 손잡이"
+  );
+
+  var rotateHandleRight = document.createElement("button");
+  rotateHandleRight.type = "button";
+  rotateHandleRight.className =
+    "drawing-aligned-overlay-rotate-handle right";
+  rotateHandleRight.setAttribute(
+    "aria-label",
+    "도면 우측 회전 손잡이"
+  );
+
+  var rotateHandleBottomLeft = document.createElement("button");
+  rotateHandleBottomLeft.type = "button";
+  rotateHandleBottomLeft.className =
+    "drawing-aligned-overlay-rotate-handle bottom-left";
+  rotateHandleBottomLeft.setAttribute(
+    "aria-label",
+    "도면 좌측 하단 회전 손잡이"
+  );
+
+  var rotateHandleBottomRight = document.createElement("button");
+  rotateHandleBottomRight.type = "button";
+  rotateHandleBottomRight.className =
+    "drawing-aligned-overlay-rotate-handle bottom-right";
+  rotateHandleBottomRight.setAttribute(
+    "aria-label",
+    "도면 우측 하단 회전 손잡이"
+  );
+
+  bindDrawingOverlayMoveEvents(image);
+  bindDrawingOverlayRotationHandleEvents(rotateHandleLeft);
+  bindDrawingOverlayRotationHandleEvents(rotateHandleRight);
+  bindDrawingOverlayRotationHandleEvents(rotateHandleBottomLeft);
+  bindDrawingOverlayRotationHandleEvents(rotateHandleBottomRight);
+  rotationWrapper.appendChild(image);
+  rotationWrapper.appendChild(rotateHandleLeft);
+  rotationWrapper.appendChild(rotateHandleRight);
+  rotationWrapper.appendChild(rotateHandleBottomLeft);
+  rotationWrapper.appendChild(rotateHandleBottomRight);
+  dragWrapper.appendChild(rotationWrapper);
+  anchor.appendChild(dragWrapper);
 
   drawingAlignedOverlay = new kakao.maps.CustomOverlay({
     map: map,
-    position: transform.position,
+    position: applyDrawingManualMapOffset(initialTransform.position, item),
     content: anchor,
     xAnchor: 0,
     yAnchor: 0,
@@ -9631,11 +12072,19 @@ function placeDrawingOverlayOnMap(queueId) {
   });
 
   drawingAlignedOverlayImage = image;
+  drawingAlignedOverlayDragWrapper = dragWrapper;
+  drawingAlignedOverlayRotationWrapper = rotationWrapper;
+  drawingAlignedOverlayRotateHandleLeft = rotateHandleLeft;
+  drawingAlignedOverlayRotateHandleRight = rotateHandleRight;
+  drawingAlignedOverlayRotateHandleBottomLeft = rotateHandleBottomLeft;
+  drawingAlignedOverlayRotateHandleBottomRight = rotateHandleBottomRight;
   drawingAlignedOverlayQueueId = item.id;
   drawingMarkerTraceMode = false;
+  drawingAlignedOverlayImage.style.transform =
+    "matrix(" + initialTransform.cssMatrix + ")";
+  updateDrawingAlignedOverlayTransform({ rebaseAnchor: true });
 
-  item.status =
-    "지적편집도 위 배치 완료 / 정합점 " + item.controlPoints.length + "개";
+  item.status = drawingAlignmentStatusText(transform);
   activeDrawingQueueId = item.id;
 
   var toolbar = document.getElementById("drawingTraceToolbar");
@@ -9649,12 +12098,19 @@ function placeDrawingOverlayOnMap(queueId) {
     toolbar.classList.remove("hidden");
   }
 
+  updateDrawingOverlayMoveModeUi();
   clearDrawingControlMapOverlays();
   renderDrawingQueue();
 
   setAdminMessage(
     item.title +
-    " 용적도를 지적편집도 위에 배치했습니다. 경계가 맞으면 도면 마커 본뜨기를 시작하세요."
+    " 용적도를 " +
+    transform.usedPointCount +
+    "개 기준핀으로 배치했습니다. 평균 오차 " +
+    transform.averageErrorPixels.toFixed(1) +
+    "px / 최대 오차 " +
+    transform.maxErrorPixels.toFixed(1) +
+    "px 입니다. 어긋난 핀이 보이면 기준핀을 수정한 뒤 배치 갱신하세요."
   );
 }
 
@@ -10500,7 +12956,36 @@ document.getElementById("cadastralButton").addEventListener("click", function() 
 });
 
 document.getElementById("drawingOverlayUploadButton").addEventListener("click", function() {
+  openDrawingLibrary();
+});
+
+document.getElementById("drawingLibraryNewUploadButton").addEventListener("click", function() {
+  closeDrawingLibrary();
   document.getElementById("drawingOverlayFileInput").click();
+});
+
+document.getElementById("drawingLibraryCloseButton").addEventListener("click", closeDrawingLibrary);
+
+document.getElementById("drawingLibrarySelectQueueButton").addEventListener("click", async function() {
+  await beginDrawingLibraryQueueSelection();
+});
+
+document.getElementById("drawingLibrarySelectDeleteButton").addEventListener("click", async function() {
+  await beginDrawingLibraryDeleteSelection();
+});
+
+document.getElementById("drawingLibraryCancelQueueButton").addEventListener("click", function() {
+  cancelDrawingLibraryQueueSelection();
+});
+
+document.getElementById("drawingLibraryConfirmQueueButton").addEventListener("click", async function() {
+  await confirmDrawingLibraryQueueSelection();
+});
+
+document.getElementById("drawingLibraryOverlay").addEventListener("click", function(event) {
+  if (event.target === event.currentTarget) {
+    closeDrawingLibrary();
+  }
 });
 
 document.getElementById("aiImportButton").addEventListener("click", function() {
@@ -10519,6 +13004,22 @@ document.getElementById("placeSearchToggleButton").addEventListener("click", fun
 
   openPlaceSearchPanel();
 });
+
+document.getElementById("lineLabelToggleButton").addEventListener("click", function(event) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  showAllLineLabels = !showAllLineLabels;
+  updateLineLabelToggleButton();
+  updateAllLineLabelVisibility();
+
+  setAdminMessage(
+    showAllLineLabels
+      ? "모든 선 라벨을 표시했습니다."
+      : "모든 선 라벨을 숨겼습니다."
+  );
+});
+updateLineLabelToggleButton();
 
 document.getElementById("placeSearchSubmitButton").addEventListener("click", function(event) {
   event.preventDefault();
@@ -10554,12 +13055,32 @@ document.getElementById("drawingQueueCloseButton").addEventListener("click", fun
   hideDrawingQueuePanel();
 });
 
+document.getElementById("drawingQueueDeleteModeButton").addEventListener("click", function() {
+  beginDrawingQueueDeleteSelection();
+});
+
+document.getElementById("drawingQueueDeleteCancelButton").addEventListener("click", function() {
+  cancelDrawingQueueDeleteSelection();
+});
+
+document.getElementById("drawingQueueDeleteConfirmButton").addEventListener("click", function() {
+  confirmDrawingQueueDeleteSelection();
+});
+
 document.getElementById("drawingTraceOpacityRange").addEventListener("input", function(event) {
   updateDrawingOverlayOpacity(event.target.value);
 });
 
 document.getElementById("drawingTraceMarkerButton").addEventListener("click", function() {
   startDrawingMarkerTracing();
+});
+
+document.getElementById("drawingOverlayMoveModeButton").addEventListener("click", function() {
+  setDrawingOverlayMoveMode(!drawingOverlayMoveMode);
+});
+
+document.getElementById("drawingOverlayMoveResetButton").addEventListener("click", function() {
+  resetDrawingOverlayManualOffset();
 });
 
 document.getElementById("drawingOverlayClearButton").addEventListener("click", function() {
@@ -10578,6 +13099,10 @@ document.getElementById("drawingSelectCancelButton").addEventListener("click", f
 
 document.getElementById("drawingAddQueueButton").addEventListener("click", async function() {
   await addSelectedPdfPagesToQueue();
+});
+
+document.getElementById("drawingSavePagesButton").addEventListener("click", async function() {
+  await saveSelectedPdfPagesToLibrary();
 });
 
 document.getElementById("drawingSelectOverlay").addEventListener("click", function(event) {
