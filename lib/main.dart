@@ -445,6 +445,8 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   String? _lastSentMarkersHash;
   String? _lastSentLinesHash;
   bool? _lastSentMarkerMoveMode;
+  bool _showAllLineLabels = false;
+  bool? _lastSentShowAllLineLabels;
     bool _isTappingMode = false, _isMoveMode = false, _isLineMode = false;
   bool _isMapControlActive = true;
   bool _dedupeMapRenderItems = true;
@@ -699,6 +701,7 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
             _isMapInteracting = false;
             _hasPendingMarkerUpdate = true;
             _lastSentMarkerMoveMode = null;
+            _lastSentShowAllLineLabels = null;
             _invalidateMarkerRenderHash();
             _scheduleMarkerUpdate(ms: 0);
 
@@ -750,6 +753,19 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
       _lastSentMarkerMoveMode = enabled;
     } catch (e) {
       debugPrint('setMarkerMoveMode failed: $e');
+    }
+  }
+
+  Future<void> _setShowAllLineLabelsOnKakaoMap(bool enabled) async {
+    final controller = _webViewController;
+    if (!mounted || controller == null) return;
+    if (_lastSentShowAllLineLabels == enabled) return;
+
+    try {
+      await controller.runJavaScript('setShowAllLineLabels(${enabled ? 'true' : 'false'});');
+      _lastSentShowAllLineLabels = enabled;
+    } catch (e) {
+      debugPrint('setShowAllLineLabels failed: $e');
     }
   }
 
@@ -3151,11 +3167,13 @@ Future<void> _renderLinesOnKakaoMap() async {
     final hash = lineList.map((l) => (l['renderKey'] ?? '').toString()).join('||');
     if (hash == _lastSentLinesHash) {
       if (_verboseMapDebug) debugPrint('[KAKAO_RENDER] skipped lines hash unchanged');
+      await _setShowAllLineLabelsOnKakaoMap(_showAllLineLabels);
       return;
     }
 
     await controller.runJavaScript('renderLines(${jsonEncode(lineList)});');
     _lastSentLinesHash = hash;
+    await _setShowAllLineLabelsOnKakaoMap(_showAllLineLabels);
   } catch (e) {
     debugPrint('renderLines failed: $e');
   }
@@ -4655,6 +4673,33 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
               ),
               const SizedBox(height: 10),
             ],
+
+            FloatingActionButton(
+              heroTag: "lineLabels",
+              tooltip: _showAllLineLabels
+                  ? "선 라벨 끄기"
+                  : "선 라벨 켜기",
+              backgroundColor: _showAllLineLabels
+                  ? Colors.blueAccent
+                  : Colors.white,
+              onPressed: () async {
+                setState(() {
+                  _showAllLineLabels = !_showAllLineLabels;
+                });
+
+                await _setShowAllLineLabelsOnKakaoMap(_showAllLineLabels);
+              },
+              child: Icon(
+                _showAllLineLabels
+                    ? Icons.label
+                    : Icons.label_off,
+                color: _showAllLineLabels
+                    ? Colors.white
+                    : Colors.black,
+              ),
+            ),
+
+            const SizedBox(height: 10),
 
             FloatingActionButton(
               heroTag: "move",

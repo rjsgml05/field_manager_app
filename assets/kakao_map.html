@@ -9,6 +9,7 @@
     var pendingMarkers = null;
     var pendingLines = null;
     var markerMoveMode = false;
+    var showAllLineLabels = false;
     const KAKAO_DEBUG = false;
 
     window.__kakaoMapState = window.__kakaoMapState || {
@@ -16,7 +17,8 @@
       pendingMarkers: pendingMarkers,
       pendingLines: pendingLines,
       pendingDrawMarkers: null,
-      markerMoveMode: markerMoveMode
+      markerMoveMode: markerMoveMode,
+      showAllLineLabels: showAllLineLabels
     };
 
     window.renderMarkers = function(markers) {
@@ -35,6 +37,12 @@
       markerMoveMode = enabled === true || enabled === "true";
       window.__kakaoMapState.markerMoveMode = markerMoveMode;
       if (KAKAO_DEBUG) console.log("setMarkerMoveMode", markerMoveMode);
+    };
+
+    window.setShowAllLineLabels = function(enabled) {
+      showAllLineLabels = enabled === true || enabled === "true";
+      window.__kakaoMapState.showAllLineLabels = showAllLineLabels;
+      if (KAKAO_DEBUG) console.log("setShowAllLineLabels", showAllLineLabels);
     };
 
     window.debugLogToFlutter = function(payload) {
@@ -252,7 +260,8 @@
       pendingMarkers: null,
       pendingLines: null,
       pendingDrawMarkers: null,
-      markerMoveMode: false
+      markerMoveMode: false,
+      showAllLineLabels: false
     };
 
     window.renderMarkers = function(markers) {
@@ -268,6 +277,11 @@
     window.setMarkerMoveMode = function(enabled) {
       window.__kakaoMapState.markerMoveMode = enabled === true || enabled === 'true';
       if (KAKAO_DEBUG) console.log('setMarkerMoveMode', window.__kakaoMapState.markerMoveMode);
+    };
+
+    window.setShowAllLineLabels = function(enabled) {
+      window.__kakaoMapState.showAllLineLabels = enabled === true || enabled === 'true';
+      if (KAKAO_DEBUG) console.log('setShowAllLineLabels', window.__kakaoMapState.showAllLineLabels);
     };
 
     var map;
@@ -287,6 +301,7 @@
     var markerData = [];
     var lineData = [];
     var selectedLineId = null;
+    var showAllLineLabels = window.__kakaoMapState.showAllLineLabels === true;
     var isClusterRenderedOnMap = false;
     var LABEL_HIDE_LEVEL = 7;
     var LINE_LABEL_HIDE_LEVEL = 8;
@@ -337,6 +352,22 @@
         if (map && typeof map.setDraggable === 'function') {
           map.setDraggable(true);
         }
+      }
+    };
+
+    window.setShowAllLineLabels = function(enabled) {
+      showAllLineLabels = enabled === true || enabled === 'true';
+      window.__kakaoMapState.showAllLineLabels = showAllLineLabels;
+
+      if (KAKAO_DEBUG) {
+        console.log('[KAKAO_LINES] show all labels', showAllLineLabels);
+      }
+
+      if (mapReady && map) {
+        scheduleMapRedraw({
+          markers: false,
+          lines: true
+        });
       }
     };
 
@@ -1371,7 +1402,7 @@
           lineMap[id] = polyline;
         }
 
-        var shouldShowLineLabel = isSelected;
+        var shouldShowLineLabel = showAllLineLabels === true;
         var overlay = lineOverlayMap[id];
 
         if (shouldShowLineLabel) {
@@ -1587,6 +1618,10 @@
 
     function setMarkerMoveMode(enabled) {
       window.setMarkerMoveMode(enabled);
+    }
+
+    function setShowAllLineLabels(enabled) {
+      window.setShowAllLineLabels(enabled);
     }
 
     function renderMarkers(markers) {
