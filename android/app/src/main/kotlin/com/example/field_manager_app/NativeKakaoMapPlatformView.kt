@@ -434,12 +434,31 @@ private fun handleMarkerDragTouch(event: MotionEvent): Boolean {
                 override fun onMapReady(kakaoMap: KakaoMap) {
                     this@NativeKakaoMapPlatformView.kakaoMap = kakaoMap
                     val labelManager = kakaoMap.labelManager
-                    labelLayer = labelManager?.layer
+                    val defaultLabelLayer = labelManager?.layer
+                    labelLayer = labelManager?.addLayer(
+                        LabelLayerOptions
+                            .from("field_marker_layer")
+                            .setZOrder(6000)
+                            .setCompetitionType(CompetitionType.None)
+                            .setCompetitionUnit(CompetitionUnit.IconAndText)
+                            .setClickable(true)
+                    ) ?: defaultLabelLayer
+                    if (defaultLabelLayer != null && labelLayer == defaultLabelLayer) {
+                        Log.w(
+                            NativeKakaoMapRegistry.LOG_TAG,
+                            "marker custom layer unavailable; fallback to default label layer"
+                        )
+                    } else if (labelLayer != null) {
+                        Log.d(
+                            NativeKakaoMapRegistry.LOG_TAG,
+                            "marker layer created id=field_marker_layer zOrder=6000 competition=None"
+                        )
+                    }
                     lineLabelStyleCache.clear()
                     lineLabelLayer = labelManager?.addLayer(
                         LabelLayerOptions
                             .from("field_line_label_layer")
-                            .setZOrder(10000)
+                            .setZOrder(20000)
                             .setCompetitionType(CompetitionType.None)
                             .setCompetitionUnit(CompetitionUnit.IconAndText)
                             .setClickable(false)
@@ -447,7 +466,7 @@ private fun handleMarkerDragTouch(event: MotionEvent): Boolean {
                     if (lineLabelLayer != null) {
                         Log.d(
                             NativeKakaoMapRegistry.LOG_TAG,
-                            "line label layer created id=field_line_label_layer zOrder=10000 competition=None"
+                            "line label layer created id=field_line_label_layer zOrder=20000 competition=None"
                         )
                     }
                     routeLineLayer = kakaoMap.routeLineManager?.layer

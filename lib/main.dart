@@ -663,7 +663,7 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
   }
 
   String get _sKey => "${widget.teamName}_${widget.teamPw}";
-  bool get _shouldUseNativeKakaoMap => !kIsWeb && Platform.isAndroid && !isAdmin;
+  bool get _shouldUseNativeKakaoMap => !kIsWeb && Platform.isAndroid;
 
   void _initializeKakaoWebView() {
     _webViewController = WebViewController()
@@ -993,21 +993,22 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
     final args = call.arguments;
     if (args is! Map) return;
 
-    final candidates = [
-      args['id'],
-      args['canonicalMarkerId'],
-      args['originalMarkerId'],
-      args['sourceMarkerId'],
-      args['parentMarkerId'],
-    ].map((value) => value?.toString().trim() ?? '').where((value) => value.isNotEmpty).toList();
+    final target = _resolveNativeMarkerTarget(args);
+    final entry = target?['entry'] as MapEntry<String, SiteData>?;
+    if (entry == null) return;
 
-    for (final candidate in candidates) {
-      final entry = _findMarkerEntry(_markerDataMap, candidate);
-      if (entry != null) {
-        if (_isMoveMode) return;
-        _showMarkerDetails(entry.key);
-        return;
-      }
+    final targetTeam = target?['team'] as TeamData?;
+    final targetTeamDocId = target?['teamDocId']?.toString() ?? widget.teamName;
+    final lineMarkerId = targetTeam == null ? entry.key : '${targetTeamDocId}_${entry.key}';
+
+    if (_isFreeLineMode) {
+      _setStateAndRefreshMap(() => _tempFreeLinePoints.add(entry.value.position));
+    } else if (_isLineMode) {
+      _setStateAndRefreshMap(() => _tempLineMarkerIds.add(lineMarkerId));
+    } else if (_isMoveMode) {
+      return;
+    } else {
+      _showMarkerDetails(entry.key, fromOtherTeam: targetTeam);
     }
   }
 
@@ -1018,20 +1019,10 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
     final lng = (args['lng'] as num?)?.toDouble();
     if (lat == null || lng == null) return;
 
-    final candidates = [
-      args['id'],
-      args['canonicalMarkerId'],
-      args['originalMarkerId'],
-      args['sourceMarkerId'],
-      args['parentMarkerId'],
-    ].map((value) => value?.toString().trim() ?? '').where((value) => value.isNotEmpty).toList();
-
-    MapEntry<String, SiteData>? entry;
-    for (final candidate in candidates) {
-      entry = _findMarkerEntry(_markerDataMap, candidate);
-      if (entry != null) break;
-    }
+    final target = _resolveNativeMarkerTarget(args);
+    final entry = target?['entry'] as MapEntry<String, SiteData>?;
     if (entry == null) return;
+    final targetTeamDocId = target?['teamDocId']?.toString() ?? widget.teamName;
 
     setState(() {
       _isGlobalProcessing = true;
@@ -1042,7 +1033,7 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
       final moved = await _finalizeMovedMarkerCanonicalMutation(
         marker: entry.value,
         point: LatLng(lat, lng),
-        initiatingTeamName: widget.teamName,
+        initiatingTeamName: targetTeamDocId,
       );
       if (!mounted) return;
       if (moved) {
@@ -1085,6 +1076,128 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
           site.originalMarkerId == markerId ||
           site.sourceMarkerId == markerId ||
           site.parentMarkerId == markerId) return entry;
+    }
+
+    return null;
+  }
+
+  MapEntry<String, TeamData>? _findAdminTeamEntry(String? teamName) {
+    final target = teamName?.trim();
+    if (target == null || target.isEmpty) return null;
+
+    final direct = _allTeamsMap[target];
+    if (direct != null) return MapEntry(target, direct);
+
+    for (final entry in _allTeamsMap.entries) {
+      if (entry.value.teamName == target) return entry;
+    }
+
+    return null;
+  }
+
+  List<String> _nativeMarkerEventCandidates(Map args) {
+    final candidates = <String>[];
+
+    void add(dynamic value) {
+      final text = value?.toString().trim() ?? '';
+      if (text.isNotEmpty && !candidates.contains(text)) candidates.add(text);
+    }
+
+    add(args['id']);
+    add(args['markerId']);
+    add(args['displayKey']);
+    add(args['canonicalMarkerId']);
+    add(args['originalMarkerId']);
+    add(args['sourceMarkerId']);
+    add(args['parentMarkerId']);
+
+    final displayKey = args['displayKey']?.toString().trim() ?? '';
+    final displayParts = displayKey.split(':');
+    if (displayParts.length >= 3 && (displayParts.first == 'marker' || displayParts.first == 'own')) {
+      add(displayParts.sublist(2).join(':'));
+    }
+
+    return candidates;
+  }
+
+  String? _nativeMarkerEventTeamName(Map args) {
+    final direct = args['teamName']?.toString().trim();
+    if (direct != null && direct.isNotEmpty) return direct;
+
+    final displayKey = args['displayKey']?.toString().trim() ?? '';
+    final displayParts = displayKey.split(':');
+    if (displayParts.length >= 3 && (displayParts.first == 'marker' || displayParts.first == 'own')) {
+      final teamName = displayParts[1].trim();
+      if (teamName.isNotEmpty) return teamName;
+    }
+
+    return null;
+  }
+
+  Map<String, Object?>? _resolveNativeMarkerTarget(Map args) {
+    final candidates = _nativeMarkerEventCandidates(args);
+    if (candidates.isEmpty) return null;
+
+    final explicitTeamName = _nativeMarkerEventTeamName(args);
+    if (explicitTeamName == null || explicitTeamName == widget.teamName) {
+      for (final candidate in candidates) {
+        final ownEntry = _findMarkerEntry(_markerDataMap, candidate);
+        if (ownEntry != null) {
+          return {
+            'entry': ownEntry,
+            'team': null,
+            'teamDocId': widget.teamName,
+          };
+        }
+      }
+    }
+
+    if (!isAdmin) return null;
+
+    final explicitTeam = _findAdminTeamEntry(explicitTeamName);
+    if (explicitTeam != null) {
+      for (final candidate in candidates) {
+        final teamEntry = _findMarkerEntry(explicitTeam.value.markers, candidate);
+        if (teamEntry != null) {
+          return {
+            'entry': teamEntry,
+            'team': explicitTeam.value,
+            'teamDocId': explicitTeam.key,
+          };
+        }
+      }
+    }
+
+    for (final candidate in candidates) {
+      for (final team in _allTeamsMap.entries) {
+        final prefixes = ['${team.key}_', '${team.value.teamName}_'];
+        for (final prefix in prefixes) {
+          if (!candidate.startsWith(prefix) || candidate.length <= prefix.length) continue;
+
+          final localId = candidate.substring(prefix.length);
+          final teamEntry = _findMarkerEntry(team.value.markers, localId);
+          if (teamEntry != null) {
+            return {
+              'entry': teamEntry,
+              'team': team.value,
+              'teamDocId': team.key,
+            };
+          }
+        }
+      }
+    }
+
+    for (final candidate in candidates) {
+      for (final team in _allTeamsMap.entries) {
+        final teamEntry = _findMarkerEntry(team.value.markers, candidate);
+        if (teamEntry != null) {
+          return {
+            'entry': teamEntry,
+            'team': team.value,
+            'teamDocId': team.key,
+          };
+        }
+      }
     }
 
     return null;
@@ -3330,10 +3443,16 @@ Map<String, dynamic>? _nativeMarkerDtoFromRenderMarker(Map<String, dynamic> mark
     marker['renderKey'] ?? '',
   ].join('|');
 
+  final renderId = (marker['id'] ?? marker['markerId'] ?? '').toString();
+  final markerId = (marker['markerId'] ?? marker['id'] ?? '').toString();
+  final teamName = marker['teamName']?.toString();
+
   return <String, dynamic>{
     'displayKey': displayKey,
     'renderKey': renderKey,
-    'id': (marker['markerId'] ?? marker['id'] ?? '').toString(),
+    'id': renderId,
+    'markerId': markerId,
+    if (teamName != null && teamName.trim().isNotEmpty) 'teamName': teamName,
     'lat': lat,
     'lng': lng,
     'title': title,
@@ -3456,12 +3575,65 @@ Map<String, dynamic>? _nativeLineDtoFromLine(String id, LineData line, {required
 
 List<Map<String, dynamic>> _buildNativeLineJsonList() {
   final lines = <Map<String, dynamic>>[];
-  for (final entry in _lineDataMap.entries) {
-    final dto = _nativeLineDtoFromLine(entry.key, entry.value, teamName: widget.teamName);
-    if (dto != null) lines.add(dto);
+
+  void addLineDto(
+    String fallbackId,
+    LineData line, {
+    required String teamName,
+  }) {
+    final dto = _nativeLineDtoFromLine(
+      fallbackId,
+      line,
+      teamName: teamName,
+    );
+
+    if (dto != null) {
+      lines.add(dto);
+    }
   }
-  lines.sort((a, b) => (a['displayKey'] ?? '').toString().compareTo((b['displayKey'] ?? '').toString()));
-  return lines;
+
+  for (final entry in _lineDataMap.entries) {
+    addLineDto(
+      entry.key,
+      entry.value,
+      teamName: widget.teamName,
+    );
+  }
+
+  if (isAdmin) {
+    for (final team in _allTeamsMap.values) {
+      if (!team.isVisible) continue;
+
+      for (final entry in team.lines.entries) {
+        addLineDto(
+          '${team.teamName}_${entry.key}',
+          entry.value,
+          teamName: team.teamName,
+        );
+      }
+    }
+  }
+
+  final dedupedByDisplayKey = <String, Map<String, dynamic>>{};
+
+  for (final line in lines) {
+    final displayKey = (line['displayKey'] ?? '').toString().trim();
+    if (displayKey.isEmpty) continue;
+
+    dedupedByDisplayKey.putIfAbsent(
+      displayKey,
+      () => line,
+    );
+  }
+
+  final result = dedupedByDisplayKey.values.toList()
+    ..sort(
+      (a, b) => (a['displayKey'] ?? '')
+          .toString()
+          .compareTo((b['displayKey'] ?? '').toString()),
+    );
+
+  return result;
 }
 
 List<Map<String, dynamic>> _buildLineJsonList({bool dedupe = true}) {
