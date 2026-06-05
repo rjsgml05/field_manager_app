@@ -16,6 +16,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "app.mock.location"
     private val NATIVE_MAP_COMMAND_CHANNEL = "field_manager/native_kakao_map_commands"
+    private val NATIVE_MAP_EVENT_CHANNEL = "field_manager/native_kakao_map_events"
     private var mockHandler: Handler? = null     // ⭐ 시스템 친화적 타이머
     private var mockRunnable: Runnable? = null   // ⭐ 시스템 친화적 작업
 
@@ -35,13 +36,34 @@ class MainActivity: FlutterActivity() {
                     NativeKakaoMapRegistry.renderMarkers(call.arguments)
                     result.success(null)
                 }
+                "renderLines" -> {
+                    NativeKakaoMapRegistry.renderLines(call.arguments)
+                    result.success(null)
+                }
                 "clearMarkers" -> {
                     NativeKakaoMapRegistry.clearMarkers()
+                    result.success(null)
+                }
+                "moveTo" -> {
+                    NativeKakaoMapRegistry.moveTo(call.arguments)
+                    result.success(null)
+                }
+                "showCurrentLocation" -> {
+                    NativeKakaoMapRegistry.showCurrentLocation(call.arguments)
+                    result.success(null)
+                }
+                "clearCurrentLocation" -> {
+                    NativeKakaoMapRegistry.clearCurrentLocation()
+                    result.success(null)
+                }
+                "setShowAllLineLabels" -> {
+                    NativeKakaoMapRegistry.setShowAllLineLabels(call.arguments)
                     result.success(null)
                 }
                 else -> result.notImplemented()
             }
         }
+        NativeKakaoMapRegistry.setEventChannel(MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NATIVE_MAP_EVENT_CHANNEL))
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             if (call.method == "startMockLocation") {

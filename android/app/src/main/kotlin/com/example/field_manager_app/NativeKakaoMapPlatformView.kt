@@ -15,14 +15,23 @@ import com.kakao.vectormap.KakaoMapReadyCallback
 import com.kakao.vectormap.LatLng
 import com.kakao.vectormap.MapLifeCycleCallback
 import com.kakao.vectormap.MapView
+import com.kakao.vectormap.camera.CameraUpdateFactory
 import com.kakao.vectormap.label.Label
 import com.kakao.vectormap.label.LabelLayer
 import com.kakao.vectormap.label.LabelOptions
 import com.kakao.vectormap.label.LabelStyle
+import com.kakao.vectormap.label.LabelLayerOptions
 import com.kakao.vectormap.label.LabelStyles
-import com.kakao.vectormap.label.LabelTextBuilder
-import com.kakao.vectormap.label.LabelTextStyle
+import com.kakao.vectormap.label.CompetitionType
+import com.kakao.vectormap.label.CompetitionUnit
+import com.kakao.vectormap.route.RouteLine
+import com.kakao.vectormap.route.RouteLineLayer
+import com.kakao.vectormap.route.RouteLineOptions
+import com.kakao.vectormap.route.RouteLineSegment
+import com.kakao.vectormap.route.RouteLineStyle
 import io.flutter.plugin.platform.PlatformView
+import kotlin.math.max
+import kotlin.math.min
 
 class NativeKakaoMapPlatformView(
     context: Context,
@@ -32,9 +41,19 @@ class NativeKakaoMapPlatformView(
     private var mapView: MapView? = null
     private var kakaoMap: KakaoMap? = null
     private var labelLayer: LabelLayer? = null
+    private var lineLabelLayer: LabelLayer? = null
+    private var routeLineLayer: RouteLineLayer? = null
     private var pendingMarkers: List<NativeMarkerDto>? = null
+    private var pendingLines: List<NativeLineDto>? = null
+    private var pendingGpsLocation: NativeGpsLocation? = null
+    private var pendingShowAllLineLabels = false
     private val renderedMarkers = linkedMapOf<String, NativeMarkerState>()
-    private val styleCache = mutableMapOf<Int, LabelStyles>()
+    private val renderedLines = linkedMapOf<String, NativeLineState>()
+    private val markerStyleCache = mutableMapOf<String, LabelStyles>()
+    private val routeStyleCache = mutableMapOf<Int, RouteLineStyle>()
+    private val lineLabelStyleCache = mutableMapOf<String, LabelStyles>()
+    private val currentLocationStyle by lazy { createCurrentLocationStyle() }
+    private var currentLocationLabel: Label? = null
 
     init {
         if (BuildConfig.KAKAO_NATIVE_APP_KEY.isBlank()) {
@@ -53,10 +72,14 @@ class NativeKakaoMapPlatformView(
     override fun dispose() {
         NativeKakaoMapRegistry.unregister(this)
         clearMarkers()
+        clearLines()
+        clearCurrentLocation()
         finish()
         mapView = null
         kakaoMap = null
         labelLayer = null
+        lineLabelLayer = null
+        routeLineLayer = null
         container.removeAllViews()
         Log.d(NativeKakaoMapRegistry.LOG_TAG, "PlatformView $viewId disposed.")
     }
@@ -89,13 +112,86 @@ class NativeKakaoMapPlatformView(
     }
 
     fun clearMarkers() {
-        labelLayer?.removeAll()
         val removed = renderedMarkers.size
+        renderedMarkers.values.forEach { it.label.remove() }
         renderedMarkers.clear()
         pendingMarkers = emptyList()
         if (removed > 0) {
             Log.d(NativeKakaoMapRegistry.LOG_TAG, "marker diff total=0 added=0 updated=0 removed=$removed reused=0")
         }
+    }
+
+    fun renderLines(lines: List<NativeLineDto>) {
+        if (kakaoMap == null || routeLineLayer == null) {
+            pendingLines = lines
+            Log.d(NativeKakaoMapRegistry.LOG_TAG, "line render pending total=${lines.size}")
+            return
+        }
+
+        applyLineDiff(lines)
+    }
+
+    fun clearLines() {
+        val removed = renderedLines.size
+        renderedLines.values.forEach { state ->
+            state.routeLine.remove()
+            state.titleLabel?.remove()
+        }
+        renderedLines.clear()
+        pendingLines = emptyList()
+        if (removed > 0) {
+            Log.d(NativeKakaoMapRegistry.LOG_TAG, "line diff total=0 added=0 updated=0 removed=$removed reused=0")
+        }
+    }
+
+    fun setShowAllLineLabels(enabled: Boolean) {
+        pendingShowAllLineLabels = enabled
+        for ((_, state) in renderedLines) {
+            if (enabled) {
+                ensureLineTitleLabel(state.line)
+            } else {
+                state.titleLabel?.remove()
+                state.titleLabel = null
+            }
+        }
+    }
+
+    fun moveTo(lat: Double, lng: Double, level: Int) {
+        val map = kakaoMap ?: return
+        if (!isValidCoordinate(lat, lng)) return
+
+        runCatching {
+            map.moveCamera(CameraUpdateFactory.newCenterPosition(LatLng.from(lat, lng), level))
+        }.onFailure {
+            Log.w(NativeKakaoMapRegistry.LOG_TAG, "moveTo failed.", it)
+        }
+    }
+
+    fun showCurrentLocation(location: NativeGpsLocation) {
+        if (kakaoMap == null || labelLayer == null) {
+            pendingGpsLocation = location
+            return
+        }
+
+        val layer = labelLayer ?: return
+        val position = LatLng.from(location.lat, location.lng)
+        currentLocationLabel?.remove()
+        currentLocationLabel = layer.addLabel(
+            LabelOptions
+                .from("field_current_location", position)
+                .setStyles(currentLocationStyle)
+                .setClickable(false)
+        )
+        pendingGpsLocation = location
+        if (location.moveCamera) {
+            moveTo(location.lat, location.lng, location.level ?: 15)
+        }
+    }
+
+    fun clearCurrentLocation() {
+        currentLocationLabel?.remove()
+        currentLocationLabel = null
+        pendingGpsLocation = null
     }
 
     private fun startMap(context: Context) {
@@ -125,16 +221,51 @@ class NativeKakaoMapPlatformView(
             object : KakaoMapReadyCallback() {
                 override fun onMapReady(kakaoMap: KakaoMap) {
                     this@NativeKakaoMapPlatformView.kakaoMap = kakaoMap
+                    val labelManager = kakaoMap.labelManager
+                    labelLayer = labelManager?.layer
+                    lineLabelStyleCache.clear()
+                    lineLabelLayer = labelManager?.addLayer(
+                        LabelLayerOptions
+                            .from("field_line_label_layer")
+                            .setZOrder(10000)
+                            .setCompetitionType(CompetitionType.None)
+                            .setCompetitionUnit(CompetitionUnit.IconAndText)
+                            .setClickable(false)
+                    )
+                    if (lineLabelLayer != null) {
+                        Log.d(
+                            NativeKakaoMapRegistry.LOG_TAG,
+                            "line label layer created id=field_line_label_layer zOrder=10000 competition=None"
+                        )
+                    }
+                    routeLineLayer = kakaoMap.routeLineManager?.layer
+                    kakaoMap.setOnLabelClickListener { _, _, label ->
+                        val marker = label.tag as? NativeMarkerDto ?: return@setOnLabelClickListener false
+                        NativeKakaoMapRegistry.sendMarkerTap(marker)
+                        true
+                    }
+                    kakaoMap.setOnMapClickListener { _, _, _, _ -> }
+
                     Log.d(NativeKakaoMapRegistry.LOG_TAG, "MapView $viewId ready.")
-                    labelLayer = kakaoMap.labelManager?.layer
                     if (labelLayer == null) {
                         Log.w(NativeKakaoMapRegistry.LOG_TAG, "MapView $viewId ready without LabelLayer.")
                         return
                     }
+                    if (routeLineLayer == null) {
+                        Log.w(NativeKakaoMapRegistry.LOG_TAG, "MapView $viewId ready without RouteLineLayer.")
+                    }
+
                     pendingMarkers?.let { latest ->
                         pendingMarkers = null
                         applyMarkerDiff(latest)
                     }
+                    pendingLines?.let { latest ->
+                        pendingLines = null
+                        applyLineDiff(latest)
+                    }
+                    setShowAllLineLabels(pendingShowAllLineLabels)
+                    pendingGpsLocation?.let { showCurrentLocation(it) }
+                    NativeKakaoMapRegistry.sendMapReady()
                 }
 
                 override fun getPosition(): LatLng = LatLng.from(35.1795, 129.0756)
@@ -186,51 +317,267 @@ class NativeKakaoMapPlatformView(
         )
     }
 
+    private fun applyLineDiff(lines: List<NativeLineDto>) {
+        val layer = routeLineLayer ?: return
+        val visibleLines = lines.filter { it.isVisible }
+        val nextByKey = visibleLines.associateBy { it.displayKey }
+        var added = 0
+        var updated = 0
+        var removed = 0
+        var reused = 0
+
+        val staleKeys = renderedLines.keys - nextByKey.keys
+        for (key in staleKeys) {
+            renderedLines.remove(key)?.let { state ->
+                state.routeLine.remove()
+                state.titleLabel?.remove()
+            }
+            removed++
+        }
+
+        for (line in visibleLines) {
+            val current = renderedLines[line.displayKey]
+            if (current == null) {
+                addRouteLine(layer, line)?.let { routeLine ->
+                    val state = NativeLineState(line.renderKey, routeLine, line, null)
+                    renderedLines[line.displayKey] = state
+                    if (pendingShowAllLineLabels) ensureLineTitleLabel(line)
+                    added++
+                }
+            } else if (current.renderKey != line.renderKey) {
+                current.routeLine.remove()
+                current.titleLabel?.remove()
+                addRouteLine(layer, line)?.let { routeLine ->
+                    val state = NativeLineState(line.renderKey, routeLine, line, null)
+                    renderedLines[line.displayKey] = state
+                    if (pendingShowAllLineLabels) ensureLineTitleLabel(line)
+                    updated++
+                }
+            } else {
+                current.line = line
+                reused++
+            }
+        }
+
+        Log.d(
+            NativeKakaoMapRegistry.LOG_TAG,
+            "line diff total=${visibleLines.size} added=$added updated=$updated removed=$removed reused=$reused"
+        )
+    }
+
     private fun addMarkerLabel(layer: LabelLayer, marker: NativeMarkerDto): Label? {
         return runCatching {
-            val title = marker.title.ifBlank { marker.groupName.ifBlank { marker.id } }
             layer.addLabel(
                 LabelOptions
                     .from(marker.displayKey, LatLng.from(marker.lat, marker.lng))
-                    .setStyles(styleForColor(marker.colorValue))
-                    .setTexts(LabelTextBuilder().setTexts(title))
-                    .setClickable(false)
-                    .setTag(marker.displayKey)
+                    .setStyles(styleForMarker(marker))
+                    .setClickable(true)
+                    .setTag(marker)
             )
         }.onFailure {
             Log.w(NativeKakaoMapRegistry.LOG_TAG, "Label add failed displayKey=${marker.displayKey}", it)
         }.getOrNull()
     }
 
-    private fun styleForColor(colorValue: Int): LabelStyles {
-        return styleCache.getOrPut(colorValue) {
+    private fun addRouteLine(layer: RouteLineLayer, line: NativeLineDto): RouteLine? {
+        return runCatching {
+            val points = line.points.map { LatLng.from(it.lat, it.lng) }
+            val segment = RouteLineSegment.from(points, styleForLine(line.colorValue))
+            layer.addRouteLine(
+                RouteLineOptions
+                    .from(line.displayKey, segment)
+                    .setVisible(true)
+                    .setTag(line.displayKey)
+            )
+        }.onFailure {
+            Log.w(NativeKakaoMapRegistry.LOG_TAG, "RouteLine add failed displayKey=${line.displayKey}", it)
+        }.getOrNull()
+    }
+
+    private fun ensureLineTitleLabel(line: NativeLineDto) {
+        if (!pendingShowAllLineLabels || line.title.isBlank()) return
+        val layer = lineLabelLayer ?: return
+        val state = renderedLines[line.displayKey] ?: return
+        state.titleLabel?.remove()
+        val midpoint = line.midpoint() ?: return
+        state.titleLabel = layer.addLabel(
+            LabelOptions
+                .from("field_line_label_${line.displayKey.hashCode()}", LatLng.from(midpoint.lat, midpoint.lng))
+                .setStyles(styleForLineLabel(line.colorValue, line.title))
+                .setClickable(false)
+        )
+        Log.d(
+            NativeKakaoMapRegistry.LOG_TAG,
+            "line label added layer=field_line_label_layer titleHash=${line.title.hashCode()}"
+        )
+    }
+
+    private fun styleForMarker(marker: NativeMarkerDto): LabelStyles {
+        val title = marker.title.ifBlank { marker.groupName.ifBlank { marker.id } }
+        val key = "${marker.colorValue}|${marker.isChecked}|$title"
+        return markerStyleCache.getOrPut(key) {
+            val bitmap = createMarkerBitmap(marker.colorValue, marker.isChecked, title)
             LabelStyles.from(
-                "field_marker_${java.lang.Long.toHexString(colorValue.toLong() and 0xffffffffL)}",
+                "field_marker_${key.hashCode()}",
                 LabelStyle
-                    .from(createMarkerBitmap(colorValue))
-                    .setTextStyles(LabelTextStyle.from(13, Color.rgb(35, 35, 35), 2, Color.WHITE))
-                    .setTextGravity(Gravity.CENTER_HORIZONTAL)
+                    .from(bitmap)
+                    .setAnchorPoint(0.5f, 13f / bitmap.height.toFloat())
             )
         }
     }
 
-    private fun createMarkerBitmap(colorValue: Int): Bitmap {
-        val size = 34
+    private fun styleForLine(colorValue: Int): RouteLineStyle {
+        return routeStyleCache.getOrPut(colorValue) {
+            RouteLineStyle.from(7f, normalizedColor(colorValue), 2f, Color.WHITE)
+        }
+    }
+
+    private fun styleForLineLabel(colorValue: Int, title: String): LabelStyles {
+        val key = "${LINE_LABEL_STYLE_VERSION}|${colorValue}|$title"
+        return lineLabelStyleCache.getOrPut(key) {
+            Log.d(
+                NativeKakaoMapRegistry.LOG_TAG,
+                "line label style border=6.0 version=$LINE_LABEL_STYLE_VERSION"
+            )
+            LabelStyles.from(
+                "field_line_label_${key.hashCode()}",
+                LabelStyle
+                    .from(createLineLabelBitmap(title, colorValue))
+                    .setAnchorPoint(0.5f, 0.5f)
+            )
+        }
+    }
+
+    private fun createCurrentLocationStyle(): LabelStyles {
+        val size = 30
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = if (Color.alpha(colorValue) == 0) colorValue or Color.BLACK else colorValue
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(30, 125, 255) }
+        val halo = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(70, 30, 125, 255) }
+        val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 3f
+            color = Color.WHITE
         }
+        val center = size / 2f
+        canvas.drawCircle(center, center, 14f, halo)
+        canvas.drawCircle(center, center, 8f, fill)
+        canvas.drawCircle(center, center, 8f, border)
+        return LabelStyles.from(
+            "field_current_location",
+            LabelStyle.from(bitmap).setAnchorPoint(0.5f, 0.5f)
+        )
+    }
+
+    private fun createMarkerBitmap(colorValue: Int, isChecked: Boolean, title: String): Bitmap {
+        val text = title.trim().ifBlank { " " }.take(12)
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(35, 35, 35)
+            textSize = 15f
+            textAlign = Paint.Align.CENTER
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        }
+        val textWidth = textPaint.measureText(text)
+        val labelHorizontalPadding = 3.5f
+        val labelVerticalPadding = 2.5f
+        val labelWidth = max(14f, textWidth + (labelHorizontalPadding * 2f))
+        val width = max(34, min(140, labelWidth.toInt() + 4))
+        val fontMetrics = textPaint.fontMetrics
+        val labelHeight = (fontMetrics.descent - fontMetrics.ascent) + (labelVerticalPadding * 2f)
+        val height = 51
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = normalizedColor(colorValue) }
         val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = 4f
             color = Color.WHITE
         }
+        val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(55, 0, 0, 0) }
 
-        val center = size / 2f
-        canvas.drawCircle(center, center, 12f, fill)
-        canvas.drawCircle(center, center, 12f, border)
+        val cx = width / 2f
+        val cy = 13f
+        canvas.drawCircle(cx + 1.5f, cy + 2f, 13f, shadow)
+        canvas.drawCircle(cx, cy, 12f, fill)
+        canvas.drawCircle(cx, cy, 12f, border)
+
+        if (isChecked) {
+            val check = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = 3f
+                strokeCap = Paint.Cap.ROUND
+                strokeJoin = Paint.Join.ROUND
+                color = Color.WHITE
+            }
+            canvas.drawLine(cx - 6f, cy, cx - 2f, cy + 5f, check)
+            canvas.drawLine(cx - 2f, cy + 5f, cx + 7f, cy - 6f, check)
+        }
+
+        val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(225, 255, 255, 255) }
+        val labelLeft = cx - (labelWidth / 2f)
+        val labelTop = 30f
+        val labelRight = cx + (labelWidth / 2f)
+        val labelBottom = labelTop + labelHeight
+        canvas.drawRoundRect(labelLeft, labelTop, labelRight, labelBottom, 6f, 6f, bg)
+        val textBaseline = labelTop + labelVerticalPadding - fontMetrics.ascent
+        canvas.drawText(text, cx, textBaseline, textPaint)
         return bitmap
+    }
+
+    private fun createLineLabelBitmap(title: String, colorValue: Int): Bitmap {
+        val text = title.trim().ifBlank { " " }.take(16)
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 24f
+            textAlign = Paint.Align.CENTER
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        }
+        val horizontalPadding = 12f
+        val verticalPadding = 7f
+        val borderWidth = 6f
+        val shadowMargin = 4f
+        val fontMetrics = textPaint.fontMetrics
+        val width = max(
+            70,
+            min(
+                240,
+                (textPaint.measureText(text) + (horizontalPadding * 2f) + (borderWidth * 2f) + shadowMargin).toInt() + 1
+            )
+        )
+        val height = max(
+            44,
+            ((fontMetrics.descent - fontMetrics.ascent) + (verticalPadding * 2f) + (borderWidth * 2f) + shadowMargin).toInt() + 1
+        )
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(55, 0, 0, 0) }
+        val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = normalizedColor(colorValue)
+            style = Paint.Style.STROKE
+            strokeWidth = borderWidth
+        }
+        val rectInset = (borderWidth / 2f) + 1f
+        canvas.drawRoundRect(
+            rectInset + 1f,
+            rectInset + 2f,
+            width - rectInset + 1f,
+            height - rectInset + 2f,
+            12f,
+            12f,
+            shadow
+        )
+        canvas.drawRoundRect(rectInset, rectInset, width - rectInset, height - rectInset, 12f, 12f, bg)
+        canvas.drawRoundRect(rectInset, rectInset, width - rectInset, height - rectInset, 12f, 12f, stroke)
+        val baseline = (height / 2f) - ((fontMetrics.ascent + fontMetrics.descent) / 2f)
+        val textShadow = Paint(textPaint).apply { color = Color.argb(55, 255, 255, 255) }
+        canvas.drawText(text, (width / 2f) + 1f, baseline + 1f, textShadow)
+        canvas.drawText(text, width / 2f, baseline, textPaint)
+        return bitmap
+    }
+
+    private fun normalizedColor(colorValue: Int): Int {
+        return if (Color.alpha(colorValue) == 0) colorValue or Color.BLACK else colorValue
     }
 
     private fun showMissingKeyMessage(context: Context) {
@@ -255,6 +602,18 @@ data class NativeMarkerState(
     val label: Label
 )
 
+data class NativeLineState(
+    val renderKey: String,
+    val routeLine: RouteLine,
+    var line: NativeLineDto,
+    var titleLabel: Label?
+)
+
+data class NativePoint(
+    val lat: Double,
+    val lng: Double
+)
+
 data class NativeMarkerDto(
     val displayKey: String,
     val renderKey: String,
@@ -263,8 +622,23 @@ data class NativeMarkerDto(
     val lng: Double,
     val title: String,
     val groupName: String,
-    val colorValue: Int
+    val colorValue: Int,
+    val isChecked: Boolean,
+    val canonicalMarkerId: String?,
+    val originalMarkerId: String?,
+    val sourceMarkerId: String?,
+    val parentMarkerId: String?
 ) {
+    fun toEventMap(): Map<String, Any?> = mapOf(
+        "event" to "markerTap",
+        "displayKey" to displayKey,
+        "id" to id,
+        "canonicalMarkerId" to canonicalMarkerId,
+        "originalMarkerId" to originalMarkerId,
+        "sourceMarkerId" to sourceMarkerId,
+        "parentMarkerId" to parentMarkerId
+    )
+
     companion object {
         fun fromFlutterList(arguments: Any?): List<NativeMarkerDto> {
             val items = arguments as? List<*> ?: return emptyList()
@@ -272,9 +646,7 @@ data class NativeMarkerDto(
                 val map = item as? Map<*, *> ?: return@mapNotNull null
                 val lat = (map["lat"] as? Number)?.toDouble() ?: return@mapNotNull null
                 val lng = (map["lng"] as? Number)?.toDouble() ?: return@mapNotNull null
-                if (!lat.isFinite() || !lng.isFinite() || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-                    return@mapNotNull null
-                }
+                if (!isValidCoordinate(lat, lng)) return@mapNotNull null
 
                 val displayKey = map["displayKey"]?.toString()?.trim().orEmpty()
                 if (displayKey.isEmpty()) return@mapNotNull null
@@ -287,9 +659,99 @@ data class NativeMarkerDto(
                     lng = lng,
                     title = map["title"]?.toString().orEmpty(),
                     groupName = map["groupName"]?.toString().orEmpty(),
-                    colorValue = (map["colorValue"] as? Number)?.toLong()?.toInt() ?: Color.BLUE
+                    colorValue = (map["colorValue"] as? Number)?.toLong()?.toInt() ?: Color.BLUE,
+                    isChecked = map["isChecked"] == true,
+                    canonicalMarkerId = map["canonicalMarkerId"]?.toString(),
+                    originalMarkerId = map["originalMarkerId"]?.toString(),
+                    sourceMarkerId = map["sourceMarkerId"]?.toString(),
+                    parentMarkerId = map["parentMarkerId"]?.toString()
                 )
             }
         }
     }
+}
+
+data class NativeLineDto(
+    val displayKey: String,
+    val renderKey: String,
+    val id: String,
+    val title: String,
+    val description: String,
+    val points: List<NativePoint>,
+    val markerIds: List<String>,
+    val colorValue: Int,
+    val isVisible: Boolean,
+    val canonicalLineId: String?,
+    val originalLineId: String?,
+    val sourceLineId: String?
+) {
+    fun midpoint(): NativePoint? {
+        if (points.isEmpty()) return null
+        return points[points.size / 2]
+    }
+
+    companion object {
+        fun fromFlutterList(arguments: Any?): List<NativeLineDto> {
+            val items = arguments as? List<*> ?: return emptyList()
+            return items.mapNotNull { item ->
+                val map = item as? Map<*, *> ?: return@mapNotNull null
+                val displayKey = map["displayKey"]?.toString()?.trim().orEmpty()
+                if (displayKey.isEmpty()) return@mapNotNull null
+
+                val points = (map["points"] as? List<*>)?.mapNotNull { point ->
+                    val p = point as? Map<*, *> ?: return@mapNotNull null
+                    val lat = (p["lat"] as? Number)?.toDouble() ?: return@mapNotNull null
+                    val lng = (p["lng"] as? Number)?.toDouble() ?: return@mapNotNull null
+                    if (!isValidCoordinate(lat, lng)) return@mapNotNull null
+                    NativePoint(lat, lng)
+                } ?: emptyList()
+                if (points.size < 2) return@mapNotNull null
+
+                NativeLineDto(
+                    displayKey = displayKey,
+                    renderKey = map["renderKey"]?.toString().orEmpty(),
+                    id = map["id"]?.toString().orEmpty(),
+                    title = map["title"]?.toString().orEmpty(),
+                    description = map["description"]?.toString().orEmpty(),
+                    points = points,
+                    markerIds = (map["markerIds"] as? List<*>)?.map { it.toString() } ?: emptyList(),
+                    colorValue = (map["colorValue"] as? Number)?.toLong()?.toInt() ?: Color.BLUE,
+                    isVisible = map["isVisible"] != false,
+                    canonicalLineId = map["canonicalLineId"]?.toString(),
+                    originalLineId = map["originalLineId"]?.toString(),
+                    sourceLineId = map["sourceLineId"]?.toString()
+                )
+            }
+        }
+    }
+}
+
+data class NativeGpsLocation(
+    val lat: Double,
+    val lng: Double,
+    val title: String,
+    val moveCamera: Boolean,
+    val level: Int?
+) {
+    companion object {
+        fun fromFlutterMap(arguments: Any?, defaultMoveCamera: Boolean): NativeGpsLocation? {
+            val map = arguments as? Map<*, *> ?: return null
+            val lat = (map["lat"] as? Number)?.toDouble() ?: return null
+            val lng = (map["lng"] as? Number)?.toDouble() ?: return null
+            if (!isValidCoordinate(lat, lng)) return null
+            return NativeGpsLocation(
+                lat = lat,
+                lng = lng,
+                title = map["title"]?.toString().orEmpty(),
+                moveCamera = (map["moveCamera"] as? Boolean) ?: defaultMoveCamera,
+                level = ((map["zoomLevel"] ?: map["level"]) as? Number)?.toInt()
+            )
+        }
+    }
+}
+
+private const val LINE_LABEL_STYLE_VERSION = 2
+
+private fun isValidCoordinate(lat: Double, lng: Double): Boolean {
+    return lat.isFinite() && lng.isFinite() && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
 }

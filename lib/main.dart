@@ -422,8 +422,10 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   static const bool _verboseMapDebug = false;
   static const String _nativeKakaoMapViewType = 'field_manager/native_kakao_map';
   static const MethodChannel _nativeKakaoMapCommands = MethodChannel('field_manager/native_kakao_map_commands');
+  static const MethodChannel _nativeKakaoMapEvents = MethodChannel('field_manager/native_kakao_map_events');
   static const bool _enableNativeMarkerPerformanceTest = false;
   static const int _nativeMarkerPerformanceTestCount = 400;
+  static const int _nativeFocusedZoomLevel = 18;
   bool _isGlobalProcessing = false;
   String _processingText = "";    
   // ✅ [추가] 마지막으로 UI(버튼 등)를 터치한 시간을 기록하는 변수
@@ -448,6 +450,7 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   bool _didInitialGpsMove = false;
   String? _lastSentMarkersHash;
   String? _lastSentLinesHash;
+  String? _lastSentNativeLinesHash;
   bool? _lastSentMarkerMoveMode;
   bool _showAllLineLabels = false;
   bool? _lastSentShowAllLineLabels;
@@ -456,6 +459,7 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   bool _dedupeMapRenderItems = true;
   String _lastKakaoMarkerDedupeLogKey = '';
   String _lastKakaoLineDedupeLogKey = '';
+  final Map<String, bool> _nativeLineVisibilityOverrides = {};
   bool _isFreeLineMode = false;
   bool _isModalOpen = false;
   bool _isHoveringUI = false;
@@ -727,6 +731,19 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
   }
 
   Future<void> _moveTo(double lat, double lng, int level) async {
+    if (_shouldUseNativeKakaoMap) {
+      try {
+        await _nativeKakaoMapCommands.invokeMethod('moveTo', {
+          'lat': lat,
+          'lng': lng,
+          'zoomLevel': level,
+        });
+      } catch (e) {
+        debugPrint('native moveTo failed: $e');
+      }
+      return;
+    }
+
     final controller = _webViewController;
     if (controller == null) return;
 
@@ -762,6 +779,17 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
   }
 
   Future<void> _setShowAllLineLabelsOnKakaoMap(bool enabled) async {
+    if (_shouldUseNativeKakaoMap) {
+      if (_lastSentShowAllLineLabels == enabled) return;
+      try {
+        await _nativeKakaoMapCommands.invokeMethod('setShowAllLineLabels', {'enabled': enabled});
+        _lastSentShowAllLineLabels = enabled;
+      } catch (e) {
+        debugPrint('native setShowAllLineLabels failed: $e');
+      }
+      return;
+    }
+
     final controller = _webViewController;
     if (!mounted || controller == null) return;
     if (_lastSentShowAllLineLabels == enabled) return;
@@ -775,6 +803,20 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
   }
 
     Future<void> _showCurrentLocationOnMap(double lat, double lng) async {
+    if (_shouldUseNativeKakaoMap) {
+      try {
+        await _nativeKakaoMapCommands.invokeMethod('showCurrentLocation', {
+          'lat': lat,
+          'lng': lng,
+          'title': '현재 위치',
+          'moveCamera': false,
+        });
+      } catch (e) {
+        debugPrint('native showCurrentLocation failed: $e');
+      }
+      return;
+    }
+
     final controller = _webViewController;
     if (controller == null) return;
 
@@ -833,7 +875,7 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
       await _moveTo(
         position.latitude,
         position.longitude,
-        3,
+        _shouldUseNativeKakaoMap ? _nativeFocusedZoomLevel : 3,
       );
     } catch (e) {
       debugPrint('[INITIAL_GPS] 최초 현재 위치 이동 실패: $e');
@@ -878,6 +920,39 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
       _setStateAndRefreshMap(() => _tempLineMarkerIds.add(markerId));
     } else {
       _showMarkerDetails(targetMarkerId, fromOtherTeam: targetTeam);
+    }
+  }
+
+  Future<void> _handleNativeKakaoMapEvent(MethodCall call) async {
+    if (call.method == 'mapReady') {
+      _lastSentShowAllLineLabels = null;
+      _hasPendingMarkerUpdate = true;
+      _scheduleMarkerUpdate(ms: 0);
+      await _setShowAllLineLabelsOnKakaoMap(_showAllLineLabels);
+      _moveToInitialGpsLocation();
+      return;
+    }
+
+    if (call.method != 'markerTap') return;
+    if (_isModalOpen || _isHoveringUI || !_isMapControlActive) return;
+
+    final args = call.arguments;
+    if (args is! Map) return;
+
+    final candidates = [
+      args['id'],
+      args['canonicalMarkerId'],
+      args['originalMarkerId'],
+      args['sourceMarkerId'],
+      args['parentMarkerId'],
+    ].map((value) => value?.toString().trim() ?? '').where((value) => value.isNotEmpty).toList();
+
+    for (final candidate in candidates) {
+      final entry = _findMarkerEntry(_markerDataMap, candidate);
+      if (entry != null) {
+        _showMarkerDetails(entry.key);
+        return;
+      }
     }
   }
 
@@ -2397,6 +2472,8 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
     WidgetsBinding.instance.addObserver(this); // ◀ 이 줄 추가
     if (!_shouldUseNativeKakaoMap) {
       _initializeKakaoWebView();
+    } else {
+      _nativeKakaoMapEvents.setMethodCallHandler(_handleNativeKakaoMapEvent);
     }
     _loadData().then((_) => _scheduleMarkerUpdate());
   }
@@ -2409,6 +2486,9 @@ void dispose() {
   MockLocationPlugin.stopMockLocation();
   _myTeamSub?.cancel();    // ← 추가
   _allTeamsSub?.cancel();  // ← 추가
+  if (_shouldUseNativeKakaoMap) {
+    _nativeKakaoMapEvents.setMethodCallHandler(null);
+  }
   super.dispose();
 }
 
@@ -2436,7 +2516,7 @@ void dispose() {
     );
 
     await _showCurrentLocationOnMap(position.latitude, position.longitude);
-    await _moveTo(position.latitude, position.longitude, 3);
+    await _moveTo(position.latitude, position.longitude, _shouldUseNativeKakaoMap ? _nativeFocusedZoomLevel : 3);
   } catch (e) {
     debugPrint("위치 이동 에러: $e");
   }
@@ -2465,6 +2545,7 @@ Future<void> _flushMarkerUpdate() async {
   _hasPendingMarkerUpdate = false;
   if (_shouldUseNativeKakaoMap) {
     await _renderMarkersOnNativeKakaoMap();
+    await _renderLinesOnNativeKakaoMap();
   } else {
     await _renderMarkersOnKakaoMap();
     await _renderLinesOnKakaoMap();
@@ -2502,6 +2583,7 @@ void _invalidateMarkerRenderHash() {
 
 void _invalidateLineRenderHash() {
   _lastSentLinesHash = null;
+  _lastSentNativeLinesHash = null;
 }
 
 String _colorToHex(Color color) {
@@ -3128,6 +3210,7 @@ Map<String, dynamic>? _nativeMarkerDtoFromRenderMarker(Map<String, dynamic> mark
     title,
     marker['groupName'] ?? '',
     marker['colorValue'] ?? '',
+    marker['isChecked'] ?? false,
     marker['renderKey'] ?? '',
   ].join('|');
 
@@ -3140,6 +3223,7 @@ Map<String, dynamic>? _nativeMarkerDtoFromRenderMarker(Map<String, dynamic> mark
     'title': title,
     'groupName': (marker['groupName'] ?? '').toString(),
     'colorValue': (marker['colorValue'] as num?)?.toInt() ?? Colors.blue.value,
+    'isChecked': marker['isChecked'] == true,
     if (marker['canonicalMarkerId'] != null) 'canonicalMarkerId': marker['canonicalMarkerId'].toString(),
     if (marker['originalMarkerId'] != null) 'originalMarkerId': marker['originalMarkerId'].toString(),
     if (marker['sourceMarkerId'] != null) 'sourceMarkerId': marker['sourceMarkerId'].toString(),
@@ -3190,9 +3274,78 @@ List<Map<String, dynamic>> _buildNativeMarkerPerformanceTestJsonList(int count) 
       'title': 'P${i + 1}',
       'groupName': 'native-performance-test',
       'colorValue': color,
+      'isChecked': false,
     });
   }
   return markers;
+}
+
+String _nativeLineDisplayKey(LineData line, String fallbackId, {required String teamName}) {
+  final canonicalValue = [
+    line.canonicalLineId,
+    line.originalLineId,
+    line.sourceLineId,
+  ].map((value) => value?.trim() ?? '').firstWhere(
+        (value) => value.isNotEmpty,
+        orElse: () => '',
+      );
+  if (canonicalValue.isNotEmpty) return 'canonical:$canonicalValue';
+
+  final id = line.id.trim().isNotEmpty ? line.id.trim() : fallbackId;
+  return 'line:$teamName:$id';
+}
+
+bool _isNativeLineVisible(String displayKey, LineData line) {
+  return _nativeLineVisibilityOverrides[displayKey] ?? line.isVisible;
+}
+
+Map<String, dynamic>? _nativeLineDtoFromLine(String id, LineData line, {required String teamName}) {
+  final points = <Map<String, double>>[];
+  for (final point in line.points) {
+    final lat = point.latitude;
+    final lng = point.longitude;
+    if (_isValidNativeMarkerCoordinate(lat, lng)) {
+      points.add({'lat': lat, 'lng': lng});
+    }
+  }
+  if (points.length < 2) return null;
+
+  final displayKey = _nativeLineDisplayKey(line, id, teamName: teamName);
+  final isVisible = _isNativeLineVisible(displayKey, line);
+  final pathHash = points.map((p) => '${p['lat']!.toStringAsFixed(6)},${p['lng']!.toStringAsFixed(6)}').join('>');
+  final renderKey = [
+    displayKey,
+    line.title,
+    line.description,
+    pathHash,
+    line.colorValue,
+    isVisible,
+  ].join('|');
+
+  return <String, dynamic>{
+    'displayKey': displayKey,
+    'renderKey': renderKey,
+    'id': line.id.trim().isNotEmpty ? line.id : id,
+    'title': line.title,
+    'description': line.description,
+    'points': points,
+    'markerIds': line.markerIds,
+    'colorValue': line.colorValue,
+    'isVisible': isVisible,
+    if (line.canonicalLineId != null) 'canonicalLineId': line.canonicalLineId,
+    if (line.originalLineId != null) 'originalLineId': line.originalLineId,
+    if (line.sourceLineId != null) 'sourceLineId': line.sourceLineId,
+  };
+}
+
+List<Map<String, dynamic>> _buildNativeLineJsonList() {
+  final lines = <Map<String, dynamic>>[];
+  for (final entry in _lineDataMap.entries) {
+    final dto = _nativeLineDtoFromLine(entry.key, entry.value, teamName: widget.teamName);
+    if (dto != null) lines.add(dto);
+  }
+  lines.sort((a, b) => (a['displayKey'] ?? '').toString().compareTo((b['displayKey'] ?? '').toString()));
+  return lines;
 }
 
 List<Map<String, dynamic>> _buildLineJsonList({bool dedupe = true}) {
@@ -3296,6 +3449,26 @@ Future<void> _renderMarkersOnNativeKakaoMap() async {
     _lastSentMarkersHash = hash;
   } catch (e) {
     debugPrint('native renderMarkers failed: $e');
+  }
+}
+
+Future<void> _renderLinesOnNativeKakaoMap() async {
+  if (!mounted || !_shouldUseNativeKakaoMap) return;
+
+  try {
+    final lineList = _buildNativeLineJsonList();
+    final hash = lineList.map((line) => (line['renderKey'] ?? '').toString()).join('||');
+    if (hash == _lastSentNativeLinesHash) {
+      if (_verboseMapDebug) debugPrint('[NATIVE_KAKAO_RENDER] skipped lines hash unchanged');
+      await _setShowAllLineLabelsOnKakaoMap(_showAllLineLabels);
+      return;
+    }
+
+    await _nativeKakaoMapCommands.invokeMethod('renderLines', lineList);
+    _lastSentNativeLinesHash = hash;
+    await _setShowAllLineLabelsOnKakaoMap(_showAllLineLabels);
+  } catch (e) {
+    debugPrint('native renderLines failed: $e');
   }
 }
 
@@ -4515,7 +4688,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                               subtitle: Text(marker.description, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: marker.isChecked ? Colors.blue : null)), 
                               onTap: () { 
                                 Navigator.pop(context); 
-                                _moveTo(marker.lat, marker.lng, 1); 
+                                _moveTo(marker.lat, marker.lng, _shouldUseNativeKakaoMap ? _nativeFocusedZoomLevel : 1);
                               },
                             )).toList(),
                     );
@@ -4586,7 +4759,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                 subtitle: Text(s.description, softWrap: true, overflow: TextOverflow.visible, style: TextStyle(color: s.isChecked ? Colors.blue : Colors.grey)),
                 onTap: () {
                   Navigator.pop(context);
-                  _moveTo(s.lat, s.lng, 1);
+                  _moveTo(s.lat, s.lng, _shouldUseNativeKakaoMap ? _nativeFocusedZoomLevel : 1);
                 },
               )).toList(),
             )),
@@ -4913,7 +5086,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                     await _moveTo(
                       position.latitude,
                       position.longitude,
-                      3,
+                      _shouldUseNativeKakaoMap ? _nativeFocusedZoomLevel : 3,
                     );
                   } catch (e) {
                     if (!mounted) return;
@@ -6686,6 +6859,10 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
   // 2. 선 목록 아이템 생성 함수 (이제 밖으로 나왔으니 잘 보입니다)
   Widget _buildLineListTile(LineData line, {required bool isMyLine, String? teamName}) {
     final isSelectedLine = _selectedLineIds.contains(line.id);
+    final nativeDisplayKey = _nativeLineDisplayKey(line, line.id, teamName: teamName ?? widget.teamName);
+    final visibleForThisScreen = _shouldUseNativeKakaoMap
+        ? _isNativeLineVisible(nativeDisplayKey, line)
+        : line.isVisible;
 
     return ListTile(
       dense: _isLineDeleteMode,
@@ -6709,7 +6886,7 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
         maxLines: _isLineDeleteMode ? 2 : 1,
         overflow: TextOverflow.ellipsis,
         softWrap: true,
-        style: TextStyle(color: line.isVisible ? Colors.black : Colors.grey, fontSize: 13),
+        style: TextStyle(color: visibleForThisScreen ? Colors.black : Colors.grey, fontSize: 13),
       ),
       subtitle: Text(line.description, maxLines: 1, overflow: TextOverflow.ellipsis),
       
@@ -6718,9 +6895,18 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
         children: [
           // On/Off 스위치
           Switch(
-            value: line.isVisible,
+            value: visibleForThisScreen,
             activeColor: Color(line.colorValue),
             onChanged: (val) async {
+              if (_shouldUseNativeKakaoMap) {
+                setState(() {
+                  _nativeLineVisibilityOverrides[nativeDisplayKey] = val;
+                });
+                _invalidateLineRenderHash();
+                _scheduleMarkerUpdate();
+                return;
+              }
+
               setState(() { line.isVisible = val; });
               _invalidateLineRenderHash();
               _scheduleMarkerUpdate();
@@ -6813,7 +6999,7 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
           return;
         }
 
-        if (!line.isVisible) return;
+        if (!visibleForThisScreen) return;
         Navigator.pop(context);
         if (line.points.isNotEmpty) {
           final firstPoint = line.points.first;
