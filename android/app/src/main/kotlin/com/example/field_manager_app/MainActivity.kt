@@ -60,6 +60,10 @@ class MainActivity: FlutterActivity() {
                     NativeKakaoMapRegistry.setShowAllLineLabels(call.arguments)
                     result.success(null)
                 }
+                "setMarkerMoveMode" -> {
+                    NativeKakaoMapRegistry.setMarkerMoveMode(call.arguments)
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }

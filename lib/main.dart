@@ -766,6 +766,17 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
   }
 
   Future<void> _setMarkerMoveModeOnKakaoMap(bool enabled) async {
+    if (_shouldUseNativeKakaoMap) {
+      if (_lastSentMarkerMoveMode == enabled) return;
+      try {
+        await _nativeKakaoMapCommands.invokeMethod('setMarkerMoveMode', {'enabled': enabled});
+        _lastSentMarkerMoveMode = enabled;
+      } catch (e) {
+        debugPrint('native setMarkerMoveMode failed: $e');
+      }
+      return;
+    }
+
     final controller = _webViewController;
     if (!mounted || controller == null) return;
     if (_lastSentMarkerMoveMode == enabled) return;
@@ -888,6 +899,29 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
     _scheduleMarkerUpdate();
   }
 
+  void _clearTemporaryMapModes() {
+    _isTappingMode = false;
+    _isMoveMode = false;
+    _isLineMode = false;
+    _isFreeLineMode = false;
+    _isLineDeleteMode = false;
+    _tempLineMarkerIds.clear();
+    _tempFreeLinePoints.clear();
+    _clearSelectedLines();
+  }
+
+  void _enterMarkerCreateMode() {
+    setState(() {
+      _clearTemporaryMapModes();
+      _isTappingMode = true;
+      _isMapControlActive = true;
+    });
+    _setMarkerMoveModeOnKakaoMap(false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("지도에서 마커를 추가할 위치를 선택하세요."), duration: Duration(seconds: 3)),
+    );
+  }
+
   void _handleKakaoMarkerTap(String markerId) {
     if (_isModalOpen || _isHoveringUI || !_isMapControlActive) return;
     if (markerId.trim().isEmpty) return;
@@ -918,6 +952,8 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
       _setStateAndRefreshMap(() => _tempFreeLinePoints.add(site!.position));
     } else if (_isLineMode) {
       _setStateAndRefreshMap(() => _tempLineMarkerIds.add(markerId));
+    } else if (_isMoveMode) {
+      return;
     } else {
       _showMarkerDetails(targetMarkerId, fromOtherTeam: targetTeam);
     }
@@ -925,11 +961,29 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
 
   Future<void> _handleNativeKakaoMapEvent(MethodCall call) async {
     if (call.method == 'mapReady') {
+      _lastSentMarkerMoveMode = null;
       _lastSentShowAllLineLabels = null;
       _hasPendingMarkerUpdate = true;
       _scheduleMarkerUpdate(ms: 0);
       await _setShowAllLineLabelsOnKakaoMap(_showAllLineLabels);
       _moveToInitialGpsLocation();
+      return;
+    }
+
+    if (call.method == 'mapTap') {
+      final args = call.arguments;
+      if (args is! Map) return;
+      final lat = (args['lat'] as num?)?.toDouble();
+      final lng = (args['lng'] as num?)?.toDouble();
+      if (lat == null || lng == null) return;
+      await _handleKakaoMapTap(jsonEncode({'lat': lat, 'lng': lng}));
+      return;
+    }
+
+    if (call.method == 'markerDragEnd') {
+      final args = call.arguments;
+      if (args is! Map) return;
+      await _handleNativeMarkerDragEnd(args);
       return;
     }
 
@@ -950,8 +1004,57 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
     for (final candidate in candidates) {
       final entry = _findMarkerEntry(_markerDataMap, candidate);
       if (entry != null) {
+        if (_isMoveMode) return;
         _showMarkerDetails(entry.key);
         return;
+      }
+    }
+  }
+
+  Future<void> _handleNativeMarkerDragEnd(Map args) async {
+    if (!_isMoveMode || _isModalOpen || !_isMapControlActive) return;
+
+    final lat = (args['lat'] as num?)?.toDouble();
+    final lng = (args['lng'] as num?)?.toDouble();
+    if (lat == null || lng == null) return;
+
+    final candidates = [
+      args['id'],
+      args['canonicalMarkerId'],
+      args['originalMarkerId'],
+      args['sourceMarkerId'],
+      args['parentMarkerId'],
+    ].map((value) => value?.toString().trim() ?? '').where((value) => value.isNotEmpty).toList();
+
+    MapEntry<String, SiteData>? entry;
+    for (final candidate in candidates) {
+      entry = _findMarkerEntry(_markerDataMap, candidate);
+      if (entry != null) break;
+    }
+    if (entry == null) return;
+
+    setState(() {
+      _isGlobalProcessing = true;
+      _processingText = "마커 이동 중...";
+    });
+
+    try {
+      final moved = await _finalizeMovedMarkerCanonicalMutation(
+        marker: entry.value,
+        point: LatLng(lat, lng),
+        initiatingTeamName: widget.teamName,
+      );
+      if (!mounted) return;
+      if (moved) {
+        _invalidateMarkerRenderHash();
+        _scheduleMarkerUpdate(ms: 0);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isGlobalProcessing = false;
+          _processingText = "";
+        });
       }
     }
   }
@@ -1590,6 +1693,8 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
       'title': overrides['title'] ?? marker.title,
       'description': overrides['description'] ?? marker.description,
       'address': overrides['address'] ?? marker.address,
+      'group': overrides['group'] ?? marker.group.toJson(),
+      'photos': overrides['photos'] ?? marker.photos.map((p) => p.toJson()).toList(),
       'isChecked': overrides.containsKey('isChecked') ? overrides['isChecked'] == true : marker.isChecked,
     };
     return fields;
@@ -1706,12 +1811,19 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
     if (fields.containsKey('title')) marker.title = fields['title']?.toString() ?? marker.title;
     if (fields.containsKey('description')) marker.description = fields['description']?.toString() ?? marker.description;
     if (fields.containsKey('address')) marker.address = fields['address']?.toString() ?? marker.address;
+    if (fields['group'] is Map) marker.group = MapGroup.fromJson(Map<String, dynamic>.from(fields['group'] as Map));
+    if (fields['photos'] is List) {
+      marker.photos = (fields['photos'] as List)
+          .whereType<Map>()
+          .map((p) => PhotoItem.fromJson(Map<String, dynamic>.from(p)))
+          .toList();
+    }
     if (fields.containsKey('isChecked')) marker.isChecked = fields['isChecked'] == true;
   }
 
   bool _applyCanonicalFieldsToRawMarker(Map<String, dynamic> marker, Map<String, dynamic> fields) {
     bool changed = false;
-    for (final key in ['lat', 'lng', 'title', 'description', 'address']) {
+    for (final key in ['lat', 'lng', 'title', 'description', 'address', 'group', 'photos']) {
       if (!fields.containsKey(key)) continue;
       if (marker[key] != fields[key]) {
         marker[key] = fields[key];
@@ -2447,7 +2559,9 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
       return;
     }
 
-    if (_canQuickSlotCreateMarker) {
+    if (_isMoveMode) {
+      return;
+    } else if (_canQuickSlotCreateMarker) {
       await _quickCreateMarkerAt(point);
     } else if (
       isAdmin &&
@@ -2463,6 +2577,8 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
       _showInputSheet(newPoint: point);
     } else if (_isFreeLineMode) {
       _setStateAndRefreshMap(() => _tempFreeLinePoints.add(point));
+    } else if (_selectedLineIds.isNotEmpty) {
+      setState(_clearSelectedLines);
     }
   }
 
@@ -3442,11 +3558,13 @@ Future<void> _renderMarkersOnNativeKakaoMap() async {
     final hash = markerList.map((m) => (m['renderKey'] ?? '').toString()).join('||');
     if (hash == _lastSentMarkersHash) {
       if (_verboseMapDebug) debugPrint('[NATIVE_KAKAO_RENDER] skipped markers hash unchanged');
+      await _setMarkerMoveModeOnKakaoMap(_isMoveMode);
       return;
     }
 
     await _nativeKakaoMapCommands.invokeMethod('renderMarkers', markerList);
     _lastSentMarkersHash = hash;
+    await _setMarkerMoveModeOnKakaoMap(_isMoveMode);
   } catch (e) {
     debugPrint('native renderMarkers failed: $e');
   }
@@ -4073,10 +4191,11 @@ Future<void> _loadData() async {
 
 Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? targetTeamName}) async {
     setState(() {
-      _isTappingMode = false;
+      _clearTemporaryMapModes();
       _isModalOpen = true;
       _isMapControlActive = false;
     });
+    _setMarkerMoveModeOnKakaoMap(false);
     
     // 1. 위치 및 주소 설정
     LatLng pos = newPoint ?? (existingData?.position ?? const LatLng(37.56, 126.97));
@@ -4366,6 +4485,7 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
           originalMarkerId: existingData?.originalMarkerId,
           sourceMarkerId: existingData?.sourceMarkerId,
           parentMarkerId: existingData?.parentMarkerId,
+          isChecked: existingData?.isChecked == true,
         );
 
         if (!isNewMarker) {
@@ -5018,10 +5138,15 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
 
             FloatingActionButton(
               heroTag: "move",
+              tooltip: _isMoveMode ? "마커 이동 OFF" : "마커 이동 ON",
               backgroundColor: _isMoveMode ? Colors.orange : Colors.white,
               onPressed: () {
+                final next = !_isMoveMode;
                 setState(() {
-                  _isMoveMode = !_isMoveMode;
+                  _clearTemporaryMapModes();
+                  if (next) {
+                    _isMoveMode = true;
+                  }
                 });
                 _setMarkerMoveModeOnKakaoMap(_isMoveMode);
                 _scheduleMarkerUpdate();
@@ -5129,6 +5254,41 @@ body: Stack(
       ),
 
           _buildAdminGroupQuickSlots(),
+
+          if (_isTappingMode || _isMoveMode)
+            Positioned(
+              top: 10,
+              left: 10,
+              right: 10,
+              child: _uiBlocker(
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: (_isMoveMode ? Colors.orange : Colors.green).withOpacity(0.92),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _isMoveMode
+                              ? "마커 이동 ON"
+                              : "지도에서 마커를 추가할 위치를 선택하세요.",
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          setState(_clearTemporaryMapModes);
+                          _setMarkerMoveModeOnKakaoMap(false);
+                        },
+                        child: const Text("취소", style: TextStyle(color: Colors.white)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
 
             
 if (_isFreeLineMode) 
@@ -5512,7 +5672,11 @@ void _showCreateMenu() {
             title: const Text("현재 위치에 마커 생성"),
             onTap: () async {
               // 🛡️ 1. 지도 터치 잠금 (클릭 뚫림 방지)
-              setState(() => _isMapControlActive = false);
+              setState(() {
+                _clearTemporaryMapModes();
+                _isMapControlActive = false;
+              });
+              _setMarkerMoveModeOnKakaoMap(false);
               
               Navigator.pop(c);
               
@@ -5546,11 +5710,7 @@ void _showCreateMenu() {
               
               // 🛡️ 3. 모드 켜면서 지도 잠금 해제
               if (mounted) {
-                setState(() {
-                  _isTappingMode = true;
-                  _isMapControlActive = true; 
-                });
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("지도의 원하는 지점을 터치하세요."), duration: Duration(seconds: 2)));
+                _enterMarkerCreateMode();
               }
             },
           ),
@@ -5587,11 +5747,11 @@ void _showCreateMenu() {
                           // 🛡️ 3. 잠금 해제 및 모드 활성화
                           if (mounted) {
                             setState(() { 
+                              _clearTemporaryMapModes();
                               _isLineMode = true; 
-                              _isFreeLineMode = false;
-                              _tempLineMarkerIds.clear();
                               _isMapControlActive = true;
                             });
+                            _setMarkerMoveModeOnKakaoMap(false);
                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("연결할 마커들을 순서대로 터치하세요.")));
                           }
                         },
@@ -5614,11 +5774,11 @@ void _showCreateMenu() {
                           // 🛡️ 3. 이제 안전하니까 지도 잠금 해제 & 그리기 모드 ON
                           if (mounted) {
                             setState(() { 
+                              _clearTemporaryMapModes();
                               _isFreeLineMode = true; 
-                              _isLineMode = false;
-                              _tempFreeLinePoints.clear();
                               _isMapControlActive = true; // 지도 다시 켜기
                             });
+                            _setMarkerMoveModeOnKakaoMap(false);
                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("지도를 터치하여 점을 찍으세요.")));
                           }
                         },

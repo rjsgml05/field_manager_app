@@ -12,12 +12,14 @@ object NativeKakaoMapRegistry {
     private var pendingLines: List<NativeLineDto>? = null
     private var pendingGpsLocation: NativeGpsLocation? = null
     private var pendingShowAllLineLabels: Boolean = false
+    private var pendingMarkerMoveMode: Boolean = false
 
     fun register(view: NativeKakaoMapPlatformView) {
         views.add(view)
         pendingMarkers?.let { view.renderMarkers(it) }
         pendingLines?.let { view.renderLines(it) }
         view.setShowAllLineLabels(pendingShowAllLineLabels)
+        view.setMarkerMoveMode(pendingMarkerMoveMode)
         pendingGpsLocation?.let { view.showCurrentLocation(it) }
     }
 
@@ -57,6 +59,21 @@ object NativeKakaoMapRegistry {
 
     fun sendMarkerTap(marker: NativeMarkerDto) {
         eventChannel?.invokeMethod("markerTap", marker.toEventMap())
+    }
+
+    fun sendMapTap(lat: Double, lng: Double) {
+        eventChannel?.invokeMethod(
+            "mapTap",
+            mapOf(
+                "event" to "mapTap",
+                "lat" to lat,
+                "lng" to lng
+            )
+        )
+    }
+
+    fun sendMarkerDragEnd(marker: NativeMarkerDto, lat: Double, lng: Double) {
+        eventChannel?.invokeMethod("markerDragEnd", marker.toDragEndEventMap(lat, lng))
     }
 
     fun renderMarkers(arguments: Any?) {
@@ -108,5 +125,11 @@ object NativeKakaoMapRegistry {
         val enabled = (arguments as? Map<*, *>)?.get("enabled") as? Boolean ?: false
         pendingShowAllLineLabels = enabled
         views.forEach { view -> view.setShowAllLineLabels(enabled) }
+    }
+
+    fun setMarkerMoveMode(arguments: Any?) {
+        val enabled = (arguments as? Map<*, *>)?.get("enabled") as? Boolean ?: false
+        pendingMarkerMoveMode = enabled
+        views.forEach { view -> view.setMarkerMoveMode(enabled) }
     }
 }

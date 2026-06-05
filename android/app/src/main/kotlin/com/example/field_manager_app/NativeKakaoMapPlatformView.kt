@@ -1,12 +1,16 @@
-package com.example.field_manager_app.v2
+﻿package com.example.field_manager_app.v2
 
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
@@ -32,12 +36,28 @@ import com.kakao.vectormap.route.RouteLineStyle
 import io.flutter.plugin.platform.PlatformView
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 
 class NativeKakaoMapPlatformView(
     context: Context,
     private val viewId: Int
 ) : PlatformView {
-    private val container = FrameLayout(context)
+    private val container = object : FrameLayout(context) {
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (!markerMoveModeEnabled) {
+            return super.dispatchTouchEvent(event)
+        }
+
+        val consumed = handleMarkerDragTouch(event)
+
+        return if (consumed) {
+            true
+        } else {
+            super.dispatchTouchEvent(event)
+        }
+    }
+}
+
     private var mapView: MapView? = null
     private var kakaoMap: KakaoMap? = null
     private var labelLayer: LabelLayer? = null
@@ -54,7 +74,19 @@ class NativeKakaoMapPlatformView(
     private val lineLabelStyleCache = mutableMapOf<String, LabelStyles>()
     private val currentLocationStyle by lazy { createCurrentLocationStyle() }
     private var currentLocationLabel: Label? = null
+    private var lastMarkerTapAtMs = 0L
+    private var markerMoveModeEnabled = false
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var pendingLongPressRunnable: Runnable? = null
 
+    private var draggingMarkerKey: String? = null
+    private var draggingMarkerOriginalPosition: LatLng? = null
+    private var dragActivated = false
+    private var dragLastPosition: LatLng? = null
+    private var dragLastMoveAtMs = 0L
+
+    private val longPressThresholdMs = 300L
+    private val markerHitRadiusPx = 44f * context.resources.displayMetrics.density
     init {
         if (BuildConfig.KAKAO_NATIVE_APP_KEY.isBlank()) {
             showMissingKeyMessage(context)
@@ -156,6 +188,12 @@ class NativeKakaoMapPlatformView(
         }
     }
 
+    fun setMarkerMoveMode(enabled: Boolean) {
+        if (!enabled) resetMarkerDrag(restore = true)
+        markerMoveModeEnabled = enabled
+        Log.d(NativeKakaoMapRegistry.LOG_TAG, "marker move mode enabled=$enabled")
+    }
+
     fun moveTo(lat: Double, lng: Double, level: Int) {
         val map = kakaoMap ?: return
         if (!isValidCoordinate(lat, lng)) return
@@ -193,6 +231,180 @@ class NativeKakaoMapPlatformView(
         currentLocationLabel = null
         pendingGpsLocation = null
     }
+private fun scheduleMarkerLongPress() {
+    cancelPendingLongPress()
+
+    val runnable = Runnable {
+        val key = draggingMarkerKey
+
+        if (
+            markerMoveModeEnabled &&
+            key != null &&
+            !dragActivated
+        ) {
+            dragActivated = true
+
+            Log.d(
+                NativeKakaoMapRegistry.LOG_TAG,
+                "marker drag activated key=${key.hashCode()}"
+            )
+        }
+    }
+
+    pendingLongPressRunnable = runnable
+    mainHandler.postDelayed(runnable, longPressThresholdMs)
+}
+
+private fun cancelPendingLongPress() {
+    pendingLongPressRunnable?.let { runnable ->
+        mainHandler.removeCallbacks(runnable)
+    }
+
+    pendingLongPressRunnable = null
+}
+private fun handleMarkerDragTouch(event: MotionEvent): Boolean {
+    if (!markerMoveModeEnabled) return false
+
+    val map = kakaoMap ?: return false
+
+    return when (event.actionMasked) {
+        MotionEvent.ACTION_DOWN -> {
+            val hit = findNearestMarker(
+                x = event.x,
+                y = event.y,
+                map = map
+            ) ?: return false
+
+            draggingMarkerKey = hit.first
+            draggingMarkerOriginalPosition = hit.second.label.getPosition()
+            dragActivated = false
+            dragLastPosition = hit.second.label.getPosition()
+            dragLastMoveAtMs = 0L
+
+            scheduleMarkerLongPress()
+
+            Log.d(
+                NativeKakaoMapRegistry.LOG_TAG,
+                "marker drag candidate key=${hit.first.hashCode()}"
+            )
+
+            true
+        }
+
+        MotionEvent.ACTION_MOVE -> {
+            val key = draggingMarkerKey ?: return false
+            val state = renderedMarkers[key]
+                ?: return resetMarkerDrag(restore = false).let { false }
+
+            if (!dragActivated) {
+                return true
+            }
+
+            val now = SystemClock.elapsedRealtime()
+
+            if (now - dragLastMoveAtMs < 16L) {
+                return true
+            }
+
+            dragLastMoveAtMs = now
+
+            val position = map.fromScreenPoint(
+                event.x.toInt(),
+                event.y.toInt()
+            )
+
+            dragLastPosition = position
+            state.label.moveTo(position, 0)
+
+            true
+        }
+
+        MotionEvent.ACTION_UP -> {
+            cancelPendingLongPress()
+
+            val key = draggingMarkerKey
+            val state = key?.let { renderedMarkers[it] }
+            val position = dragLastPosition
+
+            val shouldSave =
+                dragActivated &&
+                state != null &&
+                position != null
+
+            if (shouldSave) {
+                Log.d(
+                    NativeKakaoMapRegistry.LOG_TAG,
+                    "marker drag end key=${key.hashCode()}"
+                )
+
+                NativeKakaoMapRegistry.sendMarkerDragEnd(
+                    state!!.marker,
+                    position!!.latitude,
+                    position.longitude
+                )
+
+                resetMarkerDrag(restore = false)
+            } else {
+                resetMarkerDrag(restore = true)
+            }
+
+            key != null
+        }
+
+        MotionEvent.ACTION_CANCEL -> {
+            val hadDrag = draggingMarkerKey != null
+
+            resetMarkerDrag(restore = true)
+
+            hadDrag
+        }
+
+        else -> draggingMarkerKey != null
+    }
+}
+    private fun findNearestMarker(x: Float, y: Float, map: KakaoMap): Pair<String, NativeMarkerState>? {
+        var bestKey: String? = null
+        var bestState: NativeMarkerState? = null
+        var bestDistance = Float.MAX_VALUE
+        val radius = markerHitRadiusPx
+
+        for ((key, state) in renderedMarkers) {
+            val point = map.toScreenPoint(state.label.getPosition()) ?: continue
+            val dx = point.x.toFloat() - x
+            val dy = point.y.toFloat() - y
+            val distance = sqrt((dx * dx) + (dy * dy))
+            if (distance <= radius && distance < bestDistance) {
+                bestKey = key
+                bestState = state
+                bestDistance = distance
+            }
+        }
+
+        val key = bestKey ?: return null
+        val state = bestState ?: return null
+        return key to state
+    }
+
+    private fun resetMarkerDrag(restore: Boolean) {
+    cancelPendingLongPress()
+
+    val key = draggingMarkerKey
+
+    if (restore && key != null) {
+        val original = draggingMarkerOriginalPosition
+        val state = renderedMarkers[key]
+
+        if (original != null && state != null) {
+            state.label.moveTo(original, 0)
+        }
+    }
+
+    draggingMarkerKey = null
+    draggingMarkerOriginalPosition = null
+    dragActivated = false
+    dragLastPosition = null
+    dragLastMoveAtMs = 0L
+}
 
     private fun startMap(context: Context) {
         val view = MapView(context)
@@ -240,11 +452,25 @@ class NativeKakaoMapPlatformView(
                     }
                     routeLineLayer = kakaoMap.routeLineManager?.layer
                     kakaoMap.setOnLabelClickListener { _, _, label ->
-                        val marker = label.tag as? NativeMarkerDto ?: return@setOnLabelClickListener false
-                        NativeKakaoMapRegistry.sendMarkerTap(marker)
-                        true
+     val marker = label.tag as? NativeMarkerDto
+        ?: return@setOnLabelClickListener false
+
+    lastMarkerTapAtMs = SystemClock.elapsedRealtime()
+
+    if (markerMoveModeEnabled) {
+        return@setOnLabelClickListener true
+    }
+
+    NativeKakaoMapRegistry.sendMarkerTap(marker)
+
+    true
+}
+                    kakaoMap.setOnMapClickListener { _, position, _, _ ->
+                        val now = SystemClock.elapsedRealtime()
+                        if (now - lastMarkerTapAtMs > 250L) {
+                            NativeKakaoMapRegistry.sendMapTap(position.latitude, position.longitude)
+                        }
                     }
-                    kakaoMap.setOnMapClickListener { _, _, _, _ -> }
 
                     Log.d(NativeKakaoMapRegistry.LOG_TAG, "MapView $viewId ready.")
                     if (labelLayer == null) {
@@ -297,16 +523,17 @@ class NativeKakaoMapPlatformView(
             val current = renderedMarkers[marker.displayKey]
             if (current == null) {
                 addMarkerLabel(layer, marker)?.let { label ->
-                    renderedMarkers[marker.displayKey] = NativeMarkerState(marker.renderKey, label)
+                    renderedMarkers[marker.displayKey] = NativeMarkerState(marker.renderKey, label, marker)
                     added++
                 }
             } else if (current.renderKey != marker.renderKey) {
                 current.label.remove()
                 addMarkerLabel(layer, marker)?.let { label ->
-                    renderedMarkers[marker.displayKey] = NativeMarkerState(marker.renderKey, label)
+                    renderedMarkers[marker.displayKey] = NativeMarkerState(marker.renderKey, label, marker)
                     updated++
                 }
             } else {
+                current.marker = marker
                 reused++
             }
         }
@@ -599,7 +826,8 @@ class NativeKakaoMapPlatformView(
 
 data class NativeMarkerState(
     val renderKey: String,
-    val label: Label
+    val label: Label,
+    var marker: NativeMarkerDto
 )
 
 data class NativeLineState(
@@ -633,6 +861,18 @@ data class NativeMarkerDto(
         "event" to "markerTap",
         "displayKey" to displayKey,
         "id" to id,
+        "canonicalMarkerId" to canonicalMarkerId,
+        "originalMarkerId" to originalMarkerId,
+        "sourceMarkerId" to sourceMarkerId,
+        "parentMarkerId" to parentMarkerId
+    )
+
+    fun toDragEndEventMap(lat: Double, lng: Double): Map<String, Any?> = mapOf(
+        "event" to "markerDragEnd",
+        "displayKey" to displayKey,
+        "id" to id,
+        "lat" to lat,
+        "lng" to lng,
         "canonicalMarkerId" to canonicalMarkerId,
         "originalMarkerId" to originalMarkerId,
         "sourceMarkerId" to sourceMarkerId,
@@ -755,3 +995,4 @@ private const val LINE_LABEL_STYLE_VERSION = 2
 private fun isValidCoordinate(lat: Double, lng: Double): Boolean {
     return lat.isFinite() && lng.isFinite() && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
 }
+
