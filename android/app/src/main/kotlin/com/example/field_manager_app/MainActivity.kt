@@ -20,6 +20,14 @@ class MainActivity: FlutterActivity() {
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        flutterEngine
+            .platformViewsController
+            .registry
+            .registerViewFactory(
+                NativeKakaoMapViewFactory.VIEW_TYPE,
+                NativeKakaoMapViewFactory()
+            )
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             if (call.method == "startMockLocation") {
                 val lat = call.argument<Double>("lat")
@@ -41,6 +49,21 @@ class MainActivity: FlutterActivity() {
                 result.notImplemented()
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        NativeKakaoMapRegistry.resumeAll()
+    }
+
+    override fun onPause() {
+        NativeKakaoMapRegistry.pauseAll()
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        NativeKakaoMapRegistry.finishAll()
+        super.onDestroy()
     }
 
     private fun setMockLocation(lat: Double, lng: Double) {

@@ -420,6 +420,7 @@ class MapSample extends StatefulWidget {
 
 class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   static const bool _verboseMapDebug = false;
+  static const String _nativeKakaoMapViewType = 'field_manager/native_kakao_map';
   bool _isGlobalProcessing = false;
   String _processingText = "";    
   // ✅ [추가] 마지막으로 UI(버튼 등)를 터치한 시간을 기록하는 변수
@@ -655,6 +656,7 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
   }
 
   String get _sKey => "${widget.teamName}_${widget.teamPw}";
+  bool get _shouldUseNativeKakaoMap => !kIsWeb && Platform.isAndroid;
 
   void _initializeKakaoWebView() {
     _webViewController = WebViewController()
@@ -4795,9 +4797,11 @@ body: Stack(
         // 1. [가장 뒤] 지도 레이어
         IgnorePointer(
           ignoring: !_isMapControlActive || _isModalOpen, 
-          child: _webViewController == null
-              ? const SizedBox.shrink()
-              : WebViewWidget(controller: _webViewController!),
+          child: _shouldUseNativeKakaoMap
+              ? const AndroidView(viewType: _nativeKakaoMapViewType)
+              : _webViewController == null
+                  ? const SizedBox.shrink()
+                  : WebViewWidget(controller: _webViewController!),
         ),
 
     if (_isModalOpen || !_isMapControlActive)

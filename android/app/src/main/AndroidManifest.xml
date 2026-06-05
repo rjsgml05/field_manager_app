@@ -15,7 +15,7 @@
 
     <application
     android:label="Field Manager V2"
-    android:name="${applicationName}"
+    android:name=".FieldManagerApplication"
     android:icon="@mipmap/ic_launcher"
     android:usesCleartextTraffic="true">
 
