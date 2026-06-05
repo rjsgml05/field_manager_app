@@ -1,18 +1,19 @@
 package com.example.field_manager_app.v2
 
 import android.util.Log
-import com.kakao.vectormap.MapView
 
 object NativeKakaoMapRegistry {
     const val LOG_TAG = "FIELD_NATIVE_MAP"
 
-    private val views = linkedSetOf<MapView>()
+    private val views = linkedSetOf<NativeKakaoMapPlatformView>()
+    private var pendingMarkers: List<NativeMarkerDto>? = null
 
-    fun register(view: MapView) {
+    fun register(view: NativeKakaoMapPlatformView) {
         views.add(view)
+        pendingMarkers?.let { view.renderMarkers(it) }
     }
 
-    fun unregister(view: MapView) {
+    fun unregister(view: NativeKakaoMapPlatformView) {
         views.remove(view)
     }
 
@@ -36,5 +37,22 @@ object NativeKakaoMapRegistry {
                 .onFailure { Log.w(LOG_TAG, "MapView finish failed.", it) }
         }
         views.clear()
+    }
+
+    fun renderMarkers(arguments: Any?) {
+        val markers = NativeMarkerDto.fromFlutterList(arguments)
+        if (views.isEmpty()) {
+            pendingMarkers = markers
+            Log.d(LOG_TAG, "renderMarkers received before PlatformView registration: total=${markers.size}")
+            return
+        }
+
+        pendingMarkers = null
+        views.forEach { view -> view.renderMarkers(markers) }
+    }
+
+    fun clearMarkers() {
+        pendingMarkers = emptyList()
+        views.forEach { view -> view.clearMarkers() }
     }
 }

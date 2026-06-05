@@ -421,6 +421,9 @@ class MapSample extends StatefulWidget {
 class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   static const bool _verboseMapDebug = false;
   static const String _nativeKakaoMapViewType = 'field_manager/native_kakao_map';
+  static const MethodChannel _nativeKakaoMapCommands = MethodChannel('field_manager/native_kakao_map_commands');
+  static const bool _enableNativeMarkerPerformanceTest = false;
+  static const int _nativeMarkerPerformanceTestCount = 400;
   bool _isGlobalProcessing = false;
   String _processingText = "";    
   // ✅ [추가] 마지막으로 UI(버튼 등)를 터치한 시간을 기록하는 변수
@@ -656,7 +659,7 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
   }
 
   String get _sKey => "${widget.teamName}_${widget.teamPw}";
-  bool get _shouldUseNativeKakaoMap => !kIsWeb && Platform.isAndroid;
+  bool get _shouldUseNativeKakaoMap => !kIsWeb && Platform.isAndroid && !isAdmin;
 
   void _initializeKakaoWebView() {
     _webViewController = WebViewController()
@@ -2392,7 +2395,9 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
   void initState() { 
     super.initState(); 
     WidgetsBinding.instance.addObserver(this); // ◀ 이 줄 추가
-    _initializeKakaoWebView();
+    if (!_shouldUseNativeKakaoMap) {
+      _initializeKakaoWebView();
+    }
     _loadData().then((_) => _scheduleMarkerUpdate());
   }
 
@@ -2449,7 +2454,7 @@ void _scheduleMarkerUpdate({int ms = 80}) {
 }
 
 Future<void> _flushMarkerUpdate() async {
-  if (!mounted || _webViewController == null) return;
+  if (!mounted) return;
 
   if (_isMapInteracting) {
     _hasPendingMarkerUpdate = true;
@@ -2458,8 +2463,12 @@ Future<void> _flushMarkerUpdate() async {
   }
 
   _hasPendingMarkerUpdate = false;
-  await _renderMarkersOnKakaoMap();
-  await _renderLinesOnKakaoMap();
+  if (_shouldUseNativeKakaoMap) {
+    await _renderMarkersOnNativeKakaoMap();
+  } else {
+    await _renderMarkersOnKakaoMap();
+    await _renderLinesOnKakaoMap();
+  }
 }
 
 void _flushPendingMarkerUpdateAfterMapIdle() {
@@ -2590,6 +2599,7 @@ Map<String, dynamic> _siteToMarkerJson(
     'title': site.title,
     'address': site.address,
     'color': color,
+    'colorValue': group.colorValue,
     'groupName': group.name,
     'groupKey': groupKey,
     'scope': scope,
@@ -3073,6 +3083,118 @@ List<Map<String, dynamic>> _buildMarkerJsonList({bool dedupe = true}) {
   return result;
 }
 
+bool _isValidNativeMarkerCoordinate(double lat, double lng) {
+  return lat.isFinite && lng.isFinite && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+}
+
+String _nativeMarkerDisplayKey(Map<String, dynamic> marker) {
+  final canonicalValue = [
+    marker['canonicalMarkerId'],
+    marker['originalMarkerId'],
+    marker['sourceMarkerId'],
+    marker['parentMarkerId'],
+  ].map((value) => value?.toString().trim() ?? '').firstWhere(
+        (value) => value.isNotEmpty,
+        orElse: () => '',
+      );
+  if (canonicalValue.isNotEmpty) return 'canonical:$canonicalValue';
+
+  final teamName = marker['teamName']?.toString().trim().isNotEmpty == true
+      ? marker['teamName'].toString().trim()
+      : widget.teamName;
+  final id = [
+    marker['markerId'],
+    marker['id'],
+  ].map((value) => value?.toString().trim() ?? '').firstWhere(
+        (value) => value.isNotEmpty,
+        orElse: () => 'unknown',
+      );
+  return 'marker:$teamName:$id';
+}
+
+Map<String, dynamic>? _nativeMarkerDtoFromRenderMarker(Map<String, dynamic> marker) {
+  final lat = (marker['lat'] as num?)?.toDouble();
+  final lng = (marker['lng'] as num?)?.toDouble();
+  if (lat == null || lng == null || !_isValidNativeMarkerCoordinate(lat, lng)) {
+    return null;
+  }
+
+  final displayKey = _nativeMarkerDisplayKey(marker);
+  final title = (marker['title'] ?? '').toString();
+  final renderKey = [
+    displayKey,
+    lat.toStringAsFixed(6),
+    lng.toStringAsFixed(6),
+    title,
+    marker['groupName'] ?? '',
+    marker['colorValue'] ?? '',
+    marker['renderKey'] ?? '',
+  ].join('|');
+
+  return <String, dynamic>{
+    'displayKey': displayKey,
+    'renderKey': renderKey,
+    'id': (marker['markerId'] ?? marker['id'] ?? '').toString(),
+    'lat': lat,
+    'lng': lng,
+    'title': title,
+    'groupName': (marker['groupName'] ?? '').toString(),
+    'colorValue': (marker['colorValue'] as num?)?.toInt() ?? Colors.blue.value,
+    if (marker['canonicalMarkerId'] != null) 'canonicalMarkerId': marker['canonicalMarkerId'].toString(),
+    if (marker['originalMarkerId'] != null) 'originalMarkerId': marker['originalMarkerId'].toString(),
+    if (marker['sourceMarkerId'] != null) 'sourceMarkerId': marker['sourceMarkerId'].toString(),
+    if (marker['parentMarkerId'] != null) 'parentMarkerId': marker['parentMarkerId'].toString(),
+  };
+}
+
+List<Map<String, dynamic>> _buildNativeMarkerJsonList() {
+  if (_enableNativeMarkerPerformanceTest) {
+    return _buildNativeMarkerPerformanceTestJsonList(_nativeMarkerPerformanceTestCount);
+  }
+
+  final markers = <Map<String, dynamic>>[];
+  for (final marker in _buildMarkerJsonList()) {
+    final dto = _nativeMarkerDtoFromRenderMarker(marker);
+    if (dto != null) markers.add(dto);
+  }
+  markers.sort((a, b) => (a['displayKey'] ?? '').toString().compareTo((b['displayKey'] ?? '').toString()));
+  return markers;
+}
+
+List<Map<String, dynamic>> _buildNativeMarkerPerformanceTestJsonList(int count) {
+  final safeCount = count.clamp(1, 2000);
+  final markers = <Map<String, dynamic>>[];
+  const centerLat = 35.1795;
+  const centerLng = 129.0756;
+  const columns = 40;
+
+  for (var i = 0; i < safeCount; i++) {
+    final row = i ~/ columns;
+    final col = i % columns;
+    final lat = centerLat + ((row - 10) * 0.0007);
+    final lng = centerLng + ((col - 20) * 0.0007);
+    final color = [
+      Colors.red.value,
+      Colors.blue.value,
+      Colors.green.value,
+      Colors.orange.value,
+      Colors.purple.value,
+    ][i % 5];
+    final displayKey = 'marker:${widget.teamName}:perf_$i';
+    markers.add({
+      'displayKey': displayKey,
+      'renderKey': '$displayKey|${lat.toStringAsFixed(6)}|${lng.toStringAsFixed(6)}|$color',
+      'id': 'perf_$i',
+      'lat': lat,
+      'lng': lng,
+      'title': 'P${i + 1}',
+      'groupName': 'native-performance-test',
+      'colorValue': color,
+    });
+  }
+  return markers;
+}
+
 List<Map<String, dynamic>> _buildLineJsonList({bool dedupe = true}) {
   final lines = <Map<String, dynamic>>[];
 
@@ -3156,6 +3278,24 @@ Future<void> _renderMarkersOnKakaoMap() async {
     await _setMarkerMoveModeOnKakaoMap(_isMoveMode);
   } catch (e) {
     debugPrint('renderMarkers failed: $e');
+  }
+}
+
+Future<void> _renderMarkersOnNativeKakaoMap() async {
+  if (!mounted || !_shouldUseNativeKakaoMap) return;
+
+  try {
+    final markerList = _buildNativeMarkerJsonList();
+    final hash = markerList.map((m) => (m['renderKey'] ?? '').toString()).join('||');
+    if (hash == _lastSentMarkersHash) {
+      if (_verboseMapDebug) debugPrint('[NATIVE_KAKAO_RENDER] skipped markers hash unchanged');
+      return;
+    }
+
+    await _nativeKakaoMapCommands.invokeMethod('renderMarkers', markerList);
+    _lastSentMarkersHash = hash;
+  } catch (e) {
+    debugPrint('native renderMarkers failed: $e');
   }
 }
 

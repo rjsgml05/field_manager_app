@@ -15,6 +15,7 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "app.mock.location"
+    private val NATIVE_MAP_COMMAND_CHANNEL = "field_manager/native_kakao_map_commands"
     private var mockHandler: Handler? = null     // ⭐ 시스템 친화적 타이머
     private var mockRunnable: Runnable? = null   // ⭐ 시스템 친화적 작업
 
@@ -27,6 +28,20 @@ class MainActivity: FlutterActivity() {
                 NativeKakaoMapViewFactory.VIEW_TYPE,
                 NativeKakaoMapViewFactory()
             )
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NATIVE_MAP_COMMAND_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "renderMarkers" -> {
+                    NativeKakaoMapRegistry.renderMarkers(call.arguments)
+                    result.success(null)
+                }
+                "clearMarkers" -> {
+                    NativeKakaoMapRegistry.clearMarkers()
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             if (call.method == "startMockLocation") {
