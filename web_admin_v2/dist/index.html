@@ -212,13 +212,30 @@
     }
 
     .marker-row {
+      position: relative;
       display: grid;
       grid-template-columns: 18px 1fr;
       gap: 7px;
       align-items: center;
       margin: 0 7px 6px 32px;
-      padding: 6px;
+      padding: 6px 18px 6px 6px;
       cursor: pointer;
+    }
+
+    .marker-row.checked-marker-row::after {
+      content: "";
+      position: absolute;
+      top: 7px;
+      right: 5px;
+      bottom: 7px;
+      width: 5px;
+      border-radius: 999px;
+      background: #ffd54f;
+      pointer-events: none;
+    }
+
+    .marker-row .row-sub:empty {
+      display: none;
     }
 
     .team-row .marker-row,
@@ -4939,11 +4956,12 @@ setMapStatus("Map connected");
 
       markers.forEach(function(marker) {
         var row = document.createElement("div");
-        row.className = "marker-row" + (isTeamChild ? " team-marker-row" : "");
+        var rowChecked = markerImageChecked(marker);
+        row.className = "marker-row" + (rowChecked ? " checked-marker-row" : "") + (isTeamChild ? " team-marker-row" : "");
         var dot = document.createElement("span");
         dot.className = "marker-dot";
         dot.style.background = marker.color;
-        var main = makeRowMain(marker.title, marker.isChecked ? "ON" : "OFF");
+        var main = makeRowMain(marker.title, "");
         row.appendChild(dot);
         row.appendChild(main);
         row.addEventListener("click", function() {
