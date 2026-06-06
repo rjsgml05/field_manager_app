@@ -748,15 +748,41 @@ private fun handleMarkerDragTouch(event: MotionEvent): Boolean {
         canvas.drawCircle(cx, cy, 12f, border)
 
         if (isChecked) {
-            val check = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            val badgeRadius = 5.5f
+            val badgeCx = min(cx + 9f, width - badgeRadius - 1f)
+            val badgeCy = max(cy - 7f, badgeRadius + 1f)
+            val badgeFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                style = Paint.Style.FILL
+            }
+            val badgeBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.rgb(45, 45, 45)
                 style = Paint.Style.STROKE
-                strokeWidth = 3f
+                strokeWidth = 1.8f
+            }
+            val badgeCheck = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.rgb(35, 35, 35)
+                style = Paint.Style.STROKE
+                strokeWidth = 1.8f
                 strokeCap = Paint.Cap.ROUND
                 strokeJoin = Paint.Join.ROUND
-                color = Color.WHITE
             }
-            canvas.drawLine(cx - 6f, cy, cx - 2f, cy + 5f, check)
-            canvas.drawLine(cx - 2f, cy + 5f, cx + 7f, cy - 6f, check)
+            canvas.drawCircle(badgeCx, badgeCy, badgeRadius, badgeFill)
+            canvas.drawCircle(badgeCx, badgeCy, badgeRadius, badgeBorder)
+            canvas.drawLine(
+                badgeCx - 2.8f,
+                badgeCy,
+                badgeCx - 0.8f,
+                badgeCy + 2.2f,
+                badgeCheck
+            )
+            canvas.drawLine(
+                badgeCx - 0.8f,
+                badgeCy + 2.2f,
+                badgeCx + 3.2f,
+                badgeCy - 2.6f,
+                badgeCheck
+            )
         }
 
         val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(225, 255, 255, 255) }
