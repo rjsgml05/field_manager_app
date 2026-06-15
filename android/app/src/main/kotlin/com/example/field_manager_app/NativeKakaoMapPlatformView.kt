@@ -61,6 +61,7 @@ class NativeKakaoMapPlatformView(
     private var mapView: MapView? = null
     private var kakaoMap: KakaoMap? = null
     private var labelLayer: LabelLayer? = null
+    private var currentLocationLayer: LabelLayer? = null
     private var lineLabelLayer: LabelLayer? = null
     private var routeLineLayer: RouteLineLayer? = null
     private var pendingMarkers: List<NativeMarkerDto>? = null
@@ -110,6 +111,7 @@ class NativeKakaoMapPlatformView(
         mapView = null
         kakaoMap = null
         labelLayer = null
+        currentLocationLayer = null
         lineLabelLayer = null
         routeLineLayer = null
         container.removeAllViews()
@@ -211,7 +213,13 @@ class NativeKakaoMapPlatformView(
             return
         }
 
-        val layer = labelLayer ?: return
+        val layer = currentLocationLayer ?: labelLayer ?: return
+        if (currentLocationLayer == null) {
+            Log.w(
+                NativeKakaoMapRegistry.LOG_TAG,
+                "current location custom layer unavailable; fallback to marker layer"
+            )
+        }
         val position = LatLng.from(location.lat, location.lng)
         currentLocationLabel?.remove()
         currentLocationLabel = layer.addLabel(
@@ -452,6 +460,20 @@ private fun handleMarkerDragTouch(event: MotionEvent): Boolean {
                         Log.d(
                             NativeKakaoMapRegistry.LOG_TAG,
                             "marker layer created id=field_marker_layer zOrder=6000 competition=None"
+                        )
+                    }
+                    currentLocationLayer = labelManager?.addLayer(
+                        LabelLayerOptions
+                            .from("field_current_location_layer")
+                            .setZOrder(15000)
+                            .setCompetitionType(CompetitionType.None)
+                            .setCompetitionUnit(CompetitionUnit.IconAndText)
+                            .setClickable(false)
+                    )
+                    if (currentLocationLayer != null) {
+                        Log.d(
+                            NativeKakaoMapRegistry.LOG_TAG,
+                            "current location layer created id=field_current_location_layer zOrder=15000 competition=None"
                         )
                     }
                     lineLabelStyleCache.clear()
@@ -695,22 +717,39 @@ private fun handleMarkerDragTouch(event: MotionEvent): Boolean {
     }
 
     private fun createCurrentLocationStyle(): LabelStyles {
-        val size = 30
+        val size = 58
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(30, 125, 255) }
-        val halo = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(70, 30, 125, 255) }
-        val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 3f
-            color = Color.WHITE
-        }
         val center = size / 2f
-        canvas.drawCircle(center, center, 14f, halo)
-        canvas.drawCircle(center, center, 8f, fill)
-        canvas.drawCircle(center, center, 8f, border)
+        val halo = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(72, 30, 125, 255)
+            style = Paint.Style.FILL
+        }
+        val outerRing = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(12, 38, 82)
+            style = Paint.Style.STROKE
+            strokeWidth = 4f
+        }
+        val whiteRing = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = Paint.Style.STROKE
+            strokeWidth = 5f
+        }
+        val core = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(30, 125, 255)
+            style = Paint.Style.FILL
+        }
+        val centerDot = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = Paint.Style.FILL
+        }
+        canvas.drawCircle(center, center, 27f, halo)
+        canvas.drawCircle(center, center, 18f, outerRing)
+        canvas.drawCircle(center, center, 14f, whiteRing)
+        canvas.drawCircle(center, center, 11f, core)
+        canvas.drawCircle(center, center, 3.5f, centerDot)
         return LabelStyles.from(
-            "field_current_location",
+            "field_current_location_v2",
             LabelStyle.from(bitmap).setAnchorPoint(0.5f, 0.5f)
         )
     }

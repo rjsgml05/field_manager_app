@@ -453,6 +453,29 @@
       background: #f97316;
     }
 
+    .marker-count-selection-box {
+      position: absolute;
+      z-index: 45;
+      display: none;
+      border: 2px solid #f97316;
+      background: rgba(249, 115, 22, 0.14);
+      pointer-events: none;
+    }
+
+    .marker-count-result {
+      padding: 7px 11px;
+      border: 2px solid #f97316;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.98);
+      color: #111827;
+      box-shadow: 0 3px 10px rgba(15, 23, 42, 0.2);
+      font-size: 14px;
+      font-weight: 900;
+      line-height: 1;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
     .place-search-panel {
       position: absolute;
       top: 62px;
@@ -2146,6 +2169,7 @@
     <button id="aiImportButton" class="map-button" type="button">AI 탐지 가져오기</button>
     <button id="placeSearchToggleButton" class="map-button" type="button">검색</button>
     <button id="lineLabelToggleButton" class="map-button" type="button" aria-pressed="false">라벨 OFF</button>
+    <button id="markerCountToggleButton" class="map-button" type="button" aria-pressed="false">카운트 OFF</button>
     <input
     id="drawingOverlayFileInput"
     type="file"
@@ -2366,6 +2390,15 @@
     var lineOverlays = {};
     var lineLabelOverlays = {};
     var showAllLineLabels = false;
+    var markerCountMode = false;
+    var markerCountSelectionLocked = false;
+    var markerCountPointerId = null;
+    var markerCountStartPoint = null;
+    var markerCountCurrentPoint = null;
+    var markerCountSelectionBox = null;
+    var markerCountRectangle = null;
+    var markerCountResultOverlay = null;
+    var markerCountPointerEventsBound = false;
     var allTeams = [];
     var ownTeam = null;
     var teamVisibility = {};
@@ -2559,7 +2592,7 @@
     }
 
     function isMapObjectSelectionBlocked() {
-      return freeLineCreateMode === true;
+      return markerCountMode === true || freeLineCreateMode === true;
     }
 
     function flushAdminRender() {
@@ -2691,6 +2724,10 @@ setMapStatus("Map connected");
   kakao.maps.event.addListener(map, "click", function(mouseEvent) {
   if (suppressNextMapClick) {
     suppressNextMapClick = false;
+    return;
+  }
+
+  if (markerCountMode) {
     return;
   }
 
@@ -3690,6 +3727,428 @@ setMapStatus("Map connected");
 
     function updateAllLineLabelVisibility() {
       renderLineLabels(dedupeVisibleLines(getVisibleLines()));
+    }
+
+    function ensureMarkerCountSelectionBox() {
+      if (markerCountSelectionBox) return markerCountSelectionBox;
+
+      var mapArea = document.querySelector(".map-area");
+      if (!mapArea) return null;
+
+      var box = document.createElement("div");
+      box.className = "marker-count-selection-box";
+      mapArea.appendChild(box);
+
+      markerCountSelectionBox = box;
+      return box;
+    }
+
+    function markerCountPointOffset() {
+      var mapElement = document.getElementById("map");
+      var mapArea = document.querySelector(".map-area");
+      if (!mapElement || !mapArea) return { x: 0, y: 0 };
+
+      var mapRect = mapElement.getBoundingClientRect();
+      var areaRect = mapArea.getBoundingClientRect();
+
+      return {
+        x: mapRect.left - areaRect.left,
+        y: mapRect.top - areaRect.top
+      };
+    }
+
+    function updateMarkerCountSelectionBox(startPoint, currentPoint) {
+      var box = ensureMarkerCountSelectionBox();
+      if (!box || !startPoint || !currentPoint) return;
+
+      var offset = markerCountPointOffset();
+      var left = Math.min(startPoint.x, currentPoint.x) + offset.x;
+      var top = Math.min(startPoint.y, currentPoint.y) + offset.y;
+      var width = Math.abs(currentPoint.x - startPoint.x);
+      var height = Math.abs(currentPoint.y - startPoint.y);
+
+      box.style.display = "block";
+      box.style.left = left + "px";
+      box.style.top = top + "px";
+      box.style.width = width + "px";
+      box.style.height = height + "px";
+    }
+
+    function markerCountLatLngFromPoint(point) {
+      if (!map || !point) return null;
+
+      var projection = map.getProjection();
+      if (!projection) return null;
+
+      return projection.coordsFromContainerPoint(
+        new kakao.maps.Point(point.x, point.y)
+      );
+    }
+
+    function markerCountBoundsFromPoints(startPoint, endPoint) {
+      var startLatLng = markerCountLatLngFromPoint(startPoint);
+      var endLatLng = markerCountLatLngFromPoint(endPoint);
+
+      if (!startLatLng || !endLatLng) return null;
+
+      var south = Math.min(startLatLng.getLat(), endLatLng.getLat());
+      var north = Math.max(startLatLng.getLat(), endLatLng.getLat());
+      var west = Math.min(startLatLng.getLng(), endLatLng.getLng());
+      var east = Math.max(startLatLng.getLng(), endLatLng.getLng());
+
+      return new kakao.maps.LatLngBounds(
+        new kakao.maps.LatLng(south, west),
+        new kakao.maps.LatLng(north, east)
+      );
+    }
+
+    function countVisibleMarkersInsideBounds(bounds) {
+      if (!bounds) return 0;
+
+      return dedupeVisibleMarkers(getVisibleMarkers()).filter(function(marker) {
+        var lat = Number(marker.lat);
+        var lng = Number(marker.lng);
+
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+
+        return bounds.contain(new kakao.maps.LatLng(lat, lng));
+      }).length;
+    }
+
+    function showMarkerCountRectangle(bounds) {
+      if (markerCountRectangle) {
+        markerCountRectangle.setMap(null);
+        markerCountRectangle = null;
+      }
+
+      markerCountRectangle = new kakao.maps.Rectangle({
+        map: map,
+        bounds: bounds,
+        strokeWeight: 3,
+        strokeColor: "#f97316",
+        strokeOpacity: 0.95,
+        strokeStyle: "solid",
+        fillColor: "#fb923c",
+        fillOpacity: 0.14,
+        zIndex: 30
+      });
+    }
+
+    function markerCountBoundsCenter(bounds) {
+      var sw = bounds.getSouthWest();
+      var ne = bounds.getNorthEast();
+
+      return new kakao.maps.LatLng(
+        (sw.getLat() + ne.getLat()) / 2,
+        (sw.getLng() + ne.getLng()) / 2
+      );
+    }
+
+    function showMarkerCountResult(bounds, count) {
+      if (markerCountResultOverlay) {
+        markerCountResultOverlay.setMap(null);
+        markerCountResultOverlay = null;
+      }
+
+      var message = "범위 내 마커: " + count + "개";
+      var content = document.createElement("div");
+      content.className = "marker-count-result";
+      content.textContent = message;
+
+      markerCountResultOverlay = new kakao.maps.CustomOverlay({
+        map: map,
+        position: markerCountBoundsCenter(bounds),
+        content: content,
+        xAnchor: 0.5,
+        yAnchor: 0.5,
+        zIndex: 40
+      });
+
+      setAdminMessage(message);
+    }
+
+    function clearMarkerCountSelection() {
+      markerCountPointerId = null;
+      markerCountStartPoint = null;
+      markerCountCurrentPoint = null;
+      markerCountSelectionLocked = false;
+
+      if (markerCountSelectionBox) {
+        markerCountSelectionBox.style.display = "none";
+      }
+
+      if (markerCountRectangle) {
+        markerCountRectangle.setMap(null);
+        markerCountRectangle = null;
+      }
+
+      if (markerCountResultOverlay) {
+        markerCountResultOverlay.setMap(null);
+        markerCountResultOverlay = null;
+      }
+    }
+
+    function updateMarkerCountToggleButton() {
+      var button = document.getElementById("markerCountToggleButton");
+      if (!button) return;
+
+      button.classList.toggle("active", markerCountMode);
+      button.textContent = markerCountMode ? "카운트 ON" : "카운트 OFF";
+      button.setAttribute(
+        "aria-pressed",
+        markerCountMode ? "true" : "false"
+      );
+    }
+
+    function setMarkerCountMode(enabled) {
+      if (
+        enabled === true &&
+        (
+          drawingMarkerTraceMode ||
+          drawingOverlayMoveMode ||
+          drawingOverlayMoveState.dragging ||
+          drawingOverlayRotationState.dragging
+        )
+      ) {
+        setAdminMessage("도면 작업을 종료한 뒤 카운트 기능을 사용하세요.");
+        return;
+      }
+
+      markerCountMode = enabled === true;
+      clearMarkerCountSelection();
+
+      if (markerCountMode) {
+        if (markerCreateMode) setMarkerCreateMode(false);
+        if (freeLineCreateMode) setFreeLineCreateMode(false);
+
+        if (markerMoveMode) {
+          markerMoveMode = false;
+
+          var moveButton = document.getElementById("markerMoveButton");
+          if (moveButton) {
+            moveButton.classList.remove("active");
+          }
+
+          Object.keys(markerObjects).forEach(function(id) {
+            var markerObj = markerObjects[id];
+
+            if (markerObj && typeof markerObj.setDraggable === "function") {
+              markerObj.setDraggable(false);
+              markerObj.__draggable = false;
+            }
+          });
+        }
+
+        closeMarkerInfo();
+
+        if (selectedLineId) {
+          selectedLineId = "";
+          renderMapLines(getVisibleLines());
+        }
+
+        if (map && typeof map.setDraggable === "function") {
+          map.setDraggable(false);
+        }
+
+        setAdminMessage("지도에서 카운트할 범위를 드래그하세요.");
+      } else {
+        if (!drawingOverlayMoveMode && map && typeof map.setDraggable === "function") {
+          map.setDraggable(true);
+        }
+
+        setAdminMessage("카운트 모드 OFF");
+      }
+
+      updateMarkerCountToggleButton();
+    }
+
+    function toggleMarkerCountMode() {
+      setMarkerCountMode(!markerCountMode);
+    }
+
+    function markerCountPointFromPointerEvent(event) {
+      var mapElement = document.getElementById("map");
+      if (!mapElement) return null;
+
+      var rect = mapElement.getBoundingClientRect();
+
+      return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top
+      };
+    }
+
+    function runCatchingMarkerCount(callback) {
+      try {
+        callback();
+      } catch (error) {
+        console.warn("[ADMIN_V2_COUNT]", error);
+      }
+    }
+
+    function handleMarkerCountPointerDown(event) {
+      if (!markerCountMode) return;
+      if (markerCountSelectionLocked) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (event.button !== 0) return;
+
+      var mapElement = document.getElementById("map");
+      if (!mapElement) return;
+
+      var point = markerCountPointFromPointerEvent(event);
+      if (!point) return;
+
+      markerCountPointerId = event.pointerId;
+      markerCountStartPoint = point;
+      markerCountCurrentPoint = point;
+
+      updateMarkerCountSelectionBox(
+        markerCountStartPoint,
+        markerCountCurrentPoint
+      );
+
+      if (typeof mapElement.setPointerCapture === "function") {
+        runCatchingMarkerCount(function() {
+          mapElement.setPointerCapture(event.pointerId);
+        });
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (
+        window.kakao &&
+        kakao.maps &&
+        kakao.maps.event &&
+        typeof kakao.maps.event.preventMap === "function"
+      ) {
+        kakao.maps.event.preventMap();
+      }
+    }
+
+    function handleMarkerCountPointerMove(event) {
+      if (!markerCountMode) return;
+      if (markerCountSelectionLocked) return;
+      if (markerCountPointerId !== event.pointerId) return;
+      if (!markerCountStartPoint) return;
+
+      markerCountCurrentPoint = markerCountPointFromPointerEvent(event);
+
+      updateMarkerCountSelectionBox(
+        markerCountStartPoint,
+        markerCountCurrentPoint
+      );
+
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
+    function handleMarkerCountPointerUp(event) {
+      if (!markerCountMode) return;
+      if (markerCountPointerId !== event.pointerId) return;
+      if (!markerCountStartPoint) return;
+
+      var mapElement = document.getElementById("map");
+      markerCountCurrentPoint = markerCountPointFromPointerEvent(event);
+
+      if (!markerCountCurrentPoint) {
+        markerCountPointerId = null;
+        markerCountStartPoint = null;
+        return;
+      }
+
+      if (mapElement && typeof mapElement.releasePointerCapture === "function") {
+        runCatchingMarkerCount(function() {
+          mapElement.releasePointerCapture(event.pointerId);
+        });
+      }
+
+      var width = Math.abs(
+        markerCountCurrentPoint.x - markerCountStartPoint.x
+      );
+
+      var height = Math.abs(
+        markerCountCurrentPoint.y - markerCountStartPoint.y
+      );
+
+      markerCountPointerId = null;
+
+      if (markerCountSelectionBox) {
+        markerCountSelectionBox.style.display = "none";
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (width < 8 || height < 8) {
+        markerCountStartPoint = null;
+        markerCountCurrentPoint = null;
+        setAdminMessage("범위를 조금 더 크게 드래그하세요.");
+        return;
+      }
+
+      var bounds = markerCountBoundsFromPoints(
+        markerCountStartPoint,
+        markerCountCurrentPoint
+      );
+
+      if (!bounds) {
+        markerCountStartPoint = null;
+        markerCountCurrentPoint = null;
+        setAdminMessage("범위를 계산하지 못했습니다.");
+        return;
+      }
+
+      var count = countVisibleMarkersInsideBounds(bounds);
+
+      showMarkerCountRectangle(bounds);
+      showMarkerCountResult(bounds, count);
+
+      markerCountSelectionLocked = true;
+      markerCountStartPoint = null;
+      markerCountCurrentPoint = null;
+
+      suppressNextMapClick = true;
+
+      setTimeout(function() {
+        suppressNextMapClick = false;
+      }, 250);
+    }
+
+    function bindMarkerCountPointerEvents() {
+      if (markerCountPointerEventsBound) return;
+
+      var markerCountMapElement = document.getElementById("map");
+      if (!markerCountMapElement) return;
+
+      markerCountMapElement.addEventListener(
+        "pointerdown",
+        handleMarkerCountPointerDown,
+        true
+      );
+
+      window.addEventListener(
+        "pointermove",
+        handleMarkerCountPointerMove,
+        true
+      );
+
+      window.addEventListener(
+        "pointerup",
+        handleMarkerCountPointerUp,
+        true
+      );
+
+      window.addEventListener(
+        "pointercancel",
+        handleMarkerCountPointerUp,
+        true
+      );
+
+      markerCountPointerEventsBound = true;
     }
 
         function renderLineLabels(lines) {
@@ -5802,7 +6261,13 @@ function closeSidebar() {
 }
 
 function toggleMarkerMoveMode() {
-  markerMoveMode = !markerMoveMode;
+  var nextMarkerMoveMode = !markerMoveMode;
+
+  if (nextMarkerMoveMode && markerCountMode) {
+    setMarkerCountMode(false);
+  }
+
+  markerMoveMode = nextMarkerMoveMode;
 
   if (markerMoveMode) {
     setMarkerCreateMode(false);
@@ -6045,6 +6510,10 @@ function updateFreeLineCreateButtons() {
 }
 
 function setFreeLineCreateMode(enabled) {
+  if (enabled === true && markerCountMode) {
+    setMarkerCountMode(false);
+  }
+
   freeLineCreateMode = enabled === true;
 
   if (freeLineCreateMode) {
@@ -6721,6 +7190,10 @@ function closeMarkerCreateModal() {
 }
 
 function setMarkerCreateMode(enabled) {
+  if (enabled === true && markerCountMode) {
+    setMarkerCountMode(false);
+  }
+
   markerCreateMode = enabled === true;
 
   var button = document.getElementById("markerCreateButton");
@@ -13366,7 +13839,16 @@ document.getElementById("lineLabelToggleButton").addEventListener("click", funct
       : "모든 선 라벨을 숨겼습니다."
   );
 });
+
+document.getElementById("markerCountToggleButton").addEventListener("click", function(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  toggleMarkerCountMode();
+});
+
 updateLineLabelToggleButton();
+updateMarkerCountToggleButton();
+bindMarkerCountPointerEvents();
 
 document.getElementById("placeSearchSubmitButton").addEventListener("click", function(event) {
   event.preventDefault();
@@ -13609,6 +14091,9 @@ document.getElementById("drawingPinOverlay").addEventListener("click", function(
     cancelDrawingMapPinCapture();
     setMarkerCreateMode(false);
     setFreeLineCreateMode(false);
+    if (markerCountMode) {
+      setMarkerCountMode(false);
+    }
   }
 });
        }

@@ -232,28 +232,123 @@ class _AuthCheckState extends State<AuthCheck> {
 
   Future<void> _checkLoginStatus() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-      _isAdmin = prefs.getBool('isAdmin') ?? false;
-      _teamName = prefs.getString('teamName') ?? "";
-      _teamPw = prefs.getString('teamPw') ?? "";
-    });
+    final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+    final isAdmin = prefs.getBool('isAdmin') ?? false;
+    final teamName = prefs.getString('teamName') ?? "";
+    final teamPw = prefs.getString('teamPw') ?? "";
+
+    if (!isLoggedIn) {
+      if (!mounted) return;
+      setState(() {
+        _isLoggedIn = false;
+        _isAdmin = false;
+        _teamName = "";
+        _teamPw = "";
+      });
+      return;
+    }
+
+    if (isAdmin) {
+      if (!mounted) return;
+      setState(() {
+        _isLoggedIn = isLoggedIn;
+        _isAdmin = isAdmin;
+        _teamName = teamName;
+        _teamPw = teamPw;
+      });
+      return;
+    }
+
+    try {
+      if (teamName.isEmpty || teamPw.isEmpty) {
+        await _clearSavedLogin(prefs);
+        if (!mounted) return;
+        setState(() {
+          _isLoggedIn = false;
+          _isAdmin = false;
+          _teamName = "";
+          _teamPw = "";
+        });
+        return;
+      }
+
+      final doc = await FirebaseFirestore.instance
+          .collection('teams')
+          .doc(teamName)
+          .get();
+      final data = doc.data();
+      final storedPw = data?['teamPw']?.toString() ?? '';
+
+      if (!doc.exists || storedPw != teamPw) {
+        await _clearSavedLogin(prefs);
+        if (!mounted) return;
+        setState(() {
+          _isLoggedIn = false;
+          _isAdmin = false;
+          _teamName = "";
+          _teamPw = "";
+        });
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _isLoggedIn = true;
+        _isAdmin = false;
+        _teamName = teamName;
+        _teamPw = teamPw;
+      });
+    } catch (e) {
+      debugPrint("저장된 로그인 정보 확인 실패: $e");
+      await _clearSavedLogin(prefs);
+      if (!mounted) return;
+      setState(() {
+        _isLoggedIn = false;
+        _isAdmin = false;
+        _teamName = "";
+        _teamPw = "";
+      });
+    }
+  }
+
+  Future<void> _clearSavedLogin(SharedPreferences prefs) async {
+    await prefs.setBool('isLoggedIn', false);
+    await prefs.setBool('isAdmin', false);
+    await prefs.remove('teamName');
+    await prefs.remove('teamPw');
   }
 
   void _performLogout() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isLoggedIn', false);
-    setState(() { _isLoggedIn = false; });
+    await _clearSavedLogin(prefs);
+    if (!mounted) return;
+    setState(() {
+      _isLoggedIn = false;
+      _isAdmin = false;
+      _teamName = "";
+      _teamPw = "";
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return _isLoggedIn 
       ? MapSample(isAdmin: _isAdmin, teamName: _teamName, teamPw: _teamPw, onLogout: _performLogout)
-      : LoginScreen(onLoginSuccess: (admin, name, pw) => setState(() { _isAdmin = admin; _teamName = name; _teamPw = pw; _isLoggedIn = true; }));
+      : LoginScreen(
+          onLoginSuccess: (admin, name, pw) => setState(() {
+            _isAdmin = admin;
+            _teamName = name;
+            _teamPw = pw;
+            _isLoggedIn = true;
+          }),
+        );
   }
 }
 // ◀ 여기서 끊고 바로 아래에 LoginScreen 클래스가 오면 됩니다.
+
+class InvalidTeamPasswordException implements Exception {
+  const InvalidTeamPasswordException();
+}
 
 class LoginScreen extends StatefulWidget {
   final Function(bool, String, String) onLoginSuccess;
@@ -288,6 +383,13 @@ class _LoginScreenState extends State<LoginScreen> {
           'lines': <Map<String, dynamic>>[],
         });
         return;
+      }
+
+      final data = snapshot.data();
+      final storedPw = data?['teamPw']?.toString() ?? '';
+
+      if (storedPw != teamPw) {
+        throw const InvalidTeamPasswordException();
       }
 
       transaction.set(docRef, {
@@ -359,12 +461,30 @@ class _LoginScreenState extends State<LoginScreen> {
                           await Future.delayed(const Duration(milliseconds: 500));
 
                           widget.onLoginSuccess(admin, teamName, teamPw);
+                        } on InvalidTeamPasswordException {
+                          if (!mounted) return;
+                          setState(() {
+                            _isLoggingIn = false;
+                          });
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("비밀번호가 올바르지 않습니다."),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
                         } catch (e) {
                           if (!mounted) return;
-                          setState(() { _isLoggingIn = false; });
+                          setState(() {
+                            _isLoggingIn = false;
+                          });
+
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("팀 등록에 실패했습니다. 네트워크 연결 후 다시 시도해 주세요.")),
+                            const SnackBar(
+                              content: Text("로그인 정보를 확인하지 못했습니다. 네트워크 연결 후 다시 시도해 주세요."),
+                            ),
                           );
+
                           debugPrint("로그인 에러: $e");
                         }
                       },
@@ -457,6 +577,7 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
     bool _isTappingMode = false, _isMoveMode = false, _isLineMode = false;
   bool _isMapControlActive = true;
   bool _dedupeMapRenderItems = true;
+  bool _isSessionInvalidated = false;
   String _lastKakaoMarkerDedupeLogKey = '';
   String _lastKakaoLineDedupeLogKey = '';
   final Map<String, bool> _nativeLineVisibilityOverrides = {};
@@ -486,6 +607,19 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   bool get canUseAdminTools => isAdmin;
   String get _roleLabel => isAdmin ? "관리자" : "팀장";
   String get _adminTeamName => "admin";
+
+  void _invalidateCurrentSession() {
+    if (_isSessionInvalidated || !mounted) return;
+
+    _isSessionInvalidated = true;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("비밀번호가 변경되었습니다. 다시 로그인해 주세요."),
+        backgroundColor: Colors.red,
+      ),
+    );
+    widget.onLogout();
+  }
 
   void _clearSelectedLines() {
     _selectedLineIds.clear();
@@ -1590,6 +1724,226 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
       values.addAll([marker['canonicalMarkerId'], marker['originalMarkerId'], marker['sourceMarkerId'], marker['parentMarkerId']]);
     }
     return values.map(_cleanMarkerId).where((id) => id.isNotEmpty).toSet().toList();
+  }
+
+  Set<String> _sourceIdsFromMarkers(List<SiteData> markers) {
+    final sourceIds = <String>{};
+    for (final marker in markers) {
+      sourceIds.addAll(_markerOwnIdsFromJson(marker));
+      sourceIds.addAll(_markerLinkIdsFromJson(marker));
+    }
+    sourceIds.removeWhere((id) => id.isEmpty);
+    return sourceIds;
+  }
+
+  bool _markerHasSourceId(dynamic marker, Set<String> sourceIds) {
+    if (sourceIds.isEmpty) return false;
+    final markerIds = <String>{
+      ..._markerOwnIdsFromJson(marker),
+      ..._markerLinkIdsFromJson(marker),
+    };
+    return markerIds.any(sourceIds.contains);
+  }
+
+  bool _matchesGroupName(dynamic value, String oldGroupName, String newGroupName) {
+    final name = value?.toString().trim() ?? '';
+    return name == oldGroupName || name == newGroupName;
+  }
+
+  void _upsertLocalGroupList(
+    List<MapGroup> groups, {
+    required String oldGroupName,
+    required String newGroupName,
+    required int newColorValue,
+    bool forceAdd = false,
+  }) {
+    var insertIndex = -1;
+    bool? preservedVisible;
+
+    for (var i = 0; i < groups.length; i++) {
+      final group = groups[i];
+      if (group.name != oldGroupName && group.name != newGroupName) continue;
+      if (insertIndex == -1) insertIndex = i;
+      if (group.name == oldGroupName) {
+        preservedVisible = group.isVisible;
+        break;
+      }
+      preservedVisible ??= group.isVisible;
+    }
+
+    for (var i = groups.length - 1; i >= 0; i--) {
+      final group = groups[i];
+      if (group.name == oldGroupName || group.name == newGroupName) {
+        groups.removeAt(i);
+      }
+    }
+
+    if (insertIndex == -1 && !forceAdd) return;
+
+    final normalizedGroup = MapGroup(
+      name: newGroupName,
+      colorValue: newColorValue,
+      isVisible: preservedVisible ?? true,
+    );
+    if (insertIndex == -1 || insertIndex > groups.length) {
+      groups.add(normalizedGroup);
+    } else {
+      groups.insert(insertIndex, normalizedGroup);
+    }
+  }
+
+  void _applyEditedAdminGroupLocally({
+    required String oldGroupName,
+    required String newGroupName,
+    required int newColorValue,
+    required List<SiteData> sourceMarkersBeforeEdit,
+  }) {
+    final sourceIds = _sourceIdsFromMarkers(sourceMarkersBeforeEdit);
+
+    _upsertLocalGroupList(
+      _userGroups,
+      oldGroupName: oldGroupName,
+      newGroupName: newGroupName,
+      newColorValue: newColorValue,
+      forceAdd: true,
+    );
+
+    for (final marker in _markerDataMap.values) {
+      if (_matchesGroupName(marker.group.name, oldGroupName, newGroupName)) {
+        marker.group.name = newGroupName;
+        marker.group.colorValue = newColorValue;
+      }
+    }
+
+    for (final team in _allTeamsMap.values) {
+      var touchedMarker = false;
+
+      for (final marker in team.markers.values) {
+        final shouldUpdate =
+            _markerHasSourceId(marker, sourceIds) ||
+            _matchesGroupName(marker.group.name, oldGroupName, newGroupName);
+        if (!shouldUpdate) continue;
+
+        marker.group.name = newGroupName;
+        marker.group.colorValue = newColorValue;
+        touchedMarker = true;
+      }
+
+      _upsertLocalGroupList(
+        team.groups,
+        oldGroupName: oldGroupName,
+        newGroupName: newGroupName,
+        newColorValue: newColorValue,
+        forceAdd: touchedMarker,
+      );
+    }
+  }
+
+  Future<int> _syncEditedAdminGroupToDistributedCopies({
+    required String oldGroupName,
+    required MapGroup editedGroup,
+    required List<SiteData> sourceMarkersBeforeEdit,
+  }) async {
+    if (!isAdmin) return 0;
+
+    final newGroupName = editedGroup.name.trim();
+    final oldName = oldGroupName.trim();
+    final sourceIds = _sourceIdsFromMarkers(sourceMarkersBeforeEdit);
+
+    final snapshot = await FirebaseFirestore.instance.collection('teams').get();
+    final batch = FirebaseFirestore.instance.batch();
+    var writes = 0;
+
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      final markers = List<dynamic>.from(data['markers'] ?? []);
+      final groups = List<dynamic>.from(data['groups'] ?? []);
+      final isSourceDoc = doc.id == widget.teamName || doc.id == _adminTeamName;
+      final updatedGroups = <dynamic>[];
+      Map<String, dynamic>? mergedGroup;
+      dynamic oldGroupVisible;
+      dynamic newGroupVisible;
+
+      for (final rawGroup in groups) {
+        if (rawGroup is! Map) {
+          updatedGroups.add(rawGroup);
+          continue;
+        }
+
+        final groupJson = Map<String, dynamic>.from(rawGroup);
+        final groupName = groupJson['name']?.toString() ?? '';
+        if (_matchesGroupName(groupName, oldName, newGroupName)) {
+          if (groupName == oldName) {
+            oldGroupVisible ??= groupJson['isVisible'];
+          } else {
+            newGroupVisible ??= groupJson['isVisible'];
+          }
+          mergedGroup ??= groupJson;
+          continue;
+        }
+
+        updatedGroups.add(rawGroup);
+      }
+
+      final preservedIsVisible = oldGroupVisible ?? newGroupVisible;
+      var hasLinkedTargetMarker = false;
+      dynamic markerVisible;
+
+      for (var i = 0; i < markers.length; i++) {
+        final raw = markers[i];
+        if (raw is! Map) continue;
+
+        final rawGroup = raw['group'];
+        final rawGroupName = rawGroup is Map ? rawGroup['name']?.toString() ?? '' : '';
+        final groupMatches = _matchesGroupName(rawGroupName, oldName, newGroupName);
+        if (!groupMatches) continue;
+
+        final linkedToSource = _markerHasSourceId(raw, sourceIds);
+        final shouldUpdateMarker = isSourceDoc || linkedToSource;
+        if (!shouldUpdateMarker) continue;
+
+        if (!isSourceDoc) hasLinkedTargetMarker = true;
+
+        final marker = Map<String, dynamic>.from(raw);
+        final groupJson = rawGroup is Map ? Map<String, dynamic>.from(rawGroup) : <String, dynamic>{};
+        markerVisible ??= groupJson['isVisible'];
+        marker['group'] = {
+          ...groupJson,
+          'name': newGroupName,
+          'colorValue': editedGroup.colorValue,
+          'isVisible': groupJson['isVisible'] ?? preservedIsVisible ?? true,
+        };
+        markers[i] = marker;
+      }
+
+      if (!isSourceDoc && !hasLinkedTargetMarker) continue;
+
+      updatedGroups.add({
+        ...?mergedGroup,
+        'name': newGroupName,
+        'colorValue': editedGroup.colorValue,
+        'isVisible': preservedIsVisible ?? markerVisible ?? mergedGroup?['isVisible'] ?? true,
+      });
+
+      if (writes >= 450) {
+        debugPrint('[GROUP_SYNC_TOO_MANY_DOCS] count=${writes + 1}');
+        throw StateError('GROUP_SYNC_TOO_MANY_DOCS');
+      }
+
+      batch.update(doc.reference, {
+        'groups': updatedGroups,
+        'markers': markers,
+      });
+      writes++;
+    }
+
+    if (writes == 0) return 0;
+
+    await batch.commit();
+    debugPrint(
+      '[APP_ADMIN_GROUP_MUTATION] source=${widget.teamName} old=$oldName new=$newGroupName color=${editedGroup.colorValue} docs=$writes',
+    );
+    return writes;
   }
 
   bool _rawMarkerMatchesSite(Map<String, dynamic> marker, SiteData site) {
@@ -3824,10 +4178,23 @@ Future<void> _loadData() async {
     }
 
     // 2. [서버 동기화] 내 팀 데이터 불러오기
-    _myTeamSub = FirebaseFirestore.instance.collection('teams').doc(widget.teamName).snapshots().listen((doc) {
+    _myTeamSub = FirebaseFirestore.instance
+        .collection('teams')
+        .doc(widget.teamName)
+        .snapshots()
+        .listen((doc) {
       if (doc.exists && doc.data() != null && mounted) {
         // 📍 1. 데이터가 존재할 때 (수정되거나 일부 삭제되었을 때 포함)
         var data = doc.data()!;
+
+        if (!isAdmin) {
+          final storedPw = data['teamPw']?.toString() ?? '';
+          if (storedPw != widget.teamPw) {
+            _invalidateCurrentSession();
+            return;
+          }
+        }
+
         setState(() {
           _userGroups.clear();
           if (data['groups'] != null) {
@@ -3854,6 +4221,11 @@ Future<void> _loadData() async {
         // 실제 마커/선 표시값이 달라진 경우에만 내부 hash 비교를 통과해 WebView로 전송됨
         _scheduleMarkerUpdate(ms: 120);
       } else if (!doc.exists && mounted) {
+        if (!isAdmin) {
+          _invalidateCurrentSession();
+          return;
+        }
+
         // 📍 2. 관리자가 파이어베이스에서 팀 폴더(문서)를 아예 삭제했을 때
         setState(() {
           _userGroups.clear();    // 그룹 목록 비우기
@@ -4060,24 +4432,62 @@ Future<void> _loadData() async {
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("취소")), 
             ElevatedButton(
-              onPressed: () { 
+              onPressed: () async {
+                final editedName = n.trim();
+                if (editedName.isEmpty) return;
+                final oldGroupName = group.name;
+                final newColorValue = selectedColor.value;
+                final sourceMarkersBeforeEdit = _markerDataMap.values
+                    .where((marker) => marker.group.name == oldGroupName)
+                    .toList();
+
                 // 이름과 색상 변경 반영
                 setState(() { 
-                  String oldName = group.name;
-                  group.name = n;
-                  group.colorValue = selectedColor.value; 
+                  group.name = editedName;
+                  group.colorValue = newColorValue;
                   
                   // 해당 그룹에 속한 마커들도 정보 업데이트
                   _markerDataMap.forEach((k,v) { 
-                    if(v.group.name == oldName) {
-                      v.group.name = n;
+                    if(v.group.name == oldGroupName) {
+                      v.group.name = editedName;
                       v.group.colorValue = group.colorValue;
                     }
                   }); 
                 }); 
-                _saveData(); 
-                _scheduleMarkerUpdate(ms: 0);
-                Navigator.pop(ctx);
+
+                try {
+                  await _saveData();
+                  if (isAdmin) {
+                    await _syncEditedAdminGroupToDistributedCopies(
+                      oldGroupName: oldGroupName,
+                      editedGroup: group,
+                      sourceMarkersBeforeEdit: sourceMarkersBeforeEdit,
+                    );
+                  }
+
+                  if (!mounted) return;
+                  setState(() {
+                    _applyEditedAdminGroupLocally(
+                      oldGroupName: oldGroupName,
+                      newGroupName: editedName,
+                      newColorValue: newColorValue,
+                      sourceMarkersBeforeEdit: sourceMarkersBeforeEdit,
+                    );
+                  });
+
+                  _invalidateMarkerRenderHash();
+                  _scheduleMarkerUpdate(ms: 0);
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("그룹 수정이 완료되었습니다."), backgroundColor: Colors.green),
+                  );
+                } catch (e) {
+                  debugPrint("관리자 그룹 동기화 실패: $e");
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("그룹 동기화 실패: $e"), backgroundColor: Colors.red),
+                  );
+                }
               }, 
               child: const Text("수정 완료")
             )
@@ -7798,13 +8208,28 @@ Future<void> _distributeAiDataToTeams(List<String> targetTeams, String aiDocumen
           List<dynamic> markers = List.from(data['markers'] ?? []);
           List<dynamic> groups = List.from(data['groups'] ?? []);
 
-          // 1. 받는 팀에 해당 그룹명(폴더)이 없다면 생성해줍니다.
-          if (!groups.any((g) => g['name'] == group.name)) {
+          // 1. 받는 팀의 기존 ON/OFF 상태는 유지하면서 그룹 색상을 갱신합니다.
+          final existingGroupIndex = groups.indexWhere(
+            (g) => g is Map && g['name'] == group.name,
+          );
+          dynamic targetGroupIsVisible = true;
+
+          if (existingGroupIndex == -1) {
             groups.add({
               'name': group.name, 
               'colorValue': group.colorValue, 
               'isVisible': true
             });
+          } else {
+            final existingGroup =
+                Map<String, dynamic>.from(groups[existingGroupIndex] as Map);
+            targetGroupIsVisible = existingGroup['isVisible'] ?? true;
+            groups[existingGroupIndex] = {
+              ...existingGroup,
+              'name': group.name,
+              'colorValue': group.colorValue,
+              'isVisible': targetGroupIsVisible,
+            };
           }
 
           // 2. 마커 복사해서 밀어 넣기
@@ -7816,6 +8241,12 @@ Future<void> _distributeAiDataToTeams(List<String> targetTeams, String aiDocumen
             markerJson['canonicalMarkerId'] = canonicalId;
             markerJson['originalMarkerId'] = canonicalId;
             markerJson['sourceMarkerId'] = canonicalId;
+            markerJson['group'] = {
+              ...Map<String, dynamic>.from(markerJson['group'] as Map),
+              'name': group.name,
+              'colorValue': group.colorValue,
+              'isVisible': targetGroupIsVisible,
+            };
 
             int idx = markers.indexWhere((item) =>
                 item is Map &&
@@ -7831,6 +8262,14 @@ Future<void> _distributeAiDataToTeams(List<String> targetTeams, String aiDocumen
                     item['parentMarkerId'] == m.id));
 
             if (idx != -1) {
+              final existingMarker = markers[idx];
+              if (existingMarker is Map && existingMarker['group'] is Map) {
+                final existingMarkerGroup = existingMarker['group'] as Map;
+                markerJson['group'] = {
+                  ...Map<String, dynamic>.from(markerJson['group'] as Map),
+                  'isVisible': existingMarkerGroup['isVisible'] ?? targetGroupIsVisible,
+                };
+              }
               markers[idx] = markerJson;
             } else {
               markers.add(markerJson);
