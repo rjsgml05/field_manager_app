@@ -2,6 +2,8 @@
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
@@ -19,7 +21,7 @@ import 'package:permission_handler/permission_handler.dart'; // ◀ 맨 위에 �
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'web_download_stub.dart' if (dart.library.html) 'web_download_web.dart' as web_saver;
 import 'package:geocoding/geocoding.dart';
-import 'package:archive/archive.dart';
+import 'package:archive/archive_io.dart';
 import 'package:url_launcher/url_launcher.dart'; // ◀ 외부 링크 열기용
 import 'package:media_scanner/media_scanner.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
@@ -51,6 +53,162 @@ class PhotoItem {
   PhotoItem({required this.filePath, this.comment = ""});
   Map<String, dynamic> toJson() => {'filePath': filePath, 'comment': comment};
   factory PhotoItem.fromJson(Map<String, dynamic> json) => PhotoItem(filePath: json['filePath'], comment: json['comment'] ?? "");
+}
+
+class _CompressedFieldPhoto {
+  final XFile source;
+  final File file;
+  final int sortIndex;
+  final int originalSizeBytes;
+  final int compressedSizeBytes;
+  final bool isTemporary;
+
+  _CompressedFieldPhoto({
+    required this.source,
+    required this.file,
+    required this.sortIndex,
+    required this.originalSizeBytes,
+    required this.compressedSizeBytes,
+    required this.isTemporary,
+  });
+}
+
+class _FieldPhotoFailure {
+  final XFile source;
+  final int sortIndex;
+  final String message;
+
+  _FieldPhotoFailure({
+    required this.source,
+    required this.sortIndex,
+    required this.message,
+  });
+}
+
+class _FieldPhotoUploadResult {
+  final String batchId;
+  final int uploadedCount;
+  final int failedCount;
+  final int originalTotalBytes;
+  final int compressedTotalBytes;
+  final int oversizedCompressedCount;
+  final int elapsedMs;
+  final int compressElapsedMs;
+  final int uploadElapsedMs;
+  final int zipSizeBytes;
+  final List<_FieldPhotoFailure> failures;
+
+  _FieldPhotoUploadResult({
+    required this.batchId,
+    required this.uploadedCount,
+    required this.failedCount,
+    required this.originalTotalBytes,
+    required this.compressedTotalBytes,
+    required this.oversizedCompressedCount,
+    required this.elapsedMs,
+    required this.compressElapsedMs,
+    required this.uploadElapsedMs,
+    required this.zipSizeBytes,
+    required this.failures,
+  });
+}
+
+enum _FieldPhotoUploadStatus {
+  idle,
+  compressing,
+  uploading,
+  retrying,
+  uploaded,
+  failed,
+}
+
+typedef _FieldPhotoProgress = void Function(
+  _FieldPhotoUploadStatus status,
+  int compressedCount,
+  int uploadedCount,
+  int failedCount,
+  String message,
+);
+
+class _PendingFieldPhotoUpload {
+  final String batchId;
+  final String zipPath;
+  final String zipStoragePath;
+  final String zipFileName;
+  final String teamName;
+  final String date;
+  final int createdAtMillis;
+  final int photoCount;
+  final int uploadedCount;
+  final int failedCount;
+  final int originalTotalBytes;
+  final int compressedTotalBytes;
+  final int oversizedCompressedCount;
+  final int compressElapsedMs;
+  final int zipSizeBytes;
+
+  _PendingFieldPhotoUpload({
+    required this.batchId,
+    required this.zipPath,
+    required this.zipStoragePath,
+    required this.zipFileName,
+    required this.teamName,
+    required this.date,
+    required this.createdAtMillis,
+    required this.photoCount,
+    required this.uploadedCount,
+    required this.failedCount,
+    required this.originalTotalBytes,
+    required this.compressedTotalBytes,
+    required this.oversizedCompressedCount,
+    required this.compressElapsedMs,
+    required this.zipSizeBytes,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'batchId': batchId,
+        'zipPath': zipPath,
+        'zipStoragePath': zipStoragePath,
+        'zipFileName': zipFileName,
+        'teamName': teamName,
+        'date': date,
+        'createdAt': createdAtMillis,
+        'photoCount': photoCount,
+        'uploadedCount': uploadedCount,
+        'failedCount': failedCount,
+        'originalTotalBytes': originalTotalBytes,
+        'compressedTotalBytes': compressedTotalBytes,
+        'oversizedCompressedCount': oversizedCompressedCount,
+        'compressElapsedMs': compressElapsedMs,
+        'zipSizeBytes': zipSizeBytes,
+      };
+
+  factory _PendingFieldPhotoUpload.fromJson(Map<String, dynamic> json) {
+    int readInt(String key) {
+      final value = json[key];
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      return int.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    return _PendingFieldPhotoUpload(
+      batchId: json['batchId']?.toString() ?? '',
+      zipPath: json['zipPath']?.toString() ?? '',
+      zipStoragePath: json['zipStoragePath']?.toString() ?? '',
+      zipFileName: json['zipFileName']?.toString() ?? '',
+      teamName: json['teamName']?.toString() ?? '',
+      date: json['date']?.toString() ?? '',
+      createdAtMillis: readInt('createdAt'),
+      photoCount: readInt('photoCount'),
+      uploadedCount: readInt('uploadedCount'),
+      failedCount: readInt('failedCount'),
+      originalTotalBytes: readInt('originalTotalBytes'),
+      compressedTotalBytes: readInt('compressedTotalBytes'),
+      oversizedCompressedCount: readInt('oversizedCompressedCount'),
+      compressElapsedMs: readInt('compressElapsedMs'),
+      zipSizeBytes: readInt('zipSizeBytes'),
+    );
+  }
 }
 
 class SiteData {
@@ -546,6 +704,10 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   static const bool _enableNativeMarkerPerformanceTest = false;
   static const int _nativeMarkerPerformanceTestCount = 400;
   static const int _nativeFocusedZoomLevel = 18;
+  static const int fieldPhotoMaxDimension = 1600;
+  static const int fieldPhotoJpegQuality = 80;
+  static const int fieldPhotoSkipCompressBytes = 900 * 1024;
+  static const String _fieldPhotoPendingUploadPrefsKey = 'field_photo_pending_uploads';
   bool _isGlobalProcessing = false;
   String _processingText = "";    
   // ✅ [추가] 마지막으로 UI(버튼 등)를 터치한 시간을 기록하는 변수
@@ -1748,6 +1910,88 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
   bool _matchesGroupName(dynamic value, String oldGroupName, String newGroupName) {
     final name = value?.toString().trim() ?? '';
     return name == oldGroupName || name == newGroupName;
+  }
+
+  Set<String> _groupIdentityValues(dynamic value) {
+    final values = <dynamic>[];
+
+    if (value is MapGroup) {
+      values.add(value.name);
+    } else if (value is SiteData) {
+      values.add(value.group.name);
+    } else if (value is Map) {
+      final looksLikeMarker = value.containsKey('group') ||
+          value.containsKey('lat') ||
+          value.containsKey('lng') ||
+          value.containsKey('markerId') ||
+          value.containsKey('canonicalMarkerId') ||
+          value.containsKey('originalMarkerId') ||
+          value.containsKey('sourceMarkerId') ||
+          value.containsKey('parentMarkerId');
+      final group = value['group'];
+      if (group is Map) {
+        values.addAll([
+          group['id'],
+          group['groupId'],
+          group['name'],
+          group['groupName'],
+          group['canonicalGroupId'],
+          group['originalGroupId'],
+          group['sourceGroupId'],
+        ]);
+      }
+      if (!looksLikeMarker) {
+        values.addAll([
+          value['id'],
+          value['name'],
+        ]);
+      }
+      values.addAll([
+        value['groupId'],
+        value['groupName'],
+        value['canonicalGroupId'],
+        value['originalGroupId'],
+        value['sourceGroupId'],
+      ]);
+    }
+
+    return values
+        .map((value) => value?.toString().trim() ?? '')
+        .where((value) => value.isNotEmpty)
+        .toSet();
+  }
+
+  bool _groupMatchesTarget(dynamic value, MapGroup targetGroup) {
+    final targetValues = _groupIdentityValues(targetGroup);
+    final values = _groupIdentityValues(value);
+    if (targetValues.isEmpty || values.isEmpty) return false;
+    return values.any(targetValues.contains);
+  }
+
+  bool _rawMarkerInGroup(dynamic marker, MapGroup targetGroup) {
+    return _groupMatchesTarget(marker, targetGroup);
+  }
+
+  bool _rawGroupHasRemainingMarkers(
+    List<dynamic> markers,
+    MapGroup targetGroup,
+  ) {
+    return markers.any((marker) => _rawMarkerInGroup(marker, targetGroup));
+  }
+
+  Set<String> _deletedMarkerIdsFromRaw(dynamic marker) {
+    return <String>{
+      ..._markerOwnIdsFromJson(marker),
+      ..._markerLinkIdsFromJson(marker),
+    }.map(_cleanMarkerId).where((id) => id.isNotEmpty).toSet();
+  }
+
+  Set<String> _deletedMarkerIdsFromSite(SiteData marker) {
+    return <String>{
+      ..._markerOwnIds(marker),
+      ..._markerLinkIds(marker),
+      marker.id,
+    }.map(_cleanMarkerId).where((id) => id.isNotEmpty).toSet();
   }
 
   void _upsertLocalGroupList(
@@ -3059,6 +3303,7 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
       _nativeKakaoMapEvents.setMethodCallHandler(_handleNativeKakaoMapEvent);
     }
     _loadData().then((_) => _scheduleMarkerUpdate());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _restorePendingFieldPhotoUploadIfNeeded());
   }
 
   @override
@@ -4533,6 +4778,1003 @@ Future<void> _loadData() async {
       })
     );
     return [...existing, ...uploaded];
+  }
+
+  String _formatFieldPhotoDate(DateTime date) {
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${date.year}-${two(date.month)}-${two(date.day)}';
+  }
+
+  String _fieldPhotoBatchId(DateTime createdAt) {
+    String two(int value) => value.toString().padLeft(2, '0');
+    final date = '${createdAt.year}${two(createdAt.month)}${two(createdAt.day)}';
+    final time = '${two(createdAt.hour)}${two(createdAt.minute)}${two(createdAt.second)}';
+    final suffix = createdAt.microsecondsSinceEpoch.toRadixString(36);
+    return '${date}_${time}_$suffix';
+  }
+
+  String _fieldPhotoOriginalName(XFile source) {
+    final name = source.name.trim();
+    if (name.isNotEmpty) return name;
+    final normalized = source.path.replaceAll('\\', '/');
+    final index = normalized.lastIndexOf('/');
+    return index >= 0 ? normalized.substring(index + 1) : normalized;
+  }
+
+  String _fieldPhotoFileName(int sortIndex) {
+    final setIndex = (sortIndex ~/ 3) + 1;
+    final orderInSet = (sortIndex % 3) + 1;
+    return '${setIndex.toString().padLeft(3, '0')}_$orderInSet.jpg';
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes <= 0) return '0MB';
+    final mb = bytes / (1024 * 1024);
+    if (mb < 1) return '${(bytes / 1024).toStringAsFixed(0)}KB';
+    return '${mb.toStringAsFixed(mb >= 10 ? 0 : 1)}MB';
+  }
+
+  String _formatDurationMs(int elapsedMs) {
+    final totalSeconds = (elapsedMs / 1000).round();
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    if (minutes <= 0) return '$seconds초';
+    return '$minutes분 ${seconds.toString().padLeft(2, '0')}초';
+  }
+
+  Future<int> _safeXFileLength(XFile file) async {
+    try {
+      return await file.length();
+    } catch (_) {
+      if (!kIsWeb && file.path.isNotEmpty) {
+        final localFile = File(file.path);
+        if (await localFile.exists()) return localFile.length();
+      }
+      return 0;
+    }
+  }
+
+  Future<List<XFile>> _prepareFieldPhotos(List<XFile> images) async {
+    final unique = <String, XFile>{};
+    for (final image in images) {
+      final size = await _safeXFileLength(image);
+      final path = image.path.trim();
+      final name = _fieldPhotoOriginalName(image);
+      final key = path.isNotEmpty ? 'path:$path' : 'name:$name:$size';
+      unique.putIfAbsent(key, () => image);
+    }
+
+    final result = unique.values.toList();
+    result.sort((a, b) {
+      final byName = _fieldPhotoOriginalName(a)
+          .toLowerCase()
+          .compareTo(_fieldPhotoOriginalName(b).toLowerCase());
+      if (byName != 0) return byName;
+      return a.path.compareTo(b.path);
+    });
+    return result;
+  }
+
+  Future<_CompressedFieldPhoto> _compressFieldPhoto(
+    XFile source, {
+    required String batchId,
+    required String fileName,
+    required int sortIndex,
+    required int originalSizeBytes,
+  }) async {
+    if (kIsWeb) {
+      throw UnsupportedError('웹에서는 임시 파일 압축을 지원하지 않습니다.');
+    }
+
+    final lowerName = _fieldPhotoOriginalName(source).toLowerCase();
+    final canSkipCompress = lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg');
+    if (canSkipCompress && originalSizeBytes > 0 && originalSizeBytes <= fieldPhotoSkipCompressBytes) {
+      final originalFile = File(source.path);
+      if (await originalFile.exists()) {
+        return _CompressedFieldPhoto(
+          source: source,
+          file: originalFile,
+          sortIndex: sortIndex,
+          originalSizeBytes: originalSizeBytes,
+          compressedSizeBytes: originalSizeBytes,
+          isTemporary: false,
+        );
+      }
+    }
+
+    final tempRoot = await getTemporaryDirectory();
+    final uploadDir = Directory(
+      '${tempRoot.path}${Platform.pathSeparator}field_photo_zip_uploads'
+      '${Platform.pathSeparator}$batchId',
+    );
+    await uploadDir.create(recursive: true);
+
+    final targetPath = '${uploadDir.path}${Platform.pathSeparator}$fileName';
+    final compressed = await FlutterImageCompress.compressAndGetFile(
+      source.path,
+      targetPath,
+      minWidth: fieldPhotoMaxDimension,
+      minHeight: fieldPhotoMaxDimension,
+      quality: fieldPhotoJpegQuality,
+      format: CompressFormat.jpeg,
+    );
+
+    if (compressed == null) {
+      throw Exception('사진 압축 결과가 없습니다.');
+    }
+    final compressedFile = File(compressed.path);
+    return _CompressedFieldPhoto(
+      source: source,
+      file: compressedFile,
+      sortIndex: sortIndex,
+      originalSizeBytes: originalSizeBytes,
+      compressedSizeBytes: await compressedFile.length(),
+      isTemporary: true,
+    );
+  }
+
+  Future<void> _cleanupFieldPhotoZipTempFiles(String batchId) async {
+    try {
+      final tempRoot = await getTemporaryDirectory();
+      final tempDir = Directory(
+        '${tempRoot.path}${Platform.pathSeparator}field_photo_zip_uploads'
+        '${Platform.pathSeparator}$batchId',
+      );
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+      debugPrint('[FIELD_PHOTO_TEMP_CLEANUP_DONE] batchId=$batchId');
+    } catch (e) {
+      debugPrint('[FIELD_PHOTO_TEMP_CLEANUP_FAILED] $e');
+    }
+  }
+
+  Future<List<_PendingFieldPhotoUpload>> _loadPendingFieldPhotoUploads() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_fieldPhotoPendingUploadPrefsKey);
+    if (raw == null || raw.trim().isEmpty) return [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return [];
+      return decoded
+          .whereType<Map>()
+          .map((item) => _PendingFieldPhotoUpload.fromJson(Map<String, dynamic>.from(item)))
+          .where((item) =>
+              item.batchId.isNotEmpty &&
+              item.zipPath.isNotEmpty &&
+              item.zipStoragePath.isNotEmpty &&
+              item.teamName == widget.teamName)
+          .toList();
+    } catch (e) {
+      debugPrint('[FIELD_PHOTO_PENDING_LOAD_FAILED] $e');
+      return [];
+    }
+  }
+
+  Future<_PendingFieldPhotoUpload?> _latestPendingFieldPhotoUpload() async {
+    final pendingUploads = await _loadPendingFieldPhotoUploads();
+    if (pendingUploads.isEmpty) return null;
+    pendingUploads.sort((a, b) => b.createdAtMillis.compareTo(a.createdAtMillis));
+    return pendingUploads.first;
+  }
+
+  Future<void> _savePendingFieldPhotoUpload(_PendingFieldPhotoUpload pending) async {
+    final prefs = await SharedPreferences.getInstance();
+    final pendingUploads = await _loadPendingFieldPhotoUploads();
+    pendingUploads.removeWhere((item) => item.batchId == pending.batchId);
+    pendingUploads.add(pending);
+    await prefs.setString(
+      _fieldPhotoPendingUploadPrefsKey,
+      jsonEncode(pendingUploads.map((item) => item.toJson()).toList()),
+    );
+    debugPrint('[FIELD_PHOTO_PENDING_SAVE] batchId=${pending.batchId} zipPath=${pending.zipPath}');
+  }
+
+  Future<void> _clearPendingFieldPhotoUpload(String batchId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final pendingUploads = await _loadPendingFieldPhotoUploads();
+    pendingUploads.removeWhere((item) => item.batchId == batchId);
+    if (pendingUploads.isEmpty) {
+      await prefs.remove(_fieldPhotoPendingUploadPrefsKey);
+    } else {
+      await prefs.setString(
+        _fieldPhotoPendingUploadPrefsKey,
+        jsonEncode(pendingUploads.map((item) => item.toJson()).toList()),
+      );
+    }
+    debugPrint('[FIELD_PHOTO_PENDING_CLEAR] batchId=$batchId');
+  }
+
+  Future<void> _deletePendingFieldPhotoUpload(_PendingFieldPhotoUpload pending) async {
+    await _clearPendingFieldPhotoUpload(pending.batchId);
+    await _cleanupFieldPhotoZipTempFiles(pending.batchId);
+  }
+
+  bool _shouldRetryFieldZipUploadError(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('timeout') ||
+        message.contains('network-request-failed') ||
+        message.contains('unknown') ||
+        message.contains('socket') ||
+        message.contains('connection reset');
+  }
+
+  Future<void> _setFieldPhotoUploadWakelock(bool enabled) async {
+    try {
+      if (enabled) {
+        await WakelockPlus.enable();
+      } else {
+        await WakelockPlus.disable();
+      }
+    } catch (e) {
+      debugPrint('[FIELD_PHOTO_WAKELOCK_FAILED] enabled=$enabled error=$e');
+    }
+  }
+
+  Future<int> _putFieldPhotoZipWithRetry({
+    required File zipFile,
+    required Reference storageRef,
+    required SettableMetadata metadata,
+    required _PendingFieldPhotoUpload pending,
+    required _FieldPhotoProgress onProgress,
+  }) async {
+    final retryDelays = [
+      const Duration(seconds: 5),
+      const Duration(seconds: 10),
+      const Duration(seconds: 20),
+    ];
+    final uploadWatch = Stopwatch()..start();
+
+    for (var attempt = 0;; attempt += 1) {
+      try {
+        final uploadTask = storageRef.putFile(zipFile, metadata);
+        await for (final snapshot in uploadTask.snapshotEvents) {
+          final totalBytes = snapshot.totalBytes;
+          if (totalBytes > 0) {
+            final percent = ((snapshot.bytesTransferred / totalBytes) * 100).clamp(0, 100).round();
+            onProgress(
+              _FieldPhotoUploadStatus.uploading,
+              pending.uploadedCount + pending.failedCount,
+              pending.uploadedCount,
+              pending.failedCount,
+              'ZIP 업로드중: $percent%',
+            );
+          }
+        }
+        await uploadTask;
+        uploadWatch.stop();
+        return uploadWatch.elapsedMilliseconds;
+      } catch (e) {
+        if (attempt >= retryDelays.length || !_shouldRetryFieldZipUploadError(e)) {
+          uploadWatch.stop();
+          rethrow;
+        }
+        final retryAttempt = attempt + 1;
+        debugPrint('[FIELD_UPLOAD_RETRY] attempt=$retryAttempt error=$e');
+        onProgress(
+          _FieldPhotoUploadStatus.retrying,
+          pending.uploadedCount + pending.failedCount,
+          pending.uploadedCount,
+          pending.failedCount,
+          '자동 재시도중 ($retryAttempt/3)',
+        );
+        await Future.delayed(retryDelays[attempt]);
+      }
+    }
+  }
+
+  Future<_FieldPhotoUploadResult> _uploadPendingFieldPhotoBatch(
+    _PendingFieldPhotoUpload pending,
+    _FieldPhotoProgress onProgress, {
+    bool manageWakelock = true,
+    List<_FieldPhotoFailure> failures = const [],
+  }) async {
+    final totalStopwatch = Stopwatch()..start();
+    var uploadElapsedMs = 0;
+    final createdAt = DateTime.fromMillisecondsSinceEpoch(pending.createdAtMillis);
+    final batchRef = FirebaseFirestore.instance.collection('photoBatches').doc(pending.batchId);
+    final storageRef = FirebaseStorage.instance.ref().child(pending.zipStoragePath);
+    final zipFile = File(pending.zipPath);
+
+    if (manageWakelock) await _setFieldPhotoUploadWakelock(true);
+    try {
+      if (!await zipFile.exists()) {
+        throw Exception('재업로드할 ZIP 파일이 없습니다.');
+      }
+
+      debugPrint('[FIELD_ZIP_UPLOAD_START] batchId=${pending.batchId} zipPath=${pending.zipPath}');
+      onProgress(
+        _FieldPhotoUploadStatus.uploading,
+        pending.uploadedCount + pending.failedCount,
+        pending.uploadedCount,
+        pending.failedCount,
+        'ZIP 업로드중...',
+      );
+
+      uploadElapsedMs = await _putFieldPhotoZipWithRetry(
+        zipFile: zipFile,
+        storageRef: storageRef,
+        metadata: SettableMetadata(
+          contentType: 'application/zip',
+          customMetadata: {
+            'teamName': pending.teamName,
+            'date': pending.date,
+            'batchId': pending.batchId,
+          },
+        ),
+        pending: pending,
+        onProgress: onProgress,
+      );
+
+      await storageRef.getMetadata();
+      debugPrint('[FIELD_ZIP_UPLOAD_DONE] batchId=${pending.batchId} uploadElapsedMs=$uploadElapsedMs');
+      onProgress(
+        _FieldPhotoUploadStatus.uploading,
+        pending.uploadedCount + pending.failedCount,
+        pending.uploadedCount,
+        pending.failedCount,
+        'Firestore 저장중...',
+      );
+
+      await batchRef.set({
+        'batchId': pending.batchId,
+        'teamName': pending.teamName,
+        'date': pending.date,
+        'uploaderTeamName': pending.teamName,
+        'photoCount': pending.uploadedCount,
+        'setCount': pending.uploadedCount ~/ 3,
+        'remainderCount': pending.uploadedCount % 3,
+        'zipStoragePath': pending.zipStoragePath,
+        'zipFileName': pending.zipFileName,
+        'zipSizeBytes': pending.zipSizeBytes,
+        'compressedTotalBytes': pending.compressedTotalBytes,
+        'originalTotalBytes': pending.originalTotalBytes,
+        'status': 'uploaded',
+        'failedCount': pending.failedCount,
+        'failedFiles': failures
+            .map((failure) => {
+                  'originalName': _fieldPhotoOriginalName(failure.source),
+                  'sortIndex': failure.sortIndex,
+                  'message': failure.message,
+                })
+            .toList(),
+        'uploadMode': 'zip_archive',
+        'maxDimension': fieldPhotoMaxDimension,
+        'jpegQuality': fieldPhotoJpegQuality,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'deleteSuggestedAt': Timestamp.fromDate(createdAt.add(const Duration(days: 3))),
+        'expiresAt': Timestamp.fromDate(createdAt.add(const Duration(days: 30))),
+        'downloadedAt': null,
+        'downloadedBy': null,
+        'deletedAt': null,
+      });
+      debugPrint('[FIELD_FIRESTORE_BATCH_SAVE] batchId=${pending.batchId}');
+
+      final savedBatch = await batchRef.get();
+      if (!savedBatch.exists) {
+        throw Exception('Firestore 저장 검증 실패');
+      }
+
+      await _clearPendingFieldPhotoUpload(pending.batchId);
+      await _cleanupFieldPhotoZipTempFiles(pending.batchId);
+      totalStopwatch.stop();
+
+      final averageBytes = pending.uploadedCount > 0 ? pending.compressedTotalBytes ~/ pending.uploadedCount : 0;
+      debugPrint(
+        '[FIELD_UPLOAD_COMPLETE] '
+        'batchId=${pending.batchId} '
+        'count=${pending.uploadedCount} '
+        'failed=${pending.failedCount} '
+        'zipBytes=${pending.zipSizeBytes} '
+        'compressedBytes=${pending.compressedTotalBytes} '
+        'elapsedMs=${totalStopwatch.elapsedMilliseconds} '
+        'averageBytes=$averageBytes '
+        'compressElapsedMs=${pending.compressElapsedMs} '
+        'uploadElapsedMs=$uploadElapsedMs',
+      );
+      onProgress(
+        _FieldPhotoUploadStatus.uploaded,
+        pending.uploadedCount + pending.failedCount,
+        pending.uploadedCount,
+        pending.failedCount,
+        '업로드 완료',
+      );
+
+      return _FieldPhotoUploadResult(
+        batchId: pending.batchId,
+        uploadedCount: pending.uploadedCount,
+        failedCount: pending.failedCount,
+        originalTotalBytes: pending.originalTotalBytes,
+        compressedTotalBytes: pending.compressedTotalBytes,
+        oversizedCompressedCount: pending.oversizedCompressedCount,
+        elapsedMs: totalStopwatch.elapsedMilliseconds,
+        compressElapsedMs: pending.compressElapsedMs,
+        uploadElapsedMs: uploadElapsedMs,
+        zipSizeBytes: pending.zipSizeBytes,
+        failures: failures,
+      );
+    } catch (e) {
+      totalStopwatch.stop();
+      debugPrint('[FIELD_UPLOAD_FAILED] batchId=${pending.batchId} error=$e');
+      onProgress(
+        _FieldPhotoUploadStatus.failed,
+        pending.uploadedCount + pending.failedCount,
+        pending.uploadedCount,
+        pending.failedCount,
+        '업로드 실패',
+      );
+      rethrow;
+    } finally {
+      if (manageWakelock) await _setFieldPhotoUploadWakelock(false);
+    }
+  }
+
+  Future<_FieldPhotoUploadResult> _uploadFieldPhotoBatch(
+    List<XFile> sourceImages,
+    DateTime selectedDate,
+    _FieldPhotoProgress onProgress,
+  ) async {
+    final teamName = widget.teamName;
+    final createdAt = DateTime.now();
+    final batchId = _fieldPhotoBatchId(createdAt);
+    final dateText = _formatFieldPhotoDate(selectedDate);
+    final batchRef = FirebaseFirestore.instance.collection('photoBatches').doc(batchId);
+    final photoCount = sourceImages.length;
+    final setCount = photoCount ~/ 3;
+    final remainderCount = photoCount % 3;
+
+    final tempRoot = await getTemporaryDirectory();
+    final tempDir = Directory(
+      '${tempRoot.path}${Platform.pathSeparator}field_photo_zip_uploads'
+      '${Platform.pathSeparator}$batchId',
+    );
+    final failures = <_FieldPhotoFailure>[];
+    var originalTotalBytes = 0;
+    var compressedTotalBytes = 0;
+    var oversizedCompressedCount = 0;
+    var compressedCount = 0;
+    var zipAddedCount = 0;
+    var failedCount = 0;
+    var compressElapsedMs = 0;
+    var zipSizeBytes = 0;
+    final zipFolderName = '${teamName}_$dateText';
+    final zipFileName = '${teamName}_${dateText}_$batchId.zip';
+    final zipFile = File('${tempDir.path}${Platform.pathSeparator}$zipFileName');
+    final zipStoragePath = 'field_photo_archives/$teamName/$dateText/$zipFileName';
+
+    void emitProgress(String phase) {
+      final averageBytes = zipAddedCount > 0 ? compressedTotalBytes ~/ zipAddedCount : 0;
+      final avgText = averageBytes > 0 ? ' / 평균 ${_formatBytes(averageBytes)}' : '';
+      onProgress(_FieldPhotoUploadStatus.compressing, compressedCount, zipAddedCount, failedCount, '$phase$avgText');
+    }
+
+    await _setFieldPhotoUploadWakelock(true);
+    try {
+      await tempDir.create(recursive: true);
+      final zipEncoder = ZipFileEncoder();
+      zipEncoder.create(zipFile.path, level: ZipFileEncoder.STORE);
+      try {
+        for (var i = 0; i < sourceImages.length; i += 1) {
+          final source = sourceImages[i];
+          final fileName = _fieldPhotoFileName(i);
+          try {
+            final originalBytes = await _safeXFileLength(source);
+            originalTotalBytes += originalBytes;
+
+            final compressWatch = Stopwatch()..start();
+            final compressedPhoto = await _compressFieldPhoto(
+              source,
+              batchId: batchId,
+              fileName: fileName,
+              sortIndex: i,
+              originalSizeBytes: originalBytes,
+            );
+            compressWatch.stop();
+            compressElapsedMs += compressWatch.elapsedMilliseconds;
+
+            compressedTotalBytes += compressedPhoto.compressedSizeBytes;
+            if (compressedPhoto.compressedSizeBytes > 2 * 1024 * 1024) {
+              oversizedCompressedCount += 1;
+            }
+
+            compressedCount += 1;
+            emitProgress('압축 중: $compressedCount / $photoCount');
+
+            await zipEncoder.addFile(compressedPhoto.file, '$zipFolderName/$fileName', ZipFileEncoder.STORE);
+            zipAddedCount += 1;
+            emitProgress('ZIP 생성 중: $zipAddedCount / $photoCount');
+
+            if (compressedPhoto.isTemporary && await compressedPhoto.file.exists()) {
+              await compressedPhoto.file.delete();
+            }
+          } catch (e) {
+            failedCount += 1;
+            failures.add(_FieldPhotoFailure(source: source, sortIndex: i, message: 'ZIP 준비 실패: $e'));
+            emitProgress('ZIP 준비 실패: $failedCount');
+          }
+        }
+      } finally {
+        await zipEncoder.close();
+      }
+
+      if (zipAddedCount == 0) {
+        throw Exception('ZIP에 추가된 사진이 없습니다.');
+      }
+
+      zipSizeBytes = await zipFile.length();
+      final pendingUpload = _PendingFieldPhotoUpload(
+        batchId: batchId,
+        zipPath: zipFile.path,
+        zipStoragePath: zipStoragePath,
+        zipFileName: zipFileName,
+        teamName: teamName,
+        date: dateText,
+        createdAtMillis: createdAt.millisecondsSinceEpoch,
+        photoCount: photoCount,
+        uploadedCount: zipAddedCount,
+        failedCount: failedCount,
+        originalTotalBytes: originalTotalBytes,
+        compressedTotalBytes: compressedTotalBytes,
+        oversizedCompressedCount: oversizedCompressedCount,
+        compressElapsedMs: compressElapsedMs,
+        zipSizeBytes: zipSizeBytes,
+      );
+      await _savePendingFieldPhotoUpload(pendingUpload);
+
+      return await _uploadPendingFieldPhotoBatch(
+        pendingUpload,
+        onProgress,
+        manageWakelock: false,
+        failures: failures,
+      );
+    } catch (e) {
+      try {
+        await batchRef.set({
+          'batchId': batchId,
+          'teamName': teamName,
+          'date': dateText,
+          'uploaderTeamName': teamName,
+          'photoCount': zipAddedCount,
+          'setCount': zipAddedCount ~/ 3,
+          'remainderCount': zipAddedCount % 3,
+          'zipStoragePath': zipStoragePath,
+          'zipFileName': zipFileName,
+          'zipSizeBytes': zipSizeBytes,
+          'compressedTotalBytes': compressedTotalBytes,
+          'originalTotalBytes': originalTotalBytes,
+          'status': 'failed',
+          'errorMessage': e.toString(),
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'deleteSuggestedAt': Timestamp.fromDate(createdAt.add(const Duration(days: 3))),
+          'expiresAt': Timestamp.fromDate(createdAt.add(const Duration(days: 30))),
+          'downloadedAt': null,
+          'downloadedBy': null,
+          'deletedAt': null,
+        }, SetOptions(merge: true));
+      } catch (_) {}
+      debugPrint('[FIELD_PHOTO_UPLOAD_FAILED] failed=${failedCount + 1} error=$e');
+      rethrow;
+    } finally {
+      await _setFieldPhotoUploadWakelock(false);
+    }
+  }
+
+  Future<void> _restorePendingFieldPhotoUploadIfNeeded() async {
+    if (!canManageTeamData || !mounted) return;
+    final pending = await _latestPendingFieldPhotoUpload();
+    if (pending == null || !mounted) return;
+    if (!await File(pending.zipPath).exists()) {
+      await _clearPendingFieldPhotoUpload(pending.batchId);
+      return;
+    }
+
+    final shouldRetry = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('미완료 업로드 발견'),
+        content: Text(
+          '미완료 업로드 1건 발견\n'
+          '${pending.date} / ZIP ${_formatBytes(pending.zipSizeBytes)}\n\n'
+          '재업로드하시겠습니까?',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('무시')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('재업로드')),
+        ],
+      ),
+    );
+
+    if (shouldRetry == true && mounted) {
+      _showFieldPhotoUploadSheet(initialPendingUpload: pending, autoRetry: true);
+    }
+  }
+
+  Future<bool> _confirmFieldPhotoUploadIfNeeded(int count, int estimatedBytes) async {
+    final warnings = <String>[];
+    if (count % 3 != 0) {
+      warnings.add('사진 수가 3의 배수가 아닙니다.');
+    }
+    if (count >= 300) {
+      warnings.add('사진이 많습니다. 업로드 중 앱을 종료하지 마세요.');
+    }
+    if (estimatedBytes > 500 * 1024 * 1024) {
+      warnings.add('선택한 원본 사진 총 용량이 500MB를 초과합니다.');
+    }
+    warnings.add('사진이 많을 경우 업로드 중 임시 저장공간이 필요합니다.');
+    warnings.add('업로드 성공 검증 후 ZIP 파일과 임시 사진은 앱이 자동 삭제합니다.');
+    if (warnings.isEmpty) return true;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('현장 사진 업로드 확인'),
+        content: Text('${warnings.join('\n')}\n\n그래도 업로드할까요?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('업로드')),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  String _fieldPhotoUploadStatusText(_FieldPhotoUploadStatus status) {
+    switch (status) {
+      case _FieldPhotoUploadStatus.compressing:
+        return 'ZIP 생성중...';
+      case _FieldPhotoUploadStatus.uploading:
+        return 'ZIP 업로드중...';
+      case _FieldPhotoUploadStatus.retrying:
+        return '자동 재시도중...';
+      case _FieldPhotoUploadStatus.uploaded:
+        return '업로드 완료';
+      case _FieldPhotoUploadStatus.failed:
+        return '업로드 실패';
+      case _FieldPhotoUploadStatus.idle:
+        return '대기 중';
+    }
+  }
+
+  void _showFieldPhotoUploadSheet({
+    _PendingFieldPhotoUpload? initialPendingUpload,
+    bool autoRetry = false,
+  }) {
+    if (!canManageTeamData) return;
+
+    DateTime selectedDate = DateTime.now();
+    List<XFile> selectedImages = [];
+    List<_FieldPhotoFailure> failures = [];
+    _PendingFieldPhotoUpload? pendingUpload = initialPendingUpload;
+    var estimatedBytes = 0;
+    var compressedCount = pendingUpload?.uploadedCount ?? 0;
+    var uploadedCount = pendingUpload?.uploadedCount ?? 0;
+    var failedCount = pendingUpload?.failedCount ?? 0;
+    var uploading = false;
+    var uploadStatus = pendingUpload == null ? _FieldPhotoUploadStatus.idle : _FieldPhotoUploadStatus.failed;
+    var autoRetryStarted = false;
+    var message = pendingUpload == null
+        ? '갤러리에서 현장 사진을 선택하세요.'
+        : '업로드 실패\n재업로드 또는 삭제를 선택하세요.';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          void applyUploadResult(_FieldPhotoUploadResult result) {
+            uploading = false;
+            uploadStatus = _FieldPhotoUploadStatus.uploaded;
+            pendingUpload = null;
+            failures = result.failures;
+            compressedCount = result.uploadedCount + result.failedCount;
+            uploadedCount = result.uploadedCount;
+            failedCount = result.failedCount;
+            final warnings = <String>[];
+            if (result.oversizedCompressedCount > 0) {
+              warnings.add('2MB 초과 ${result.oversizedCompressedCount}장');
+            }
+            if (result.compressedTotalBytes > 500 * 1024 * 1024) {
+              warnings.add('압축 후 총 500MB 초과');
+            }
+            final warningText = warnings.isEmpty ? '' : ' (${warnings.join(', ')})';
+            final avgBytes = result.uploadedCount > 0 ? result.compressedTotalBytes ~/ result.uploadedCount : 0;
+            final setCount = result.uploadedCount ~/ 3;
+            final remainderCount = result.uploadedCount % 3;
+            final setText = remainderCount == 0 ? '$setCount개' : '$setCount개 + 남는 사진 $remainderCount장';
+            message = result.failedCount == 0
+                ? '업로드 완료: 사진 ${result.uploadedCount}장 / 세트 $setText / ZIP ${_formatBytes(result.zipSizeBytes)} / 평균 ${_formatBytes(avgBytes)} / ${_formatDurationMs(result.elapsedMs)} / 임시 파일 자동 삭제 완료$warningText'
+                : 'ZIP 업로드 일부 실패: 성공 ${result.uploadedCount}장 / 실패 ${result.failedCount}장 / ZIP ${_formatBytes(result.zipSizeBytes)} / ${_formatDurationMs(result.elapsedMs)} / 성공 후 임시 파일 자동 삭제 완료$warningText';
+            if (result.failedCount == 0) selectedImages = [];
+          }
+
+          Future<void> retryPendingUpload() async {
+            final retryTarget = pendingUpload;
+            if (retryTarget == null || uploading) return;
+            setSheet(() {
+              uploading = true;
+              uploadStatus = _FieldPhotoUploadStatus.uploading;
+              compressedCount = retryTarget.uploadedCount + retryTarget.failedCount;
+              uploadedCount = retryTarget.uploadedCount;
+              failedCount = retryTarget.failedCount;
+              message = 'ZIP 업로드중...';
+            });
+
+            try {
+              final result = await _uploadPendingFieldPhotoBatch(
+                retryTarget,
+                (nextStatus, nextCompressedCount, nextUploadedCount, nextFailedCount, nextMessage) {
+                  if (!mounted) return;
+                  setSheet(() {
+                    uploadStatus = nextStatus;
+                    compressedCount = nextCompressedCount;
+                    uploadedCount = nextUploadedCount;
+                    failedCount = nextFailedCount;
+                    message = nextMessage;
+                  });
+                },
+              );
+              setSheet(() => applyUploadResult(result));
+            } catch (e) {
+              setSheet(() {
+                uploading = false;
+                uploadStatus = _FieldPhotoUploadStatus.failed;
+                pendingUpload = retryTarget;
+                failedCount = retryTarget.failedCount > 0 ? retryTarget.failedCount : retryTarget.photoCount;
+                message = '업로드 실패\n재업로드 또는 삭제를 선택하세요. ($e)';
+              });
+            }
+          }
+
+          Future<void> deletePendingUpload() async {
+            final deleteTarget = pendingUpload;
+            if (deleteTarget == null || uploading) return;
+            await _deletePendingFieldPhotoUpload(deleteTarget);
+            setSheet(() {
+              pendingUpload = null;
+              uploadStatus = _FieldPhotoUploadStatus.idle;
+              compressedCount = 0;
+              uploadedCount = 0;
+              failedCount = 0;
+              message = '보류 중인 ZIP 파일을 삭제했습니다.';
+            });
+          }
+
+          Future<void> runUpload(List<XFile> uploadTargets) async {
+            if (uploadTargets.isEmpty || uploading) return;
+            final confirmed = await _confirmFieldPhotoUploadIfNeeded(uploadTargets.length, estimatedBytes);
+            if (!confirmed) return;
+
+            setSheet(() {
+              uploading = true;
+              compressedCount = 0;
+              uploadedCount = 0;
+              failedCount = 0;
+              failures = [];
+              pendingUpload = null;
+              uploadStatus = _FieldPhotoUploadStatus.compressing;
+              message = '업로드 준비 중...';
+            });
+
+            try {
+              final result = await _uploadFieldPhotoBatch(
+                uploadTargets,
+                selectedDate,
+                (nextStatus, nextCompressedCount, nextUploadedCount, nextFailedCount, nextMessage) {
+                  if (!mounted) return;
+                  setSheet(() {
+                    uploadStatus = nextStatus;
+                    compressedCount = nextCompressedCount;
+                    uploadedCount = nextUploadedCount;
+                    failedCount = nextFailedCount;
+                    message = nextMessage;
+                  });
+                },
+              );
+              setSheet(() => applyUploadResult(result));
+            } catch (e) {
+              final latestPending = await _latestPendingFieldPhotoUpload();
+              setSheet(() {
+                uploading = false;
+                uploadStatus = _FieldPhotoUploadStatus.failed;
+                pendingUpload = latestPending;
+                failedCount = latestPending?.failedCount ?? uploadTargets.length;
+                message = '업로드 실패\n재업로드 또는 삭제를 선택하세요. ($e)';
+              });
+            }
+          }
+
+          if (autoRetry && pendingUpload != null && !autoRetryStarted) {
+            autoRetryStarted = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) retryPendingUpload();
+            });
+          }
+
+          final photoCount = selectedImages.length;
+          final displayPhotoCount = pendingUpload?.photoCount ?? photoCount;
+          final setCount = displayPhotoCount ~/ 3;
+          final remainderCount = displayPhotoCount % 3;
+          final dateText = _formatFieldPhotoDate(selectedDate);
+          final expectedZipName = pendingUpload?.zipFileName ?? '${widget.teamName}_${dateText}_업로드시각.zip';
+
+          return PointerInterceptor(
+            child: Container(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.86),
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+              ),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('사진 ZIP 업로드', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '선택한 사진을 팀명_날짜 폴더가 들어있는 ZIP 파일 1개로 묶어 업로드합니다.\n'
+                      '웹관리자에서 ZIP 파일을 다운로드해 압축을 풀면 사진을 바로 확인할 수 있습니다.\n'
+                      '업로드 성공 후 ZIP 파일은 자동 삭제하고, 실패 시 재업로드를 위해 보존합니다.',
+                      style: TextStyle(color: Colors.black87, fontSize: 12, height: 1.35),
+                    ),
+                    const SizedBox(height: 12),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.calendar_today),
+                      title: Text('날짜: ${_formatFieldPhotoDate(selectedDate)}'),
+                      trailing: TextButton(
+                        onPressed: (uploading || pendingUpload != null)
+                            ? null
+                            : () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: selectedDate,
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                                );
+                                if (picked != null) {
+                                  setSheet(() => selectedDate = picked);
+                                }
+                              },
+                        child: const Text('변경'),
+                      ),
+                    ),
+                    Text('팀명: ${widget.teamName}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 6),
+                    Text(
+                      '빠른 업로드 모드: 긴 변 ${fieldPhotoMaxDimension}px / 품질 $fieldPhotoJpegQuality',
+                      style: const TextStyle(color: Colors.blueGrey, fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 14),
+                    ElevatedButton.icon(
+                      onPressed: (uploading || pendingUpload != null)
+                          ? null
+                          : () async {
+                              final picked = await _picker.pickMultiImage(imageQuality: 100);
+                              if (picked.isEmpty) return;
+                              final prepared = await _prepareFieldPhotos(picked);
+                              var limited = prepared;
+                              var nextMessage = '사진 선택 완료';
+                              if (prepared.length > 300) {
+                                limited = prepared.take(300).toList();
+                                nextMessage = '최대 300장까지만 선택됩니다.';
+                              }
+
+                              var totalBytes = 0;
+                              for (final image in limited) {
+                                totalBytes += await _safeXFileLength(image);
+                              }
+
+                              setSheet(() {
+                                selectedImages = limited;
+                                failures = [];
+                                estimatedBytes = totalBytes;
+                                compressedCount = 0;
+                                uploadedCount = 0;
+                                failedCount = 0;
+                                pendingUpload = null;
+                                uploadStatus = _FieldPhotoUploadStatus.idle;
+                                message = nextMessage;
+                              });
+                            },
+                      icon: const Icon(Icons.photo_library),
+                      label: const Text('갤러리에서 사진 선택'),
+                    ),
+                    const SizedBox(height: 14),
+                    Text('선택 사진: $displayPhotoCount장'),
+                    Text('작업 세트: $setCount개'),
+                    Text('남는 사진: $remainderCount장'),
+                    Text('예상 ZIP 이름: $expectedZipName'),
+                    Text('선택 원본 용량: ${_formatBytes(pendingUpload?.originalTotalBytes ?? estimatedBytes)}'),
+                    Text('예상 임시 필요공간: 최종 ZIP 용량의 약 2배', style: TextStyle(color: Colors.grey.shade700, fontSize: 12)),
+                    const Text('임시 파일 자동 삭제: 업로드 성공 검증 후 정리 / 실패 시 ZIP 보존', style: TextStyle(color: Colors.blueGrey, fontSize: 12)),
+                    if (remainderCount != 0)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Text('사진 수가 3의 배수가 아닙니다. 업로드 전 확인이 필요합니다.', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                      ),
+                    if (displayPhotoCount >= 90)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 6),
+                        child: Text('하루 한 팀 권장량 90장 이상입니다. 업로드 중 앱을 종료하지 마세요.', style: TextStyle(color: Colors.deepOrange)),
+                      ),
+                    const SizedBox(height: 12),
+                    if (uploading || compressedCount > 0 || uploadedCount > 0 || failedCount > 0) ...[
+                      Text('상태: ${_fieldPhotoUploadStatusText(uploadStatus)}'),
+                      Text('압축 중: $compressedCount / $displayPhotoCount'),
+                      Text('업로드 중: $uploadedCount / $displayPhotoCount'),
+                      Text('실패: $failedCount'),
+                      const SizedBox(height: 8),
+                    ],
+                    Text(message, style: TextStyle(color: uploadStatus == _FieldPhotoUploadStatus.failed ? Colors.red : Colors.grey.shade700)),
+                    if (failures.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      const Text('실패 사진', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ...failures.take(5).map((failure) => Text(
+                            '${_fieldPhotoOriginalName(failure.source)} - ${failure.message}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12, color: Colors.red),
+                          )),
+                      if (failures.length > 5) Text('외 ${failures.length - 5}장'),
+                    ],
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: uploading ? null : () => Navigator.pop(ctx),
+                            child: const Text('취소'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        if (pendingUpload != null) ...[
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: uploading ? null : retryPendingUpload,
+                              child: const Text('재업로드'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: uploading ? null : deletePendingUpload,
+                              child: const Text('삭제'),
+                            ),
+                          ),
+                        ] else if (failures.isNotEmpty)
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: uploading ? null : () => runUpload(failures.map((failure) => failure.source).toList()),
+                              child: const Text('실패 재시도'),
+                            ),
+                          )
+                        else
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: (!uploading && selectedImages.isNotEmpty) ? () => runUpload(selectedImages) : null,
+                              child: const Text('업로드'),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   // ✅ [추가] 관리자용 팀명(폴더명) 수정 함수
@@ -6248,6 +7490,16 @@ void _showCreateMenu() {
       builder: (c) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          ListTile(
+            leading: const Icon(Icons.cloud_upload, color: Colors.green),
+            title: const Text("사진 업로드"),
+            subtitle: const Text("날짜별 현장 사진을 Firebase에 보관합니다."),
+            onTap: () {
+              Navigator.pop(c);
+              _showFieldPhotoUploadSheet();
+            },
+          ),
+
           // 1. 현재 위치 마커
           ListTile(
             leading: const Icon(Icons.gps_fixed, color: Colors.blue),
@@ -6795,33 +8047,253 @@ Future<void> _downloadMarkerPhotos(SiteData d) async {
     );
   }
   // ✅ [2] 내 그룹 삭제 함수 (별도로 존재해야 함)
-void _deleteGroupDialog(MapGroup group) {
-    showDialog(
+  Future<Map<String, int>> _commitAppGroupDeletion({
+    required MapGroup group,
+    required List<SiteData> sourceMarkers,
+  }) async {
+    final sourceDocId = widget.teamName;
+    final sourceIds = _sourceIdsFromMarkers(sourceMarkers);
+    final snapshot = await FirebaseFirestore.instance.collection('teams').get();
+    final batch = FirebaseFirestore.instance.batch();
+    var writes = 0;
+    var removedGroups = 0;
+    var removedMarkers = 0;
+    var changedLines = 0;
+
+    for (final doc in snapshot.docs) {
+      final isSourceDoc = doc.id == sourceDocId;
+      final data = doc.data();
+      final groups = List<dynamic>.from(data['groups'] ?? const []);
+      final markers = List<dynamic>.from(data['markers'] ?? const []);
+      final lines = List<dynamic>.from(data['lines'] ?? const []);
+      final nextMarkers = <dynamic>[];
+      final deletedIds = <String>{};
+      var markersChanged = false;
+
+      for (final rawMarker in markers) {
+        if (rawMarker is! Map) {
+          nextMarkers.add(rawMarker);
+          continue;
+        }
+
+        final marker = Map<String, dynamic>.from(rawMarker);
+        final shouldDelete = isSourceDoc
+            ? _rawMarkerInGroup(marker, group)
+            : sourceIds.isNotEmpty && _markerHasSourceId(marker, sourceIds);
+
+        if (!shouldDelete) {
+          nextMarkers.add(rawMarker);
+          continue;
+        }
+
+        deletedIds.addAll(_deletedMarkerIdsFromRaw(marker));
+        removedMarkers++;
+        markersChanged = true;
+      }
+
+      if (deletedIds.isNotEmpty || sourceIds.isNotEmpty) {
+        for (final rawLine in lines) {
+          if (rawLine is! Map) continue;
+          final markerIds = List<dynamic>.from(rawLine['markerIds'] ?? const []);
+          for (final markerId in markerIds) {
+            final cleaned = _cleanMarkerId(markerId);
+            if (cleaned.isEmpty) continue;
+            if (deletedIds.contains(cleaned) || sourceIds.contains(cleaned)) {
+              deletedIds.add(cleaned);
+            }
+          }
+        }
+      }
+
+      final lineResult = _removeDeletedMarkerPointsFromLinesJson(lines, deletedIds);
+      final linesChanged = lineResult['changed'] == true;
+      if (linesChanged) {
+        changedLines += lineResult['changedLineCount'] as int? ?? 0;
+      }
+
+      final nextGroups = <dynamic>[];
+      var groupsChanged = false;
+      for (final rawGroup in groups) {
+        final isTargetGroup = _groupMatchesTarget(rawGroup, group);
+        final shouldRemoveGroup = isTargetGroup &&
+            (isSourceDoc ||
+                (markersChanged && !_rawGroupHasRemainingMarkers(nextMarkers, group)));
+
+        if (shouldRemoveGroup) {
+          removedGroups++;
+          groupsChanged = true;
+          continue;
+        }
+
+        nextGroups.add(rawGroup);
+      }
+
+      if (!groupsChanged && !markersChanged && !linesChanged) continue;
+      if (writes >= 450) {
+        throw StateError('APP_GROUP_DELETE_TOO_MANY_DOCS');
+      }
+
+      batch.update(doc.reference, {
+        'groups': nextGroups,
+        if (markersChanged) 'markers': nextMarkers,
+        if (linesChanged) 'lines': lineResult['lines'],
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+      writes++;
+    }
+
+    if (writes > 0) {
+      await batch.commit();
+    }
+
+    return {
+      'writes': writes,
+      'removedGroups': removedGroups,
+      'removedMarkers': removedMarkers,
+      'changedLines': changedLines,
+    };
+  }
+
+  void _applyAppGroupDeletionLocally({
+    required MapGroup group,
+    required List<SiteData> sourceMarkers,
+  }) {
+    final sourceIds = _sourceIdsFromMarkers(sourceMarkers);
+
+    setState(() {
+      final ownDeletedIds = <String>{};
+
+      for (final entry in _markerDataMap.entries.toList()) {
+        if (!_groupMatchesTarget(entry.value, group)) continue;
+        ownDeletedIds.addAll(_deletedMarkerIdsFromSite(entry.value));
+        _markerDataMap.remove(entry.key);
+      }
+
+      _userGroups.removeWhere((candidate) => _groupMatchesTarget(candidate, group));
+      _removeDeletedMarkerPointsFromLineMap(_lineDataMap, ownDeletedIds);
+
+      if (_quickSelectedGroupName == group.name) {
+        _quickSelectedGroupName = null;
+        _quickGroupMode = 0;
+      }
+      if (_lastSelectedGroupName == group.name) {
+        _lastSelectedGroupName = null;
+      }
+
+      for (final teamEntry in _allTeamsMap.entries) {
+        final team = teamEntry.value;
+        final teamDeletedIds = <String>{};
+
+        for (final markerEntry in team.markers.entries.toList()) {
+          final marker = markerEntry.value;
+          if (sourceIds.isEmpty || !_markerHasSourceId(marker, sourceIds)) continue;
+          teamDeletedIds.addAll(_deletedMarkerIdsFromSite(marker));
+          team.markers.remove(markerEntry.key);
+        }
+
+        if (teamDeletedIds.isNotEmpty) {
+          team.groups.removeWhere(
+            (candidate) =>
+                _groupMatchesTarget(candidate, group) &&
+                !team.markers.values.any((marker) => _groupMatchesTarget(marker, group)),
+          );
+          _removeDeletedMarkerPointsFromLineMap(team.lines, teamDeletedIds);
+        }
+      }
+
+      _selectedLineIds.removeWhere((id) => !_lineDataMap.containsKey(id));
+    });
+
+    _invalidateMarkerRenderHash();
+    _invalidateLineRenderHash();
+    _scheduleMarkerUpdate(ms: 0);
+  }
+
+  Future<void> _persistLocalTeamCacheOnly() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('${_sKey}_g', jsonEncode(_userGroups.map((g) => g.toJson()).toList()));
+    await prefs.setString('${_sKey}_m', jsonEncode(_markerDataMap.values.map((m) => m.toJson()).toList()));
+    await prefs.setString('${_sKey}_l', jsonEncode(_lineDataMap.values.map((l) => l.toJson()).toList()));
+  }
+
+  Future<void> _deleteGroupDialog(MapGroup group) async {
+    final sourceMarkers =
+        _markerDataMap.values.where((marker) => _groupMatchesTarget(marker, group)).toList();
+    final markerCount = sourceMarkers.length;
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("그룹 삭제 확인"),
-        content: Text("'${group.name}' 그룹과 포함된 모든 마커가 삭제됩니다.\n정말 삭제하시겠습니까?"),
+        content: Text(
+          "이 그룹을 삭제할까요?\n"
+          "그룹 안의 마커 $markerCount개도 함께 삭제됩니다.\n"
+          "삭제 후 복구할 수 없습니다.",
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("취소")),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("취소")),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () async {
-              setState(() {
-                _markerDataMap.removeWhere((key, marker) => marker.group.name == group.name);
-                _userGroups.remove(group);
-                _lineDataMap.forEach((polyId, lineData) {
-                   // 필요시 로직 추가
-                });
-              });
-              _scheduleMarkerUpdate(ms: 0);
-              await _saveData();
-              if (mounted) Navigator.pop(ctx);
-            },
+            onPressed: () => Navigator.pop(ctx, true),
             child: const Text("삭제", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
+
+    if (confirmed != true || !mounted) return;
+
+    final teamName = widget.teamName;
+    debugPrint('[APP_GROUP_DELETE_START] team=$teamName group=${group.name} markerCount=$markerCount');
+
+    setState(() {
+      _isGlobalProcessing = true;
+      _processingText = "그룹 삭제 중...";
+    });
+
+    try {
+      final result = await _commitAppGroupDeletion(
+        group: group,
+        sourceMarkers: sourceMarkers,
+      );
+
+      if (result['writes'] == 0) {
+        throw StateError('삭제할 그룹을 찾을 수 없습니다.');
+      }
+
+      if (!mounted) return;
+      _applyAppGroupDeletionLocally(
+        group: group,
+        sourceMarkers: sourceMarkers,
+      );
+      await _persistLocalTeamCacheOnly();
+
+      debugPrint(
+        '[APP_GROUP_DELETE_DONE] team=$teamName group=${group.name} '
+        'removedMarkers=${result['removedMarkers']} docs=${result['writes']} '
+        'changedLines=${result['changedLines']}',
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("'${group.name}' 그룹과 마커 ${result['removedMarkers']}개를 삭제했습니다."),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      debugPrint('[APP_GROUP_DELETE_FAILED] team=$teamName group=${group.name} error=$e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("그룹 삭제 실패: $e"), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isGlobalProcessing = false;
+          _processingText = "";
+        });
+      }
+    }
   }
 
 

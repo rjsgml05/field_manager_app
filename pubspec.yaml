@@ -22,6 +22,7 @@ dependencies:
   
   # Image & Media
   image_picker: ^1.0.7
+  flutter_image_compress: ^2.4.0
   
   # Storage & Sharing
   shared_preferences: ^2.2.2
@@ -38,6 +39,7 @@ dependencies:
   url_launcher: ^6.3.2
   media_scanner: ^2.2.1
   pointer_interceptor: ^0.10.1+2
+  wakelock_plus: ^1.2.10
   
 
 dev_dependencies:
