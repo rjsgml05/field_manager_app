@@ -6552,6 +6552,8 @@ Future<void> _loadData() async {
     var failedCount = pendingUpload?.failedCount ?? 0;
     var uploading = false;
     var completed = false;
+    var photoDetailsLoading = false;
+    var photoSelectionSequence = 0;
     var uploadStatus = pendingUpload == null ? _FieldPhotoUploadStatus.idle : _FieldPhotoUploadStatus.failed;
     var autoRetryStarted = false;
     var pendingLoadStarted = false;
@@ -6659,6 +6661,7 @@ Future<void> _loadData() async {
               uploadedCount = 0;
               failedCount = 0;
               message = '보류 중인 ZIP 파일을 삭제했습니다.';
+              photoDetailsLoading = false;
             });
           }
 
@@ -6678,6 +6681,7 @@ Future<void> _loadData() async {
               failedCount = 0;
               failures = [];
               pendingUpload = null;
+              photoDetailsLoading = false;
               uploadStatus = _FieldPhotoUploadStatus.compressing;
               message = '업로드 준비 중...';
             });
@@ -6833,30 +6837,51 @@ Future<void> _loadData() async {
                                 _showSnack('선택된 사진이 없습니다.');
                                 return;
                               }
-                              final prepared = await _prepareFieldPhotos(picked);
-                              var limited = prepared;
-                              var nextMessage = '사진 선택 완료';
-                              if (prepared.length > 300) {
-                                limited = prepared.take(300).toList();
-                                nextMessage = '최대 300장까지만 선택됩니다.';
-                              }
-
-                              var totalBytes = 0;
-                              for (final image in limited) {
-                                totalBytes += await _safeXFileLength(image);
-                              }
-
+                              final selectionSequence = ++photoSelectionSequence;
+                              final immediateSelection = picked.length > 300
+                                  ? picked.take(300).toList()
+                                  : List<XFile>.from(picked);
                               setSheet(() {
-                                selectedImages = limited;
+                                selectedImages = immediateSelection;
                                 failures = [];
-                                estimatedBytes = totalBytes;
+                                estimatedBytes = 0;
                                 compressedCount = 0;
                                 uploadedCount = 0;
                                 failedCount = 0;
                                 pendingUpload = null;
+                                photoDetailsLoading = true;
                                 uploadStatus = _FieldPhotoUploadStatus.idle;
-                                message = nextMessage;
+                                message = '사진 정보를 확인 중입니다...';
                               });
+
+                              try {
+                                final prepared = await _prepareFieldPhotos(picked);
+                                var limited = prepared;
+                                var nextMessage = '사진 선택 완료';
+                                if (prepared.length > 300) {
+                                  limited = prepared.take(300).toList();
+                                  nextMessage = '최대 300장까지만 선택됩니다.';
+                                }
+
+                                var totalBytes = 0;
+                                for (final image in limited) {
+                                  totalBytes += await _safeXFileLength(image);
+                                }
+
+                                if (!mounted || !ctx.mounted || selectionSequence != photoSelectionSequence) return;
+                                setSheet(() {
+                                  selectedImages = limited;
+                                  estimatedBytes = totalBytes;
+                                  photoDetailsLoading = false;
+                                  message = nextMessage;
+                                });
+                              } catch (e) {
+                                if (!mounted || !ctx.mounted || selectionSequence != photoSelectionSequence) return;
+                                setSheet(() {
+                                  photoDetailsLoading = false;
+                                  message = '사진 정보 확인 중 오류가 발생했습니다. 다시 선택해 주세요. ($e)';
+                                });
+                              }
                             },
                       icon: const Icon(Icons.photo_library),
                       label: const Text('갤러리에서 사진 선택'),
@@ -6865,6 +6890,11 @@ Future<void> _loadData() async {
                     _buildFieldPhotoUploadCountLine('선택사진', displayPhotoCount, '장'),
                     _buildFieldPhotoUploadCountLine('작업세트', setCount, '개'),
                     _buildFieldPhotoUploadCountLine('남는사진', remainderCount, '장'),
+                    if (photoDetailsLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text('사진 정보를 확인 중입니다...', style: TextStyle(color: Colors.blueGrey, fontSize: 12)),
+                      ),
                     Text('예상 ZIP 이름: $expectedZipName'),
                     Text('선택 원본 용량: ${_formatBytes(pendingUpload?.originalTotalBytes ?? estimatedBytes)}'),
                     Text('예상 임시 필요공간: 최종 ZIP 용량의 약 2배', style: TextStyle(color: Colors.grey.shade700, fontSize: 12)),
@@ -6933,7 +6963,7 @@ Future<void> _loadData() async {
                         else
                           Expanded(
                             child: ElevatedButton(
-                              onPressed: (!uploading && selectedImages.isNotEmpty) ? () => runUpload(selectedImages) : null,
+                              onPressed: (!uploading && !photoDetailsLoading && selectedImages.isNotEmpty) ? () => runUpload(selectedImages) : null,
                               child: const Text('업로드'),
                             ),
                           ),
