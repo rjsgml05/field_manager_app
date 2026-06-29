@@ -3999,10 +3999,10 @@ String _lineDisplayKey(LineData line, {required String ownerTeam}) {
   final pathHash = _linePathHash(line);
   final normalizedMarkerIds = line.markerIds.map(_normalizeSharedMarkerId).where((id) => id.isNotEmpty).join('>');
   if (normalizedMarkerIds.isNotEmpty) {
-    return 'markers:$normalizedMarkerIds|path:$pathHash|color:${line.colorValue}';
+    return 'markers:$normalizedMarkerIds|path:$pathHash';
   }
 
-  return 'path:$pathHash|color:${line.colorValue}';
+  return 'path:$pathHash';
 }
 
 int _lineRenderPriority({required String ownerTeam}) {
@@ -4012,13 +4012,19 @@ int _lineRenderPriority({required String ownerTeam}) {
 }
 
 void _applyLineRenderKey(Map<String, dynamic> line) {
+  final markerIdsKey = List<dynamic>.from(line['markerIds'] ?? const [])
+      .map((id) => id.toString().trim())
+      .where((id) => id.isNotEmpty)
+      .join('>');
   line['renderKey'] = [
     line['id'] ?? '',
     line['displayKey'] ?? '',
     line['title'] ?? line['name'] ?? '',
+    line['description'] ?? '',
     line['color'] ?? '',
     line['colorValue'] ?? '',
     line['pathHash'] ?? '',
+    markerIdsKey,
     line['isVisible'] ?? true,
     line['duplicateCount'] ?? 1,
   ].join('|');
@@ -4562,14 +4568,19 @@ Map<String, dynamic>? _nativeLineDtoFromLine(String id, LineData line, {required
 
   final displayKey = _nativeLineDisplayKey(line, id, teamName: teamName);
   final isVisible = _isNativeLineVisible(displayKey, line);
-  final pathHash = points.map((p) => '${p['lat']!.toStringAsFixed(6)},${p['lng']!.toStringAsFixed(6)}').join('>');
+  final pathHash = points.map((p) => '${p['lat']!.toStringAsFixed(7)},${p['lng']!.toStringAsFixed(7)}').join('>');
+  final markerIdsKey = line.markerIds
+      .map((markerId) => markerId.trim())
+      .where((markerId) => markerId.isNotEmpty)
+      .join('>');
   final renderKey = [
     displayKey,
     line.title,
     line.description,
-    pathHash,
     line.colorValue,
     isVisible,
+    pathHash,
+    markerIdsKey,
   ].join('|');
 
   return <String, dynamic>{
@@ -4783,7 +4794,7 @@ Future<void> _renderLinesOnKakaoMap() async {
 
   try {
     final lineList = _buildLineJsonList()
-      ..sort((a, b) => (a['id'] ?? '').toString().compareTo((b['id'] ?? '').toString()));
+      ..sort((a, b) => (a['displayKey'] ?? '').toString().compareTo((b['displayKey'] ?? '').toString()));
     final hash = lineList.map((l) => (l['renderKey'] ?? '').toString()).join('||');
     if (hash == _lastSentLinesHash) {
       if (_verboseMapDebug) debugPrint('[KAKAO_RENDER] skipped lines hash unchanged');

@@ -613,13 +613,21 @@ private fun handleMarkerDragTouch(event: MotionEvent): Boolean {
                     added++
                 }
             } else if (current.renderKey != line.renderKey) {
-                current.routeLine.remove()
-                current.titleLabel?.remove()
-                addRouteLine(layer, line)?.let { routeLine ->
-                    val state = NativeLineState(line.renderKey, routeLine, line, null)
+                val newRouteLine = addRouteLine(layer, line)
+                if (newRouteLine != null) {
+                    current.routeLine.remove()
+                    current.titleLabel?.remove()
+                    val state = NativeLineState(line.renderKey, newRouteLine, line, null)
                     renderedLines[line.displayKey] = state
                     if (pendingShowAllLineLabels) ensureLineTitleLabel(line)
                     updated++
+                } else {
+                    current.line = line
+                    reused++
+                    Log.w(
+                        NativeKakaoMapRegistry.LOG_TAG,
+                        "line update failed keep old line displayKey=${line.displayKey} old=${current.renderKey} new=${line.renderKey}"
+                    )
                 }
             } else {
                 current.line = line
@@ -648,8 +656,18 @@ private fun handleMarkerDragTouch(event: MotionEvent): Boolean {
     }
 
     private fun addRouteLine(layer: RouteLineLayer, line: NativeLineDto): RouteLine? {
+        val points = line.points
+            .filter { isValidCoordinate(it.lat, it.lng) }
+            .map { LatLng.from(it.lat, it.lng) }
+        if (points.size < 2) {
+            Log.w(
+                NativeKakaoMapRegistry.LOG_TAG,
+                "RouteLine add skipped invalid points displayKey=${line.displayKey} points=${points.size}"
+            )
+            return null
+        }
+
         return runCatching {
-            val points = line.points.map { LatLng.from(it.lat, it.lng) }
             val segment = RouteLineSegment.from(points, styleForLine(line.colorValue))
             layer.addRouteLine(
                 RouteLineOptions
