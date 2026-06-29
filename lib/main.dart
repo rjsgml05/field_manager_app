@@ -6411,8 +6411,79 @@ Future<void> _loadData() async {
     return cancel == true;
   }
 
-  void _showFieldPhotoUploadingCannotCloseSnack() {
-    _showSnack('사진 업로드 중입니다.\n완료될 때까지 앱을 종료하지 말고 기다려 주세요.');
+  Widget _buildFieldPhotoUploadCountLine(String label, int value, String unit) {
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(fontSize: 14, color: Colors.black87),
+        children: [
+          TextSpan(text: '$label: '),
+          TextSpan(
+            text: '$value',
+            style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+          ),
+          TextSpan(text: unit),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showFieldPhotoUploadingCannotCloseDialog() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('업로드 중입니다'),
+        content: const Text(
+          '현재 사진 업로드가 진행 중입니다.\n'
+          '완료될 때까지 기다려 주세요.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext, rootNavigator: true).pop(),
+            child: const Text('확인'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showFieldPhotoUploadCompletedDialog({
+    required int photoCount,
+  }) async {
+    if (!mounted) return;
+
+    final manholeCount = photoCount ~/ 3;
+    final remainCount = photoCount % 3;
+
+    await showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: true,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('업로드가 완료되었습니다'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildFieldPhotoUploadCountLine('사진장수', photoCount, '장'),
+            const SizedBox(height: 6),
+            _buildFieldPhotoUploadCountLine('맨홀개수', manholeCount, '개'),
+            if (remainCount > 0) ...[
+              const SizedBox(height: 6),
+              _buildFieldPhotoUploadCountLine('남는사진', remainCount, '장'),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext, rootNavigator: true).pop(),
+            child: const Text('확인'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<bool> _confirmFieldPhotoUploadIfNeeded(int count, int estimatedBytes) async {
@@ -6480,6 +6551,7 @@ Future<void> _loadData() async {
     var uploadedCount = pendingUpload?.uploadedCount ?? 0;
     var failedCount = pendingUpload?.failedCount ?? 0;
     var uploading = false;
+    var completed = false;
     var uploadStatus = pendingUpload == null ? _FieldPhotoUploadStatus.idle : _FieldPhotoUploadStatus.failed;
     var autoRetryStarted = false;
     var pendingLoadStarted = false;
@@ -6497,6 +6569,7 @@ Future<void> _loadData() async {
         builder: (ctx, setSheet) {
           void applyUploadResult(_FieldPhotoUploadResult result) {
             uploading = false;
+            completed = true;
             uploadStatus = _FieldPhotoUploadStatus.uploaded;
             pendingUpload = null;
             failures = result.failures;
@@ -6519,6 +6592,15 @@ Future<void> _loadData() async {
             if (result.failedCount == 0) selectedImages = [];
           }
 
+          Future<void> finishUploadSuccess(_FieldPhotoUploadResult result) async {
+            setSheet(() => applyUploadResult(result));
+            if (ctx.mounted) Navigator.pop(ctx);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              _showFieldPhotoUploadCompletedDialog(photoCount: result.selectedCount);
+            });
+          }
+
           Future<void> retryPendingUpload() async {
             var retryTarget = pendingUpload;
             if (retryTarget == null || uploading) return;
@@ -6530,6 +6612,7 @@ Future<void> _loadData() async {
             final retryPending = retryTarget;
             setSheet(() {
               uploading = true;
+              completed = false;
               uploadStatus = _FieldPhotoUploadStatus.uploading;
               compressedCount = retryPending.uploadedCount + retryPending.failedCount;
               uploadedCount = retryPending.uploadedCount;
@@ -6551,10 +6634,11 @@ Future<void> _loadData() async {
                   });
                 },
               );
-              setSheet(() => applyUploadResult(result));
+              await finishUploadSuccess(result);
             } catch (e) {
               setSheet(() {
                 uploading = false;
+                completed = false;
                 uploadStatus = _FieldPhotoUploadStatus.failed;
                 pendingUpload = retryPending;
                 failedCount = retryPending.failedCount > 0 ? retryPending.failedCount : retryPending.photoCount;
@@ -6569,6 +6653,7 @@ Future<void> _loadData() async {
             await _deletePendingFieldPhotoUpload(deleteTarget);
             setSheet(() {
               pendingUpload = null;
+              completed = false;
               uploadStatus = _FieldPhotoUploadStatus.idle;
               compressedCount = 0;
               uploadedCount = 0;
@@ -6587,6 +6672,7 @@ Future<void> _loadData() async {
 
             setSheet(() {
               uploading = true;
+              completed = false;
               compressedCount = 0;
               uploadedCount = 0;
               failedCount = 0;
@@ -6611,11 +6697,12 @@ Future<void> _loadData() async {
                   });
                 },
               );
-              setSheet(() => applyUploadResult(result));
+              await finishUploadSuccess(result);
             } catch (e) {
               final latestPending = await _latestPendingFieldPhotoUpload();
               setSheet(() {
                 uploading = false;
+                completed = false;
                 uploadStatus = _FieldPhotoUploadStatus.failed;
                 pendingUpload = latestPending;
                 failedCount = latestPending?.failedCount ?? uploadTargets.length;
@@ -6662,7 +6749,11 @@ Future<void> _loadData() async {
 
           Future<void> requestCloseSheet() async {
             if (uploading) {
-              _showFieldPhotoUploadingCannotCloseSnack();
+              await _showFieldPhotoUploadingCannotCloseDialog();
+              return;
+            }
+            if (completed) {
+              if (ctx.mounted) Navigator.pop(ctx);
               return;
             }
             final cancel = await _confirmCancelFieldPhotoUpload();
@@ -6674,7 +6765,7 @@ Future<void> _loadData() async {
           return WillPopScope(
             onWillPop: () async {
               if (uploading) {
-                _showFieldPhotoUploadingCannotCloseSnack();
+                await _showFieldPhotoUploadingCannotCloseDialog();
               }
               return false;
             },
@@ -6771,9 +6862,9 @@ Future<void> _loadData() async {
                       label: const Text('갤러리에서 사진 선택'),
                     ),
                     const SizedBox(height: 14),
-                    Text('선택 사진: $displayPhotoCount장'),
-                    Text('작업 세트: $setCount개'),
-                    Text('남는 사진: $remainderCount장'),
+                    _buildFieldPhotoUploadCountLine('선택사진', displayPhotoCount, '장'),
+                    _buildFieldPhotoUploadCountLine('작업세트', setCount, '개'),
+                    _buildFieldPhotoUploadCountLine('남는사진', remainderCount, '장'),
                     Text('예상 ZIP 이름: $expectedZipName'),
                     Text('선택 원본 용량: ${_formatBytes(pendingUpload?.originalTotalBytes ?? estimatedBytes)}'),
                     Text('예상 임시 필요공간: 최종 ZIP 용량의 약 2배', style: TextStyle(color: Colors.grey.shade700, fontSize: 12)),
