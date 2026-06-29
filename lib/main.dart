@@ -6389,6 +6389,32 @@ Future<void> _loadData() async {
     }
   }
 
+  Future<bool> _confirmCancelFieldPhotoUpload() async {
+    final cancel = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => WillPopScope(
+        onWillPop: () async => false,
+        child: AlertDialog(
+          title: const Text('사진 업로드를 취소할까요?'),
+          content: const Text(
+            '선택한 사진은 아직 서버에 업로드되지 않았습니다.\n'
+            '취소하면 다시 사진을 선택해야 할 수 있습니다.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('계속 업로드')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('업로드 취소')),
+          ],
+        ),
+      ),
+    );
+    return cancel == true;
+  }
+
+  void _showFieldPhotoUploadingCannotCloseSnack() {
+    _showSnack('사진 업로드 중입니다.\n완료될 때까지 앱을 종료하지 말고 기다려 주세요.');
+  }
+
   Future<bool> _confirmFieldPhotoUploadIfNeeded(int count, int estimatedBytes) async {
     final warnings = <String>[];
     if (count % 3 != 0) {
@@ -6406,13 +6432,17 @@ Future<void> _loadData() async {
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('현장 사진 업로드 확인'),
-        content: Text('${warnings.join('\n')}\n\n그래도 업로드할까요?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('업로드')),
-        ],
+      barrierDismissible: false,
+      builder: (ctx) => WillPopScope(
+        onWillPop: () async => false,
+        child: AlertDialog(
+          title: const Text('현장 사진 업로드 확인'),
+          content: Text('${warnings.join('\n')}\n\n그래도 업로드할까요?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('업로드')),
+          ],
+        ),
       ),
     );
     return confirmed == true;
@@ -6460,6 +6490,8 @@ Future<void> _loadData() async {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) {
@@ -6548,7 +6580,10 @@ Future<void> _loadData() async {
           Future<void> runUpload(List<XFile> uploadTargets) async {
             if (uploadTargets.isEmpty || uploading) return;
             final confirmed = await _confirmFieldPhotoUploadIfNeeded(uploadTargets.length, estimatedBytes);
-            if (!confirmed) return;
+            if (!confirmed) {
+              _showSnack('사진 업로드가 취소되었습니다.');
+              return;
+            }
 
             setSheet(() {
               uploading = true;
@@ -6625,8 +6660,26 @@ Future<void> _loadData() async {
           final dateText = _formatFieldPhotoDate(selectedDate);
           final expectedZipName = pendingUpload?.zipFileName ?? '${widget.teamName}_${dateText}_업로드시각.zip';
 
-          return PointerInterceptor(
-            child: Container(
+          Future<void> requestCloseSheet() async {
+            if (uploading) {
+              _showFieldPhotoUploadingCannotCloseSnack();
+              return;
+            }
+            final cancel = await _confirmCancelFieldPhotoUpload();
+            if (!cancel) return;
+            if (ctx.mounted) Navigator.pop(ctx);
+            _showSnack('사진 업로드가 취소되었습니다.');
+          }
+
+          return WillPopScope(
+            onWillPop: () async {
+              if (uploading) {
+                _showFieldPhotoUploadingCannotCloseSnack();
+              }
+              return false;
+            },
+            child: PointerInterceptor(
+              child: Container(
               constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.86),
               padding: EdgeInsets.only(
                 left: 20,
@@ -6681,11 +6734,14 @@ Future<void> _loadData() async {
                     ),
                     const SizedBox(height: 14),
                     ElevatedButton.icon(
-                      onPressed: (uploading || pendingUpload != null)
-                          ? null
-                          : () async {
+                        onPressed: (uploading || pendingUpload != null)
+                            ? null
+                            : () async {
                               final picked = await _picker.pickMultiImage(imageQuality: 100);
-                              if (picked.isEmpty) return;
+                              if (picked.isEmpty) {
+                                _showSnack('선택된 사진이 없습니다.');
+                                return;
+                              }
                               final prepared = await _prepareFieldPhotos(picked);
                               var limited = prepared;
                               var nextMessage = '사진 선택 완료';
@@ -6757,7 +6813,7 @@ Future<void> _loadData() async {
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: uploading ? null : () => Navigator.pop(ctx),
+                            onPressed: requestCloseSheet,
                             child: const Text('취소'),
                           ),
                         ),
@@ -6795,6 +6851,7 @@ Future<void> _loadData() async {
                   ],
                 ),
               ),
+            ),
             ),
           );
         },
