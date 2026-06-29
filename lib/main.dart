@@ -87,6 +87,9 @@ class _FieldPhotoFailure {
 
 class _FieldPhotoUploadResult {
   final String batchId;
+  final int selectedCount;
+  final int compressedCount;
+  final int zipEntryCount;
   final int uploadedCount;
   final int failedCount;
   final int originalTotalBytes;
@@ -96,10 +99,17 @@ class _FieldPhotoUploadResult {
   final int compressElapsedMs;
   final int uploadElapsedMs;
   final int zipSizeBytes;
+  final bool storageVerified;
+  final bool firestoreVerified;
+  final bool recoverable;
+  final String? errorMessage;
   final List<_FieldPhotoFailure> failures;
 
   _FieldPhotoUploadResult({
     required this.batchId,
+    required this.selectedCount,
+    required this.compressedCount,
+    required this.zipEntryCount,
     required this.uploadedCount,
     required this.failedCount,
     required this.originalTotalBytes,
@@ -109,6 +119,10 @@ class _FieldPhotoUploadResult {
     required this.compressElapsedMs,
     required this.uploadElapsedMs,
     required this.zipSizeBytes,
+    required this.storageVerified,
+    required this.firestoreVerified,
+    required this.recoverable,
+    this.errorMessage,
     required this.failures,
   });
 }
@@ -146,6 +160,13 @@ class _PendingFieldPhotoUpload {
   final int oversizedCompressedCount;
   final int compressElapsedMs;
   final int zipSizeBytes;
+  final int restorePromptIgnoredAtMillis;
+  final int selectedCount;
+  final int zipEntryCount;
+  final bool storageUploaded;
+  final bool firestoreSaved;
+  final bool recoverable;
+  final String errorMessage;
 
   _PendingFieldPhotoUpload({
     required this.batchId,
@@ -163,6 +184,13 @@ class _PendingFieldPhotoUpload {
     required this.oversizedCompressedCount,
     required this.compressElapsedMs,
     required this.zipSizeBytes,
+    this.restorePromptIgnoredAtMillis = 0,
+    this.selectedCount = 0,
+    this.zipEntryCount = 0,
+    this.storageUploaded = false,
+    this.firestoreSaved = false,
+    this.recoverable = false,
+    this.errorMessage = '',
   });
 
   Map<String, dynamic> toJson() => {
@@ -181,6 +209,13 @@ class _PendingFieldPhotoUpload {
         'oversizedCompressedCount': oversizedCompressedCount,
         'compressElapsedMs': compressElapsedMs,
         'zipSizeBytes': zipSizeBytes,
+        'restorePromptIgnoredAtMillis': restorePromptIgnoredAtMillis,
+        'selectedCount': selectedCount,
+        'zipEntryCount': zipEntryCount,
+        'storageUploaded': storageUploaded,
+        'firestoreSaved': firestoreSaved,
+        'recoverable': recoverable,
+        'errorMessage': errorMessage,
       };
 
   factory _PendingFieldPhotoUpload.fromJson(Map<String, dynamic> json) {
@@ -189,6 +224,14 @@ class _PendingFieldPhotoUpload {
       if (value is int) return value;
       if (value is num) return value.toInt();
       return int.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    bool readBool(String key) {
+      final value = json[key];
+      if (value is bool) return value;
+      if (value is num) return value != 0;
+      final text = value?.toString().toLowerCase().trim() ?? '';
+      return text == 'true' || text == '1' || text == 'yes';
     }
 
     return _PendingFieldPhotoUpload(
@@ -207,6 +250,49 @@ class _PendingFieldPhotoUpload {
       oversizedCompressedCount: readInt('oversizedCompressedCount'),
       compressElapsedMs: readInt('compressElapsedMs'),
       zipSizeBytes: readInt('zipSizeBytes'),
+      restorePromptIgnoredAtMillis: readInt('restorePromptIgnoredAtMillis'),
+      selectedCount: readInt('selectedCount'),
+      zipEntryCount: readInt('zipEntryCount'),
+      storageUploaded: readBool('storageUploaded'),
+      firestoreSaved: readBool('firestoreSaved'),
+      recoverable: readBool('recoverable'),
+      errorMessage: json['errorMessage']?.toString() ?? '',
+    );
+  }
+
+  _PendingFieldPhotoUpload copyWith({
+    int? restorePromptIgnoredAtMillis,
+    int? selectedCount,
+    int? zipEntryCount,
+    bool? storageUploaded,
+    bool? firestoreSaved,
+    bool? recoverable,
+    String? errorMessage,
+  }) {
+    return _PendingFieldPhotoUpload(
+      batchId: batchId,
+      zipPath: zipPath,
+      zipStoragePath: zipStoragePath,
+      zipFileName: zipFileName,
+      teamName: teamName,
+      date: date,
+      createdAtMillis: createdAtMillis,
+      photoCount: photoCount,
+      uploadedCount: uploadedCount,
+      failedCount: failedCount,
+      originalTotalBytes: originalTotalBytes,
+      compressedTotalBytes: compressedTotalBytes,
+      oversizedCompressedCount: oversizedCompressedCount,
+      compressElapsedMs: compressElapsedMs,
+      zipSizeBytes: zipSizeBytes,
+      restorePromptIgnoredAtMillis:
+          restorePromptIgnoredAtMillis ?? this.restorePromptIgnoredAtMillis,
+      selectedCount: selectedCount ?? this.selectedCount,
+      zipEntryCount: zipEntryCount ?? this.zipEntryCount,
+      storageUploaded: storageUploaded ?? this.storageUploaded,
+      firestoreSaved: firestoreSaved ?? this.firestoreSaved,
+      recoverable: recoverable ?? this.recoverable,
+      errorMessage: errorMessage ?? this.errorMessage,
     );
   }
 }
@@ -1187,6 +1273,336 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
     } catch (e) {
       debugPrint('[INITIAL_GPS] 최초 현재 위치 이동 실패: $e');
     }
+  }
+
+  void _showSnack(String message) {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    messenger?.hideCurrentSnackBar();
+    messenger?.showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  String _normalizeMarkerNumber(String value) {
+    var text = value.trim();
+    final match = RegExp(r'\d+').firstMatch(text);
+    if (match != null) {
+      text = match.group(0) ?? text;
+    }
+    text = text.replaceFirst(RegExp(r'^0+'), '');
+    return text.isEmpty ? '0' : text;
+  }
+
+  int? _extractMarkerSortNumber(String value) {
+    final match = RegExp(r'\d+').firstMatch(value.trim());
+    if (match == null) return null;
+    return int.tryParse(match.group(0) ?? '');
+  }
+
+  int _compareSiteDataByMarkerNumber(SiteData a, SiteData b) {
+    final aNumber = _extractMarkerSortNumber(a.title);
+    final bNumber = _extractMarkerSortNumber(b.title);
+
+    if (aNumber != null && bNumber != null) {
+      final numberCompare = aNumber.compareTo(bNumber);
+      if (numberCompare != 0) return numberCompare;
+    }
+
+    if (aNumber != null && bNumber == null) return -1;
+    if (aNumber == null && bNumber != null) return 1;
+
+    final titleCompare = a.title.compareTo(b.title);
+    if (titleCompare != 0) return titleCompare;
+
+    return a.id.compareTo(b.id);
+  }
+
+  List<String> _markerNumberCandidates(SiteData marker) {
+    final values = <String>[
+      marker.title,
+    ];
+
+    if (RegExp(r'^\d+$').hasMatch(marker.id.trim())) {
+      values.add(marker.id);
+    }
+
+    final result = <String>{};
+
+    for (final value in values) {
+      final raw = value.trim();
+      if (raw.isEmpty) continue;
+      result.add(raw);
+
+      final match = RegExp(r'\d+').firstMatch(raw);
+      if (match != null && match.group(0) != null) {
+        result.add(match.group(0)!);
+      }
+    }
+
+    return result.toList();
+  }
+
+  String _markerSearchDedupeKey(SiteData marker) {
+    return (marker.canonicalMarkerId ??
+            marker.originalMarkerId ??
+            marker.sourceMarkerId ??
+            marker.parentMarkerId ??
+            marker.id)
+        .trim();
+  }
+
+  List<SiteData> _findMarkersByNumber(String query) {
+    final normalizedQuery = _normalizeMarkerNumber(query);
+    final seen = <String>{};
+    final matches = <SiteData>[];
+
+    for (final marker in _markerDataMap.values) {
+      final matched = _markerNumberCandidates(marker).any(
+        (candidate) => _normalizeMarkerNumber(candidate) == normalizedQuery,
+      );
+
+      if (!matched) continue;
+
+      final key = _markerSearchDedupeKey(marker);
+      if (key.isNotEmpty && seen.contains(key)) continue;
+      if (key.isNotEmpty) seen.add(key);
+
+      matches.add(marker);
+    }
+
+    matches.sort((a, b) {
+      final groupCompare = a.group.name.compareTo(b.group.name);
+      if (groupCompare != 0) return groupCompare;
+      return a.title.compareTo(b.title);
+    });
+
+    return matches;
+  }
+
+  Future<void> _showMarkerNumberSearchDialog() async {
+    if (!mounted || _isModalOpen) return;
+
+    if (_markerDataMap.isEmpty) {
+      _showSnack('검색할 마커 데이터가 없습니다.');
+      return;
+    }
+
+    setState(() {
+      _isModalOpen = true;
+    });
+
+    String inputValue = '';
+    String? query;
+
+    try {
+      query = await showDialog<String>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('마커번호 검색'),
+            content: TextField(
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: '마커번호',
+                hintText: '예: 12',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (value) {
+                inputValue = value;
+              },
+              onSubmitted: (value) {
+                Navigator.of(dialogContext).pop(value);
+              },
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                },
+                child: const Text('취소'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop(inputValue);
+                },
+                child: const Text('검색'),
+              ),
+            ],
+          );
+        },
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isModalOpen = false;
+        });
+      }
+    }
+
+    if (!mounted) return;
+    final trimmed = query?.trim() ?? '';
+    if (trimmed.isEmpty) return;
+
+    await _handleMarkerNumberSearch(trimmed);
+  }
+
+  Future<void> _handleMarkerNumberSearch(String query) async {
+    if (!mounted) return;
+
+    if (_markerDataMap.isEmpty) {
+      _showSnack('검색할 마커 데이터가 없습니다.');
+      return;
+    }
+
+    if (!RegExp(r'\d+').hasMatch(query)) {
+      _showSnack('숫자를 입력하세요.');
+      return;
+    }
+
+    final matches = _findMarkersByNumber(query);
+
+    if (!mounted) return;
+
+    if (matches.isEmpty) {
+      _showSnack('해당 번호의 마커가 없습니다.');
+      return;
+    }
+
+    if (matches.length == 1) {
+      await _focusMarkerFromNumberSearch(matches.first);
+      return;
+    }
+
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    if (!mounted) return;
+
+    await _showMarkerNumberDuplicatePicker(matches, query);
+  }
+
+  Future<void> _showMarkerNumberDuplicatePicker(
+    List<SiteData> matches,
+    String query,
+  ) async {
+    if (!mounted) return;
+
+    final maxHeight = MediaQuery.of(context).size.height * 0.72;
+
+    final selected = await showModalBottomSheet<SiteData>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '마커번호 $query 검색 결과 ${matches.length}개',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.of(sheetContext).pop(),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: matches.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (itemContext, index) {
+                      final marker = matches[index];
+                      final title = marker.title.trim().isEmpty
+                          ? '?'
+                          : marker.title.trim();
+                      final subtitle = marker.address.trim().isNotEmpty
+                          ? marker.address.trim()
+                          : marker.description.trim();
+
+                      return ListTile(
+                        leading: Container(
+                          width: 18,
+                          height: 18,
+                          decoration: BoxDecoration(
+                            color: marker.group.color,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                        title: Text('$title번 / ${marker.group.name}'),
+                        subtitle: Text(
+                          subtitle.isEmpty ? '주소 정보 없음' : subtitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onTap: () {
+                          Navigator.of(sheetContext).pop(marker);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || selected == null) return;
+
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    if (!mounted) return;
+
+    await _focusMarkerFromNumberSearch(selected);
+  }
+
+  Future<void> _focusMarkerFromNumberSearch(SiteData marker) async {
+    if (!mounted) return;
+
+    final lat = marker.lat;
+    final lng = marker.lng;
+
+    if (!lat.isFinite || !lng.isFinite) {
+      _showSnack('좌표가 없는 마커입니다.');
+      return;
+    }
+
+    await _moveTo(
+      lat,
+      lng,
+      _shouldUseNativeKakaoMap ? _nativeFocusedZoomLevel : 1,
+    );
+
+    if (!mounted) return;
+
+    final markerEntry = _findMarkerEntry(_markerDataMap, marker.id);
+    if (markerEntry != null) {
+      _showMarkerDetails(markerEntry.key);
+    }
+
+    _showSnack('마커번호 ${marker.title}로 이동했습니다.');
   }
 
   void _setStateAndRefreshMap(VoidCallback fn) {
@@ -4951,8 +5367,12 @@ Future<void> _loadData() async {
     }
   }
 
-  Future<_PendingFieldPhotoUpload?> _latestPendingFieldPhotoUpload() async {
-    final pendingUploads = await _loadPendingFieldPhotoUploads();
+  Future<_PendingFieldPhotoUpload?> _latestPendingFieldPhotoUpload({
+    bool includeIgnored = true,
+  }) async {
+    final pendingUploads = (await _loadPendingFieldPhotoUploads())
+        .where((item) => includeIgnored || item.restorePromptIgnoredAtMillis <= 0)
+        .toList();
     if (pendingUploads.isEmpty) return null;
     pendingUploads.sort((a, b) => b.createdAtMillis.compareTo(a.createdAtMillis));
     return pendingUploads.first;
@@ -5011,6 +5431,221 @@ Future<void> _loadData() async {
     }
   }
 
+  int _pendingFieldPhotoSelectedCount(_PendingFieldPhotoUpload pending) {
+    if (pending.selectedCount > 0) return pending.selectedCount;
+    if (pending.photoCount > 0) return pending.photoCount;
+    return pending.uploadedCount + pending.failedCount;
+  }
+
+  int _pendingFieldPhotoZipEntryCount(_PendingFieldPhotoUpload pending) {
+    if (pending.zipEntryCount > 0) return pending.zipEntryCount;
+    if (pending.uploadedCount > 0) return pending.uploadedCount;
+    return pending.photoCount;
+  }
+
+  Future<int> _countFieldPhotoZipEntries(File zipFile) async {
+    if (!await zipFile.exists()) {
+      throw Exception('ZIP 파일 생성 실패');
+    }
+    final input = InputFileStream(zipFile.path);
+    try {
+      final archive = ZipDecoder().decodeBuffer(input, verify: true);
+      return archive.files.where((file) => file.isFile).length;
+    } finally {
+      input.closeSync();
+    }
+  }
+
+  Future<int> _validatedFieldPhotoZipSize(File zipFile) async {
+    if (!await zipFile.exists()) {
+      throw Exception('ZIP 파일 생성 실패');
+    }
+    final zipSizeBytes = await zipFile.length();
+    if (zipSizeBytes <= 0) {
+      throw Exception('ZIP 파일 크기가 0입니다.');
+    }
+    return zipSizeBytes;
+  }
+
+  SettableMetadata _fieldPhotoZipMetadata(_PendingFieldPhotoUpload pending) {
+    final selectedCount = _pendingFieldPhotoSelectedCount(pending);
+    final zipEntryCount = _pendingFieldPhotoZipEntryCount(pending);
+    return SettableMetadata(
+      contentType: 'application/zip',
+      customMetadata: {
+        'teamName': pending.teamName,
+        'date': pending.date,
+        'batchId': pending.batchId,
+        'selectedCount': selectedCount.toString(),
+        'compressedCount': pending.uploadedCount.toString(),
+        'zipEntryCount': zipEntryCount.toString(),
+        'zipSizeBytes': pending.zipSizeBytes.toString(),
+      },
+    );
+  }
+
+  Future<String> _verifyUploadedFieldPhotoZip({
+    required Reference storageRef,
+    required int localZipSizeBytes,
+  }) async {
+    final uploadedMetadata = await storageRef.getMetadata();
+    final uploadedSize = uploadedMetadata.size;
+
+    if (uploadedSize != null) {
+      if (uploadedSize <= 0) {
+        throw Exception('Storage 업로드 검증 실패: 업로드 크기가 0입니다.');
+      }
+      if (localZipSizeBytes > 0 && uploadedSize != localZipSizeBytes) {
+        throw Exception('Storage 업로드 크기 불일치: 로컬 $localZipSizeBytes / 서버 $uploadedSize');
+      }
+    }
+
+    final downloadUrl = await storageRef.getDownloadURL();
+    if (downloadUrl.trim().isEmpty) {
+      throw Exception('Storage 업로드 검증 실패: 다운로드 URL이 없습니다.');
+    }
+    return downloadUrl;
+  }
+
+  Map<String, dynamic> _fieldPhotoBatchPayload({
+    required _PendingFieldPhotoUpload pending,
+    required String downloadUrl,
+    required DateTime createdAt,
+    required List<_FieldPhotoFailure> failures,
+  }) {
+    final selectedCount = _pendingFieldPhotoSelectedCount(pending);
+    final zipEntryCount = _pendingFieldPhotoZipEntryCount(pending);
+    return {
+      'batchId': pending.batchId,
+      'teamName': pending.teamName,
+      'date': pending.date,
+      'uploaderTeamName': pending.teamName,
+      'selectedCount': selectedCount,
+      'compressedCount': pending.uploadedCount,
+      'zipEntryCount': zipEntryCount,
+      'photoCount': selectedCount,
+      'setCount': selectedCount ~/ 3,
+      'remainderCount': selectedCount % 3,
+      'uploadedCount': selectedCount,
+      'failedCount': 0,
+      'zipStoragePath': pending.zipStoragePath,
+      'storagePath': pending.zipStoragePath,
+      'zipFileName': pending.zipFileName,
+      'zipSizeBytes': pending.zipSizeBytes,
+      'downloadUrl': downloadUrl,
+      'compressedTotalBytes': pending.compressedTotalBytes,
+      'originalTotalBytes': pending.originalTotalBytes,
+      'storageUploaded': true,
+      'firestoreSaved': true,
+      'recoverable': false,
+      'errorMessage': '',
+      'status': 'uploaded',
+      'failedFiles': failures
+          .map((failure) => {
+                'originalName': _fieldPhotoOriginalName(failure.source),
+                'sortIndex': failure.sortIndex,
+                'message': failure.message,
+              })
+          .toList(),
+      'uploadMode': 'zip_archive',
+      'maxDimension': fieldPhotoMaxDimension,
+      'jpegQuality': fieldPhotoJpegQuality,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+      'completedAt': FieldValue.serverTimestamp(),
+      'deleteSuggestedAt': Timestamp.fromDate(createdAt.add(const Duration(days: 3))),
+      'expiresAt': Timestamp.fromDate(createdAt.add(const Duration(days: 30))),
+      'downloadedAt': null,
+      'downloadedBy': null,
+      'deletedAt': null,
+    };
+  }
+
+  Future<void> _saveFieldPhotoBatchRecord({
+    required _PendingFieldPhotoUpload pending,
+    required String downloadUrl,
+    required DateTime createdAt,
+    required List<_FieldPhotoFailure> failures,
+  }) async {
+    final batchRef = FirebaseFirestore.instance.collection('photoBatches').doc(pending.batchId);
+    await batchRef.set(
+      _fieldPhotoBatchPayload(
+        pending: pending,
+        downloadUrl: downloadUrl,
+        createdAt: createdAt,
+        failures: failures,
+      ),
+      SetOptions(merge: true),
+    );
+    final savedBatch = await batchRef.get();
+    final savedData = savedBatch.data();
+    if (!savedBatch.exists || savedData == null || savedData['status'] != 'uploaded') {
+      throw Exception('Firestore 저장 검증 실패');
+    }
+  }
+
+  Future<bool> _tryRecoverUploadedFieldPhotoArchive(
+    _PendingFieldPhotoUpload pending,
+    _FieldPhotoProgress onProgress, {
+    List<_FieldPhotoFailure> failures = const [],
+  }) async {
+    if (!(pending.storageUploaded && !pending.firestoreSaved && pending.recoverable)) {
+      return false;
+    }
+
+    final storageRef = FirebaseStorage.instance.ref().child(pending.zipStoragePath);
+    final selectedCount = _pendingFieldPhotoSelectedCount(pending);
+    final zipEntryCount = _pendingFieldPhotoZipEntryCount(pending);
+    if (selectedCount <= 0 || pending.uploadedCount != selectedCount || zipEntryCount != selectedCount) {
+      return false;
+    }
+
+    try {
+      onProgress(
+        _FieldPhotoUploadStatus.uploading,
+        selectedCount,
+        selectedCount,
+        0,
+        '업로드 검증 중',
+      );
+      final downloadUrl = await _verifyUploadedFieldPhotoZip(
+        storageRef: storageRef,
+        localZipSizeBytes: pending.zipSizeBytes,
+      );
+      onProgress(
+        _FieldPhotoUploadStatus.uploading,
+        selectedCount,
+        selectedCount,
+        0,
+        '사진보관함 기록 저장 중',
+      );
+      await _saveFieldPhotoBatchRecord(
+        pending: pending.copyWith(
+          zipEntryCount: zipEntryCount,
+          storageUploaded: true,
+          firestoreSaved: true,
+          recoverable: false,
+          errorMessage: '',
+        ),
+        downloadUrl: downloadUrl,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(pending.createdAtMillis),
+        failures: failures,
+      );
+      return true;
+    } catch (e) {
+      debugPrint('[FIELD_PHOTO_RECOVER_FIRESTORE_FAILED] batchId=${pending.batchId} error=$e');
+      await _savePendingFieldPhotoUpload(
+        pending.copyWith(
+          storageUploaded: true,
+          firestoreSaved: false,
+          recoverable: true,
+          errorMessage: 'Firestore 상태 저장 실패: $e',
+        ),
+      );
+      return false;
+    }
+  }
+
   Future<int> _putFieldPhotoZipWithRetry({
     required File zipFile,
     required Reference storageRef,
@@ -5037,7 +5672,7 @@ Future<void> _loadData() async {
               pending.uploadedCount + pending.failedCount,
               pending.uploadedCount,
               pending.failedCount,
-              'ZIP 업로드중: $percent%',
+              'ZIP 업로드 중: $percent%',
             );
           }
         }
@@ -5056,7 +5691,7 @@ Future<void> _loadData() async {
           pending.uploadedCount + pending.failedCount,
           pending.uploadedCount,
           pending.failedCount,
-          '자동 재시도중 ($retryAttempt/3)',
+          '자동 재시도 중 ($retryAttempt/3)',
         );
         await Future.delayed(retryDelays[attempt]);
       }
@@ -5072,100 +5707,174 @@ Future<void> _loadData() async {
     final totalStopwatch = Stopwatch()..start();
     var uploadElapsedMs = 0;
     final createdAt = DateTime.fromMillisecondsSinceEpoch(pending.createdAtMillis);
-    final batchRef = FirebaseFirestore.instance.collection('photoBatches').doc(pending.batchId);
     final storageRef = FirebaseStorage.instance.ref().child(pending.zipStoragePath);
     final zipFile = File(pending.zipPath);
+    final selectedCount = _pendingFieldPhotoSelectedCount(pending);
 
     if (manageWakelock) await _setFieldPhotoUploadWakelock(true);
     try {
+      if (await _tryRecoverUploadedFieldPhotoArchive(pending, onProgress, failures: failures)) {
+        await _clearPendingFieldPhotoUpload(pending.batchId);
+        await _cleanupFieldPhotoZipTempFiles(pending.batchId);
+        totalStopwatch.stop();
+        onProgress(
+          _FieldPhotoUploadStatus.uploaded,
+          selectedCount,
+          selectedCount,
+          0,
+          '사진 $selectedCount장 업로드 완료',
+        );
+        return _FieldPhotoUploadResult(
+          batchId: pending.batchId,
+          selectedCount: selectedCount,
+          compressedCount: pending.uploadedCount,
+          zipEntryCount: _pendingFieldPhotoZipEntryCount(pending),
+          uploadedCount: selectedCount,
+          failedCount: 0,
+          originalTotalBytes: pending.originalTotalBytes,
+          compressedTotalBytes: pending.compressedTotalBytes,
+          oversizedCompressedCount: pending.oversizedCompressedCount,
+          elapsedMs: totalStopwatch.elapsedMilliseconds,
+          compressElapsedMs: pending.compressElapsedMs,
+          uploadElapsedMs: 0,
+          zipSizeBytes: pending.zipSizeBytes,
+          storageVerified: true,
+          firestoreVerified: true,
+          recoverable: false,
+          errorMessage: null,
+          failures: failures,
+        );
+      }
+
       if (!await zipFile.exists()) {
         throw Exception('재업로드할 ZIP 파일이 없습니다.');
       }
 
+      final actualZipSizeBytes = await _validatedFieldPhotoZipSize(zipFile);
+      final actualZipEntryCount = await _countFieldPhotoZipEntries(zipFile);
+      if (selectedCount <= 0) {
+        throw Exception('선택 사진 수를 확인할 수 없습니다.');
+      }
+      if (pending.uploadedCount != selectedCount) {
+        final message = '사진 압축 수 불일치: 선택 $selectedCount장 / 압축 성공 ${pending.uploadedCount}장';
+        await _savePendingFieldPhotoUpload(
+          pending.copyWith(
+            selectedCount: selectedCount,
+            zipEntryCount: actualZipEntryCount,
+            storageUploaded: false,
+            firestoreSaved: false,
+            recoverable: false,
+            errorMessage: message,
+          ),
+        );
+        throw Exception(message);
+      }
+      if (actualZipEntryCount != selectedCount) {
+        final message = 'ZIP 사진 수 불일치: 선택 $selectedCount장 / ZIP $actualZipEntryCount장';
+        await _savePendingFieldPhotoUpload(
+          pending.copyWith(
+            selectedCount: selectedCount,
+            zipEntryCount: actualZipEntryCount,
+            storageUploaded: false,
+            firestoreSaved: false,
+            recoverable: false,
+            errorMessage: message,
+          ),
+        );
+        throw Exception(message);
+      }
+
+      pending = pending.copyWith(
+        selectedCount: selectedCount,
+        zipEntryCount: actualZipEntryCount,
+        storageUploaded: false,
+        firestoreSaved: false,
+        recoverable: false,
+        errorMessage: '',
+      );
+      await _savePendingFieldPhotoUpload(pending);
+
       debugPrint('[FIELD_ZIP_UPLOAD_START] batchId=${pending.batchId} zipPath=${pending.zipPath}');
       onProgress(
         _FieldPhotoUploadStatus.uploading,
-        pending.uploadedCount + pending.failedCount,
+        selectedCount,
         pending.uploadedCount,
-        pending.failedCount,
-        'ZIP 업로드중...',
+        0,
+        'ZIP 업로드 중',
       );
 
       uploadElapsedMs = await _putFieldPhotoZipWithRetry(
         zipFile: zipFile,
         storageRef: storageRef,
-        metadata: SettableMetadata(
-          contentType: 'application/zip',
-          customMetadata: {
-            'teamName': pending.teamName,
-            'date': pending.date,
-            'batchId': pending.batchId,
-          },
-        ),
+        metadata: _fieldPhotoZipMetadata(pending),
         pending: pending,
         onProgress: onProgress,
       );
 
-      await storageRef.getMetadata();
+      onProgress(
+        _FieldPhotoUploadStatus.uploading,
+        selectedCount,
+        selectedCount,
+        0,
+        '업로드 검증 중',
+      );
+      final downloadUrl = await _verifyUploadedFieldPhotoZip(
+        storageRef: storageRef,
+        localZipSizeBytes: actualZipSizeBytes,
+      );
+      pending = pending.copyWith(
+        storageUploaded: true,
+        firestoreSaved: false,
+        recoverable: true,
+        errorMessage: '',
+      );
+      await _savePendingFieldPhotoUpload(pending);
+
       debugPrint('[FIELD_ZIP_UPLOAD_DONE] batchId=${pending.batchId} uploadElapsedMs=$uploadElapsedMs');
       onProgress(
         _FieldPhotoUploadStatus.uploading,
-        pending.uploadedCount + pending.failedCount,
-        pending.uploadedCount,
-        pending.failedCount,
-        'Firestore 저장중...',
+        selectedCount,
+        selectedCount,
+        0,
+        '사진보관함 기록 저장 중',
       );
 
-      await batchRef.set({
-        'batchId': pending.batchId,
-        'teamName': pending.teamName,
-        'date': pending.date,
-        'uploaderTeamName': pending.teamName,
-        'photoCount': pending.uploadedCount,
-        'setCount': pending.uploadedCount ~/ 3,
-        'remainderCount': pending.uploadedCount % 3,
-        'zipStoragePath': pending.zipStoragePath,
-        'zipFileName': pending.zipFileName,
-        'zipSizeBytes': pending.zipSizeBytes,
-        'compressedTotalBytes': pending.compressedTotalBytes,
-        'originalTotalBytes': pending.originalTotalBytes,
-        'status': 'uploaded',
-        'failedCount': pending.failedCount,
-        'failedFiles': failures
-            .map((failure) => {
-                  'originalName': _fieldPhotoOriginalName(failure.source),
-                  'sortIndex': failure.sortIndex,
-                  'message': failure.message,
-                })
-            .toList(),
-        'uploadMode': 'zip_archive',
-        'maxDimension': fieldPhotoMaxDimension,
-        'jpegQuality': fieldPhotoJpegQuality,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-        'deleteSuggestedAt': Timestamp.fromDate(createdAt.add(const Duration(days: 3))),
-        'expiresAt': Timestamp.fromDate(createdAt.add(const Duration(days: 30))),
-        'downloadedAt': null,
-        'downloadedBy': null,
-        'deletedAt': null,
-      });
-      debugPrint('[FIELD_FIRESTORE_BATCH_SAVE] batchId=${pending.batchId}');
-
-      final savedBatch = await batchRef.get();
-      if (!savedBatch.exists) {
-        throw Exception('Firestore 저장 검증 실패');
+      try {
+        await _saveFieldPhotoBatchRecord(
+          pending: pending.copyWith(
+            storageUploaded: true,
+            firestoreSaved: true,
+            recoverable: false,
+            errorMessage: '',
+          ),
+          downloadUrl: downloadUrl,
+          createdAt: createdAt,
+          failures: failures,
+        );
+        debugPrint('[FIELD_FIRESTORE_BATCH_SAVE] batchId=${pending.batchId}');
+      } catch (e) {
+        final message = 'Firestore 상태 저장 실패: $e';
+        await _savePendingFieldPhotoUpload(
+          pending.copyWith(
+            storageUploaded: true,
+            firestoreSaved: false,
+            recoverable: true,
+            errorMessage: message,
+          ),
+        );
+        throw Exception('$message. 재시도하면 복구를 시도합니다.');
       }
 
       await _clearPendingFieldPhotoUpload(pending.batchId);
       await _cleanupFieldPhotoZipTempFiles(pending.batchId);
       totalStopwatch.stop();
 
-      final averageBytes = pending.uploadedCount > 0 ? pending.compressedTotalBytes ~/ pending.uploadedCount : 0;
+      final averageBytes = selectedCount > 0 ? pending.compressedTotalBytes ~/ selectedCount : 0;
       debugPrint(
         '[FIELD_UPLOAD_COMPLETE] '
         'batchId=${pending.batchId} '
-        'count=${pending.uploadedCount} '
-        'failed=${pending.failedCount} '
+        'count=$selectedCount '
+        'failed=0 '
         'zipBytes=${pending.zipSizeBytes} '
         'compressedBytes=${pending.compressedTotalBytes} '
         'elapsedMs=${totalStopwatch.elapsedMilliseconds} '
@@ -5175,16 +5884,19 @@ Future<void> _loadData() async {
       );
       onProgress(
         _FieldPhotoUploadStatus.uploaded,
-        pending.uploadedCount + pending.failedCount,
-        pending.uploadedCount,
-        pending.failedCount,
-        '업로드 완료',
+        selectedCount,
+        selectedCount,
+        0,
+        '사진 $selectedCount장 업로드 완료',
       );
 
       return _FieldPhotoUploadResult(
         batchId: pending.batchId,
-        uploadedCount: pending.uploadedCount,
-        failedCount: pending.failedCount,
+        selectedCount: selectedCount,
+        compressedCount: pending.uploadedCount,
+        zipEntryCount: actualZipEntryCount,
+        uploadedCount: selectedCount,
+        failedCount: 0,
         originalTotalBytes: pending.originalTotalBytes,
         compressedTotalBytes: pending.compressedTotalBytes,
         oversizedCompressedCount: pending.oversizedCompressedCount,
@@ -5192,6 +5904,10 @@ Future<void> _loadData() async {
         compressElapsedMs: pending.compressElapsedMs,
         uploadElapsedMs: uploadElapsedMs,
         zipSizeBytes: pending.zipSizeBytes,
+        storageVerified: true,
+        firestoreVerified: true,
+        recoverable: false,
+        errorMessage: null,
         failures: failures,
       );
     } catch (e) {
@@ -5199,10 +5915,12 @@ Future<void> _loadData() async {
       debugPrint('[FIELD_UPLOAD_FAILED] batchId=${pending.batchId} error=$e');
       onProgress(
         _FieldPhotoUploadStatus.failed,
-        pending.uploadedCount + pending.failedCount,
+        selectedCount,
         pending.uploadedCount,
-        pending.failedCount,
-        '업로드 실패',
+        pending.failedCount > 0
+            ? pending.failedCount
+            : (selectedCount - pending.uploadedCount).clamp(0, selectedCount).toInt(),
+        e.toString(),
       );
       rethrow;
     } finally {
@@ -5220,9 +5938,7 @@ Future<void> _loadData() async {
     final batchId = _fieldPhotoBatchId(createdAt);
     final dateText = _formatFieldPhotoDate(selectedDate);
     final batchRef = FirebaseFirestore.instance.collection('photoBatches').doc(batchId);
-    final photoCount = sourceImages.length;
-    final setCount = photoCount ~/ 3;
-    final remainderCount = photoCount % 3;
+    final selectedCount = sourceImages.length;
 
     final tempRoot = await getTemporaryDirectory();
     final tempDir = Directory(
@@ -5235,6 +5951,7 @@ Future<void> _loadData() async {
     var oversizedCompressedCount = 0;
     var compressedCount = 0;
     var zipAddedCount = 0;
+    var zipEntryCount = 0;
     var failedCount = 0;
     var compressElapsedMs = 0;
     var zipSizeBytes = 0;
@@ -5279,11 +5996,11 @@ Future<void> _loadData() async {
             }
 
             compressedCount += 1;
-            emitProgress('압축 중: $compressedCount / $photoCount');
+            emitProgress('사진 압축 중 $compressedCount/$selectedCount');
 
             await zipEncoder.addFile(compressedPhoto.file, '$zipFolderName/$fileName', ZipFileEncoder.STORE);
             zipAddedCount += 1;
-            emitProgress('ZIP 생성 중: $zipAddedCount / $photoCount');
+            emitProgress('ZIP 생성 중');
 
             if (compressedPhoto.isTemporary && await compressedPhoto.file.exists()) {
               await compressedPhoto.file.delete();
@@ -5298,11 +6015,8 @@ Future<void> _loadData() async {
         await zipEncoder.close();
       }
 
-      if (zipAddedCount == 0) {
-        throw Exception('ZIP에 추가된 사진이 없습니다.');
-      }
-
-      zipSizeBytes = await zipFile.length();
+      zipSizeBytes = await _validatedFieldPhotoZipSize(zipFile);
+      zipEntryCount = await _countFieldPhotoZipEntries(zipFile);
       final pendingUpload = _PendingFieldPhotoUpload(
         batchId: batchId,
         zipPath: zipFile.path,
@@ -5311,7 +6025,7 @@ Future<void> _loadData() async {
         teamName: teamName,
         date: dateText,
         createdAtMillis: createdAt.millisecondsSinceEpoch,
-        photoCount: photoCount,
+        photoCount: selectedCount,
         uploadedCount: zipAddedCount,
         failedCount: failedCount,
         originalTotalBytes: originalTotalBytes,
@@ -5319,8 +6033,36 @@ Future<void> _loadData() async {
         oversizedCompressedCount: oversizedCompressedCount,
         compressElapsedMs: compressElapsedMs,
         zipSizeBytes: zipSizeBytes,
+        selectedCount: selectedCount,
+        zipEntryCount: zipEntryCount,
       );
       await _savePendingFieldPhotoUpload(pendingUpload);
+
+      if (compressedCount != selectedCount) {
+        final message = '사진 압축 수 불일치: 선택 $selectedCount장 / 압축 성공 $compressedCount장';
+        await _savePendingFieldPhotoUpload(
+          pendingUpload.copyWith(
+            storageUploaded: false,
+            firestoreSaved: false,
+            recoverable: false,
+            errorMessage: message,
+          ),
+        );
+        throw Exception(message);
+      }
+
+      if (zipEntryCount != selectedCount) {
+        final message = 'ZIP 사진 수 불일치: 선택 $selectedCount장 / ZIP $zipEntryCount장';
+        await _savePendingFieldPhotoUpload(
+          pendingUpload.copyWith(
+            storageUploaded: false,
+            firestoreSaved: false,
+            recoverable: false,
+            errorMessage: message,
+          ),
+        );
+        throw Exception(message);
+      }
 
       return await _uploadPendingFieldPhotoBatch(
         pendingUpload,
@@ -5330,29 +6072,47 @@ Future<void> _loadData() async {
       );
     } catch (e) {
       try {
-        await batchRef.set({
-          'batchId': batchId,
-          'teamName': teamName,
-          'date': dateText,
-          'uploaderTeamName': teamName,
-          'photoCount': zipAddedCount,
-          'setCount': zipAddedCount ~/ 3,
-          'remainderCount': zipAddedCount % 3,
-          'zipStoragePath': zipStoragePath,
-          'zipFileName': zipFileName,
-          'zipSizeBytes': zipSizeBytes,
-          'compressedTotalBytes': compressedTotalBytes,
-          'originalTotalBytes': originalTotalBytes,
-          'status': 'failed',
-          'errorMessage': e.toString(),
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-          'deleteSuggestedAt': Timestamp.fromDate(createdAt.add(const Duration(days: 3))),
-          'expiresAt': Timestamp.fromDate(createdAt.add(const Duration(days: 30))),
-          'downloadedAt': null,
-          'downloadedBy': null,
-          'deletedAt': null,
-        }, SetOptions(merge: true));
+        final pendingUploads = await _loadPendingFieldPhotoUploads();
+        _PendingFieldPhotoUpload? pending;
+        for (final item in pendingUploads) {
+          if (item.batchId == batchId) {
+            pending = item;
+            break;
+          }
+        }
+        if (!(pending?.storageUploaded == true && pending?.recoverable == true)) {
+          await batchRef.set({
+            'batchId': batchId,
+            'teamName': teamName,
+            'date': dateText,
+            'uploaderTeamName': teamName,
+            'selectedCount': selectedCount,
+            'compressedCount': compressedCount,
+            'zipEntryCount': zipEntryCount,
+            'photoCount': selectedCount,
+            'uploadedCount': 0,
+            'failedCount': selectedCount - compressedCount,
+            'setCount': selectedCount ~/ 3,
+            'remainderCount': selectedCount % 3,
+            'zipStoragePath': zipStoragePath,
+            'zipFileName': zipFileName,
+            'zipSizeBytes': zipSizeBytes,
+            'compressedTotalBytes': compressedTotalBytes,
+            'originalTotalBytes': originalTotalBytes,
+            'storageUploaded': false,
+            'firestoreSaved': false,
+            'recoverable': false,
+            'status': 'failed',
+            'errorMessage': e.toString(),
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+            'deleteSuggestedAt': Timestamp.fromDate(createdAt.add(const Duration(days: 3))),
+            'expiresAt': Timestamp.fromDate(createdAt.add(const Duration(days: 30))),
+            'downloadedAt': null,
+            'downloadedBy': null,
+            'deletedAt': null,
+          }, SetOptions(merge: true));
+        }
       } catch (_) {}
       debugPrint('[FIELD_PHOTO_UPLOAD_FAILED] failed=${failedCount + 1} error=$e');
       rethrow;
@@ -5363,9 +6123,13 @@ Future<void> _loadData() async {
 
   Future<void> _restorePendingFieldPhotoUploadIfNeeded() async {
     if (!canManageTeamData || !mounted) return;
-    final pending = await _latestPendingFieldPhotoUpload();
+    final pending = await _latestPendingFieldPhotoUpload(includeIgnored: false);
     if (pending == null || !mounted) return;
-    if (!await File(pending.zipPath).exists()) {
+    if (pending.restorePromptIgnoredAtMillis > 0) {
+      return;
+    }
+    final localZipExists = await File(pending.zipPath).exists();
+    if (!localZipExists && !(pending.storageUploaded && pending.recoverable)) {
       await _clearPendingFieldPhotoUpload(pending.batchId);
       return;
     }
@@ -5386,8 +6150,18 @@ Future<void> _loadData() async {
       ),
     );
 
+    if (shouldRetry == false) {
+      final ignored = pending.copyWith(
+        restorePromptIgnoredAtMillis: DateTime.now().millisecondsSinceEpoch,
+      );
+      await _savePendingFieldPhotoUpload(ignored);
+      return;
+    }
+
     if (shouldRetry == true && mounted) {
-      _showFieldPhotoUploadSheet(initialPendingUpload: pending, autoRetry: true);
+      final retryPending = pending.copyWith(restorePromptIgnoredAtMillis: 0);
+      await _savePendingFieldPhotoUpload(retryPending);
+      _showFieldPhotoUploadSheet(initialPendingUpload: retryPending, autoRetry: true);
     }
   }
 
@@ -5423,11 +6197,11 @@ Future<void> _loadData() async {
   String _fieldPhotoUploadStatusText(_FieldPhotoUploadStatus status) {
     switch (status) {
       case _FieldPhotoUploadStatus.compressing:
-        return 'ZIP 생성중...';
+        return '사진 압축 / ZIP 생성 중...';
       case _FieldPhotoUploadStatus.uploading:
-        return 'ZIP 업로드중...';
+        return 'ZIP 업로드 / 검증 중...';
       case _FieldPhotoUploadStatus.retrying:
-        return '자동 재시도중...';
+        return '자동 재시도 중...';
       case _FieldPhotoUploadStatus.uploaded:
         return '업로드 완료';
       case _FieldPhotoUploadStatus.failed:
@@ -5454,6 +6228,7 @@ Future<void> _loadData() async {
     var uploading = false;
     var uploadStatus = pendingUpload == null ? _FieldPhotoUploadStatus.idle : _FieldPhotoUploadStatus.failed;
     var autoRetryStarted = false;
+    var pendingLoadStarted = false;
     var message = pendingUpload == null
         ? '갤러리에서 현장 사진을 선택하세요.'
         : '업로드 실패\n재업로드 또는 삭제를 선택하세요.';
@@ -5481,30 +6256,34 @@ Future<void> _loadData() async {
             }
             final warningText = warnings.isEmpty ? '' : ' (${warnings.join(', ')})';
             final avgBytes = result.uploadedCount > 0 ? result.compressedTotalBytes ~/ result.uploadedCount : 0;
-            final setCount = result.uploadedCount ~/ 3;
-            final remainderCount = result.uploadedCount % 3;
+            final setCount = result.selectedCount ~/ 3;
+            final remainderCount = result.selectedCount % 3;
             final setText = remainderCount == 0 ? '$setCount개' : '$setCount개 + 남는 사진 $remainderCount장';
-            message = result.failedCount == 0
-                ? '업로드 완료: 사진 ${result.uploadedCount}장 / 세트 $setText / ZIP ${_formatBytes(result.zipSizeBytes)} / 평균 ${_formatBytes(avgBytes)} / ${_formatDurationMs(result.elapsedMs)} / 임시 파일 자동 삭제 완료$warningText'
-                : 'ZIP 업로드 일부 실패: 성공 ${result.uploadedCount}장 / 실패 ${result.failedCount}장 / ZIP ${_formatBytes(result.zipSizeBytes)} / ${_formatDurationMs(result.elapsedMs)} / 성공 후 임시 파일 자동 삭제 완료$warningText';
+            message = '사진 ${result.selectedCount}장 업로드 완료 / 세트 $setText / ZIP ${_formatBytes(result.zipSizeBytes)} / 평균 ${_formatBytes(avgBytes)} / ${_formatDurationMs(result.elapsedMs)} / 임시 파일 자동 삭제 완료$warningText';
             if (result.failedCount == 0) selectedImages = [];
           }
 
           Future<void> retryPendingUpload() async {
-            final retryTarget = pendingUpload;
+            var retryTarget = pendingUpload;
             if (retryTarget == null || uploading) return;
+            if (retryTarget.restorePromptIgnoredAtMillis > 0) {
+              retryTarget = retryTarget.copyWith(restorePromptIgnoredAtMillis: 0);
+              await _savePendingFieldPhotoUpload(retryTarget);
+              pendingUpload = retryTarget;
+            }
+            final retryPending = retryTarget;
             setSheet(() {
               uploading = true;
               uploadStatus = _FieldPhotoUploadStatus.uploading;
-              compressedCount = retryTarget.uploadedCount + retryTarget.failedCount;
-              uploadedCount = retryTarget.uploadedCount;
-              failedCount = retryTarget.failedCount;
-              message = 'ZIP 업로드중...';
+              compressedCount = retryPending.uploadedCount + retryPending.failedCount;
+              uploadedCount = retryPending.uploadedCount;
+              failedCount = retryPending.failedCount;
+              message = 'ZIP 업로드 중';
             });
 
             try {
               final result = await _uploadPendingFieldPhotoBatch(
-                retryTarget,
+                retryPending,
                 (nextStatus, nextCompressedCount, nextUploadedCount, nextFailedCount, nextMessage) {
                   if (!mounted) return;
                   setSheet(() {
@@ -5521,8 +6300,8 @@ Future<void> _loadData() async {
               setSheet(() {
                 uploading = false;
                 uploadStatus = _FieldPhotoUploadStatus.failed;
-                pendingUpload = retryTarget;
-                failedCount = retryTarget.failedCount > 0 ? retryTarget.failedCount : retryTarget.photoCount;
+                pendingUpload = retryPending;
+                failedCount = retryPending.failedCount > 0 ? retryPending.failedCount : retryPending.photoCount;
                 message = '업로드 실패\n재업로드 또는 삭제를 선택하세요. ($e)';
               });
             }
@@ -5590,6 +6369,28 @@ Future<void> _loadData() async {
             autoRetryStarted = true;
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) retryPendingUpload();
+            });
+          }
+
+          if (!autoRetry && initialPendingUpload == null && pendingUpload == null && !pendingLoadStarted) {
+            pendingLoadStarted = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) async {
+              final latestPending = await _latestPendingFieldPhotoUpload();
+              if (!mounted || !ctx.mounted || latestPending == null) return;
+              if (!await File(latestPending.zipPath).exists() &&
+                  !(latestPending.storageUploaded && latestPending.recoverable)) {
+                await _clearPendingFieldPhotoUpload(latestPending.batchId);
+                return;
+              }
+              if (!mounted || !ctx.mounted) return;
+              setSheet(() {
+                pendingUpload = latestPending;
+                compressedCount = latestPending.uploadedCount + latestPending.failedCount;
+                uploadedCount = latestPending.uploadedCount;
+                failedCount = latestPending.failedCount;
+                uploadStatus = _FieldPhotoUploadStatus.failed;
+                message = '업로드 실패\n재업로드 또는 삭제를 선택하세요.';
+              });
             });
           }
 
@@ -6576,7 +7377,8 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
                   children: team.groups.map((g) {
                     List<SiteData> groupMarkers = team.markers.values
                         .where((m) => m.group.name == g.name)
-                        .toList();
+                        .toList()
+                      ..sort(_compareSiteDataByMarkerNumber);
                     
                     return ExpansionTile(
                       leading: Icon(Icons.layers, color: g.color, size: 20),
@@ -6648,65 +7450,72 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
               child: Text("나의 데이터", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))
             ),
             
-            ..._userGroups.map((g) => ExpansionTile(
-              title: Text(
-                g.name,
-                softWrap: true,
-                overflow: TextOverflow.visible,
-                style: TextStyle(color: g.color, fontWeight: FontWeight.bold),
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                   IconButton(
-                    icon: const Icon(Icons.cloud_upload, color: Colors.blueAccent),
-                    tooltip: "데이터 전송",
-                    onPressed: () => _showSendGroupSheet(g),
-                    constraints: const BoxConstraints.tightFor(width: 36, height: 40),
-                    padding: EdgeInsets.zero,
-                  ),
-                  
-                  // 2. 삭제 버튼 (복구 유지)
-                  IconButton(
-                    icon: const Icon(Icons.delete_forever, color: Colors.red),
-                    onPressed: () => _deleteGroupDialog(g),
-                    constraints: const BoxConstraints.tightFor(width: 36, height: 40),
-                    padding: EdgeInsets.zero,
-                  ),
+            ..._userGroups.map((g) {
+              final groupMarkers = _markerDataMap.values
+                  .where((m) => m.group.name == g.name)
+                  .toList()
+                ..sort(_compareSiteDataByMarkerNumber);
 
-                  // 3. 설정(수정) 버튼
-                  IconButton(
-                    icon: const Icon(Icons.settings, color: Colors.grey),
-                    onPressed: () => _showEditGroupDialog(g),
-                    constraints: const BoxConstraints.tightFor(width: 36, height: 40),
-                    padding: EdgeInsets.zero,
-                  ),
-                  
-                  // 4. 보이기 스위치
-                  Switch(
-                    value: g.isVisible,
-                    activeColor: g.color,
-                    onChanged: (val) {
-                      setState(() {
-                        g.isVisible = val;
-                      });
-                      _scheduleMarkerUpdate();
-                    },
-                  ),
-                ],
-              ),
-              children: _markerDataMap.values.where((m) => m.group.name == g.name).map((s) => ListTile(
-                // ✅ 아이콘 추가 및 색상 적용 (보기 좋게 통일)
-                leading: Icon(Icons.location_on, size: 18, color: s.isChecked ? Colors.blue : Colors.grey),
-                // ✅ 텍스트에 조건부 TextStyle 추가
-                title: Text(s.title, softWrap: true, overflow: TextOverflow.visible, style: TextStyle(color: s.isChecked ? Colors.blue : null, fontWeight: FontWeight.bold)),
-                subtitle: Text(s.description, softWrap: true, overflow: TextOverflow.visible, style: TextStyle(color: s.isChecked ? Colors.blue : Colors.grey)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _moveTo(s.lat, s.lng, _shouldUseNativeKakaoMap ? _nativeFocusedZoomLevel : 1);
-                },
-              )).toList(),
-            )),
+              return ExpansionTile(
+                title: Text(
+                  g.name,
+                  softWrap: true,
+                  overflow: TextOverflow.visible,
+                  style: TextStyle(color: g.color, fontWeight: FontWeight.bold),
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                     IconButton(
+                      icon: const Icon(Icons.cloud_upload, color: Colors.blueAccent),
+                      tooltip: "데이터 전송",
+                      onPressed: () => _showSendGroupSheet(g),
+                      constraints: const BoxConstraints.tightFor(width: 36, height: 40),
+                      padding: EdgeInsets.zero,
+                    ),
+
+                    // 2. 삭제 버튼 (복구 유지)
+                    IconButton(
+                      icon: const Icon(Icons.delete_forever, color: Colors.red),
+                      onPressed: () => _deleteGroupDialog(g),
+                      constraints: const BoxConstraints.tightFor(width: 36, height: 40),
+                      padding: EdgeInsets.zero,
+                    ),
+
+                    // 3. 설정(수정) 버튼
+                    IconButton(
+                      icon: const Icon(Icons.settings, color: Colors.grey),
+                      onPressed: () => _showEditGroupDialog(g),
+                      constraints: const BoxConstraints.tightFor(width: 36, height: 40),
+                      padding: EdgeInsets.zero,
+                    ),
+
+                    // 4. 보이기 스위치
+                    Switch(
+                      value: g.isVisible,
+                      activeColor: g.color,
+                      onChanged: (val) {
+                        setState(() {
+                          g.isVisible = val;
+                        });
+                        _scheduleMarkerUpdate();
+                      },
+                    ),
+                  ],
+                ),
+                children: groupMarkers.map((s) => ListTile(
+                  // ✅ 아이콘 추가 및 색상 적용 (보기 좋게 통일)
+                  leading: Icon(Icons.location_on, size: 18, color: s.isChecked ? Colors.blue : Colors.grey),
+                  // ✅ 텍스트에 조건부 TextStyle 추가
+                  title: Text(s.title, softWrap: true, overflow: TextOverflow.visible, style: TextStyle(color: s.isChecked ? Colors.blue : null, fontWeight: FontWeight.bold)),
+                  subtitle: Text(s.description, softWrap: true, overflow: TextOverflow.visible, style: TextStyle(color: s.isChecked ? Colors.blue : Colors.grey)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _moveTo(s.lat, s.lng, _shouldUseNativeKakaoMap ? _nativeFocusedZoomLevel : 1);
+                  },
+                )).toList(),
+              );
+            }),
 
             ListTile(
               leading: const Icon(Icons.add_box, color: Colors.blue),
@@ -6932,6 +7741,16 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
               ),
               const SizedBox(height: 10),
             ],
+
+            FloatingActionButton(
+              heroTag: "markerNumberSearchFab",
+              tooltip: "마커번호 검색",
+              backgroundColor: Colors.white,
+              onPressed: _showMarkerNumberSearchDialog,
+              child: const Icon(Icons.search, color: Colors.black),
+            ),
+
+            const SizedBox(height: 10),
 
             FloatingActionButton(
               heroTag: "lineLabels",

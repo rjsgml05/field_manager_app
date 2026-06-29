@@ -22,5 +22,13 @@ service cloud.firestore {
     match /drawing_page_library/{pageItemId} {
       allow read, write: if true;
     }
+
+    match /photoBatches/{batchId} {
+      allow read, write: if true;
+
+      match /photos/{photoId} {
+        allow read, write: if true;
+      }
+    }
   }
 }

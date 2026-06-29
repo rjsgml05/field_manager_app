@@ -1,0 +1,59 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // 1. 기존 현장 마커 사진
+    match /teams/{allPaths=**} {
+      allow read: if true;
+
+      allow create, update: if request.resource.size < 5 * 1024 * 1024
+                            && request.resource.contentType.matches('image/.*');
+
+      allow delete: if true;
+    }
+
+    // 2. 기존 날짜별 개별 사진 보관함
+    match /field_photos/{teamName}/{date}/{batchId}/{fileName} {
+      allow read: if true;
+
+      allow create, update: if request.resource.size < 5 * 1024 * 1024
+                            && request.resource.contentType.matches('image/.*');
+
+      allow delete: if true;
+    }
+
+    // 3. 날짜별 ZIP 사진 보관함
+    match /field_photo_archives/{teamName}/{date}/{fileName} {
+      allow read: if true;
+
+      allow create, update: if request.resource.size < 500 * 1024 * 1024
+                            && (
+                              request.resource.contentType == 'application/zip' ||
+                              request.resource.contentType == 'application/x-zip-compressed' ||
+                              request.resource.contentType == 'application/octet-stream'
+                            );
+
+      allow delete: if true;
+    }
+
+    // 4. 기존 카카오맵 뷰어용 JSON 파일
+    match /viewer/{allPaths=**} {
+      allow read: if true;
+
+      allow create, update: if request.resource.contentType.matches('application/json');
+
+      allow delete: if true;
+    }
+
+    // 5. PDF 선택 페이지 고화질 변환 보관함
+    match /drawing_page_library/{pageItemId}/{fileName} {
+      allow read: if true;
+
+      allow create, update: if request.resource.size < 25 * 1024 * 1024
+                            && request.resource.contentType.matches('image/.*');
+
+      allow delete: if true;
+    }
+  }
+}
