@@ -12,6 +12,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:http/http.dart' as http; // 이 줄을 꼭 추가하세요!
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart'; // 자동으로 생성된 파일입니다.
@@ -360,7 +361,7 @@ class LineData {
   List<LatLng> points;
   int colorValue;
   bool isVisible; // ✅ [추가]
-  String? canonicalLineId, originalLineId, sourceLineId;
+  String? canonicalLineId, originalLineId, sourceLineId, parentLineId;
 
   LineData({
     required this.id, 
@@ -373,6 +374,7 @@ class LineData {
     this.canonicalLineId,
     this.originalLineId,
     this.sourceLineId,
+    this.parentLineId,
   });
 
   Map<String, dynamic> toJson() => {
@@ -386,6 +388,7 @@ class LineData {
     if (canonicalLineId != null) 'canonicalLineId': canonicalLineId,
     if (originalLineId != null) 'originalLineId': originalLineId,
     if (sourceLineId != null) 'sourceLineId': sourceLineId,
+    if (parentLineId != null) 'parentLineId': parentLineId,
   };
 
   factory LineData.fromJson(Map<String, dynamic> json) => LineData(
@@ -399,6 +402,7 @@ class LineData {
     canonicalLineId: json['canonicalLineId']?.toString(),
     originalLineId: json['originalLineId']?.toString(),
     sourceLineId: json['sourceLineId']?.toString(),
+    parentLineId: json['parentLineId']?.toString(),
   );
 }
 // --- [관리자용 팀 데이터 클래스] ---
@@ -822,6 +826,9 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   bool? _lastSentMarkerMoveMode;
   bool _showAllLineLabels = false;
   bool? _lastSentShowAllLineLabels;
+  final Map<String, Map<String, dynamic>> _lastValidNativeLineJsonByDisplayKey = {};
+  Timer? _nativeLineRetryTimer;
+  String? _pendingNativeLineRetryHash;
     bool _isTappingMode = false, _isMoveMode = false, _isLineMode = false;
   bool _isMapControlActive = true;
   bool _dedupeMapRenderItems = true;
@@ -1605,6 +1612,128 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
     _showSnack('마커번호 ${marker.title}로 이동했습니다.');
   }
 
+  bool _isValidLineFocusCoordinate(double lat, double lng) {
+    return lat.isFinite && lng.isFinite && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+  }
+
+  List<LatLng> _dedupeLatLngPoints(Iterable<LatLng> points) {
+    final seen = <String>{};
+    final result = <LatLng>[];
+    for (final point in points) {
+      final key = '${point.latitude.toStringAsFixed(7)},${point.longitude.toStringAsFixed(7)}';
+      if (seen.add(key)) result.add(point);
+    }
+    return result;
+  }
+
+  MapEntry<String, SiteData>? _findMarkerForLineFocus(String markerId, {String? teamName}) {
+    final raw = markerId.trim();
+    if (raw.isEmpty) return null;
+
+    final candidates = <String>{raw};
+    final targetTeamName = teamName?.trim();
+    if (targetTeamName != null && targetTeamName.isNotEmpty && raw.startsWith('${targetTeamName}_')) {
+      candidates.add(raw.substring(targetTeamName.length + 1));
+    }
+    final underscore = raw.indexOf('_');
+    if (underscore > 0 && underscore < raw.length - 1) {
+      candidates.add(raw.substring(underscore + 1));
+    }
+
+    Iterable<MapEntry<String, SiteData>?> searchMaps() sync* {
+      if (targetTeamName != null && targetTeamName.isNotEmpty && targetTeamName != widget.teamName) {
+        final team = _allTeamsMap[targetTeamName];
+        if (team != null) {
+          for (final candidate in candidates) {
+            yield _findMarkerEntry(team.markers, candidate);
+          }
+        }
+      }
+
+      for (final candidate in candidates) {
+        yield _findMarkerEntry(_markerDataMap, candidate);
+      }
+
+      for (final team in _allTeamsMap.values) {
+        if (targetTeamName != null && targetTeamName.isNotEmpty && team.teamName == targetTeamName) continue;
+        for (final candidate in candidates) {
+          yield _findMarkerEntry(team.markers, candidate);
+        }
+      }
+    }
+
+    for (final entry in searchMaps()) {
+      if (entry != null) return entry;
+    }
+    return null;
+  }
+
+  List<LatLng> _collectValidLineFocusPoints(LineData line, {String? teamName}) {
+    final points = <LatLng>[];
+
+    for (final point in line.points) {
+      if (_isValidLineFocusCoordinate(point.latitude, point.longitude)) {
+        points.add(LatLng(point.latitude, point.longitude));
+      }
+    }
+
+    var deduped = _dedupeLatLngPoints(points);
+    if (deduped.length >= 2) return deduped;
+
+    for (final markerId in line.markerIds) {
+      final markerEntry = _findMarkerForLineFocus(markerId, teamName: teamName);
+      final marker = markerEntry?.value;
+      if (marker != null && _isValidLineFocusCoordinate(marker.lat, marker.lng)) {
+        points.add(LatLng(marker.lat, marker.lng));
+      }
+    }
+
+    deduped = _dedupeLatLngPoints(points);
+    return deduped;
+  }
+
+  int _zoomLevelForLineSpan(double span) {
+    if (_shouldUseNativeKakaoMap) {
+      int nativeLevel(int delta) => (_nativeFocusedZoomLevel - delta).clamp(_nativeFocusedZoomLevel - 2, _nativeFocusedZoomLevel).toInt();
+      if (span <= 0.0005) return _nativeFocusedZoomLevel;
+      if (span <= 0.0020) return nativeLevel(1);
+      if (span <= 0.0080) return nativeLevel(1);
+      return nativeLevel(2);
+    }
+
+    if (span <= 0.0008) return 1;
+    if (span <= 0.0020) return 2;
+    if (span <= 0.0080) return 2;
+    return 3;
+  }
+
+  Future<void> _focusLineFromList(LineData line, {String? teamName}) async {
+    final points = _collectValidLineFocusPoints(line, teamName: teamName);
+    if (points.length < 2) {
+      _showSnack('이 선의 위치 정보를 찾을 수 없습니다. 연결된 마커 좌표를 확인해 주세요.');
+      return;
+    }
+
+    final minLat = points.map((p) => p.latitude).reduce(math.min);
+    final maxLat = points.map((p) => p.latitude).reduce(math.max);
+    final minLng = points.map((p) => p.longitude).reduce(math.min);
+    final maxLng = points.map((p) => p.longitude).reduce(math.max);
+    final centerLat = (minLat + maxLat) / 2.0;
+    final centerLng = (minLng + maxLng) / 2.0;
+
+    if (!_isValidLineFocusCoordinate(centerLat, centerLng)) {
+      _showSnack('이 선의 위치 정보를 찾을 수 없습니다. 연결된 마커 좌표를 확인해 주세요.');
+      return;
+    }
+
+    final span = math.max(maxLat - minLat, maxLng - minLng);
+    final zoomLevel = _zoomLevelForLineSpan(span);
+    if (_verboseMapDebug) {
+      debugPrint('[LINE_FOCUS] title=${line.title} points=${points.length} span=$span center=$centerLat,$centerLng zoom=$zoomLevel');
+    }
+    await _moveTo(centerLat, centerLng, zoomLevel);
+  }
+
   void _setStateAndRefreshMap(VoidCallback fn) {
     if (!mounted) return;
     setState(fn);
@@ -2239,10 +2368,10 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
 
   String _lineCanonicalId(dynamic line) {
     if (line is LineData) {
-      return _cleanMarkerId(line.canonicalLineId ?? line.originalLineId ?? line.sourceLineId ?? line.id);
+      return _cleanMarkerId(line.canonicalLineId ?? line.originalLineId ?? line.sourceLineId ?? line.parentLineId ?? line.id);
     }
     if (line is Map) {
-      return _cleanMarkerId(line['canonicalLineId'] ?? line['originalLineId'] ?? line['sourceLineId'] ?? line['id']);
+      return _cleanMarkerId(line['canonicalLineId'] ?? line['originalLineId'] ?? line['sourceLineId'] ?? line['parentLineId'] ?? line['lineId'] ?? line['id']);
     }
     return '';
   }
@@ -3726,6 +3855,7 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
 void dispose() {
   _markerUpdateTimer?.cancel();
   _mapInteractionSafetyTimer?.cancel();
+  _nativeLineRetryTimer?.cancel();
   WidgetsBinding.instance.removeObserver(this);
   MockLocationPlugin.stopMockLocation();
   _myTeamSub?.cancel();    // ← 추가
@@ -3823,11 +3953,16 @@ void _cancelMapInteractionSafetyTimer() {
 void _invalidateMarkerRenderHash() {
   _lastSentMarkersHash = null;
   _lastSentLinesHash = null;
+  _lastSentNativeLinesHash = null;
+  _pendingNativeLineRetryHash = null;
+  _nativeLineRetryTimer?.cancel();
 }
 
 void _invalidateLineRenderHash() {
   _lastSentLinesHash = null;
   _lastSentNativeLinesHash = null;
+  _pendingNativeLineRetryHash = null;
+  _nativeLineRetryTimer?.cancel();
 }
 
 String _colorToHex(Color color) {
@@ -3993,16 +4128,12 @@ String _lineDisplayKey(LineData line, {required String ownerTeam}) {
     line.canonicalLineId,
     line.originalLineId,
     line.sourceLineId,
+    line.parentLineId,
   ].map((id) => id?.trim() ?? '').firstWhere((id) => id.isNotEmpty, orElse: () => '');
   if (canonicalLineId.isNotEmpty) return 'canonical:$canonicalLineId';
 
-  final pathHash = _linePathHash(line);
-  final normalizedMarkerIds = line.markerIds.map(_normalizeSharedMarkerId).where((id) => id.isNotEmpty).join('>');
-  if (normalizedMarkerIds.isNotEmpty) {
-    return 'markers:$normalizedMarkerIds|path:$pathHash';
-  }
-
-  return 'path:$pathHash';
+  final id = line.id.trim();
+  return 'line:$ownerTeam:${id.isNotEmpty ? id : _linePathHash(line)}';
 }
 
 int _lineRenderPriority({required String ownerTeam}) {
@@ -4055,6 +4186,7 @@ Map<String, dynamic> _lineToJson(String id, LineData line, {required String owne
     if (line.canonicalLineId != null) 'canonicalLineId': line.canonicalLineId,
     if (line.originalLineId != null) 'originalLineId': line.originalLineId,
     if (line.sourceLineId != null) 'sourceLineId': line.sourceLineId,
+    if (line.parentLineId != null) 'parentLineId': line.parentLineId,
     '_baseDisplayKey': displayKey,
     '_renderPriority': _lineRenderPriority(ownerTeam: ownerTeam),
   };
@@ -4265,6 +4397,7 @@ List<String> _lineLinkRenderIds(Map<String, dynamic> line) {
     line['canonicalLineId'],
     line['originalLineId'],
     line['sourceLineId'],
+    line['parentLineId'],
   ].map(_cleanRenderId).where((id) => id.isNotEmpty).toSet().toList();
 }
 
@@ -4541,6 +4674,7 @@ String _nativeLineDisplayKey(LineData line, String fallbackId, {required String 
     line.canonicalLineId,
     line.originalLineId,
     line.sourceLineId,
+    line.parentLineId,
   ].map((value) => value?.trim() ?? '').firstWhere(
         (value) => value.isNotEmpty,
         orElse: () => '',
@@ -4556,6 +4690,8 @@ bool _isNativeLineVisible(String displayKey, LineData line) {
 }
 
 Map<String, dynamic>? _nativeLineDtoFromLine(String id, LineData line, {required String teamName}) {
+  final displayKey = _nativeLineDisplayKey(line, id, teamName: teamName);
+  final isVisible = _isNativeLineVisible(displayKey, line);
   final points = <Map<String, double>>[];
   for (final point in line.points) {
     final lat = point.latitude;
@@ -4564,49 +4700,82 @@ Map<String, dynamic>? _nativeLineDtoFromLine(String id, LineData line, {required
       points.add({'lat': lat, 'lng': lng});
     }
   }
-  if (points.length < 2) return null;
 
-  final displayKey = _nativeLineDisplayKey(line, id, teamName: teamName);
-  final isVisible = _isNativeLineVisible(displayKey, line);
-  final pathHash = points.map((p) => '${p['lat']!.toStringAsFixed(7)},${p['lng']!.toStringAsFixed(7)}').join('>');
   final markerIdsKey = line.markerIds
       .map((markerId) => markerId.trim())
       .where((markerId) => markerId.isNotEmpty)
+      .toList()
+    ..sort();
+  final cached = _lastValidNativeLineJsonByDisplayKey[displayKey];
+  final pointsForRender = points.length >= 2
+      ? points
+      : List<Map<String, double>>.from(
+          (cached?['points'] as List<dynamic>? ?? const <dynamic>[])
+              .whereType<Map>()
+              .map((point) => {
+                    'lat': (point['lat'] as num).toDouble(),
+                    'lng': (point['lng'] as num).toDouble(),
+                  }),
+        );
+
+  if (pointsForRender.length < 2) {
+    if (_verboseMapDebug) {
+      debugPrint('[LINE_RENDER] skip invalid native line without cache displayKey=$displayKey points=${points.length}');
+    }
+    return null;
+  }
+
+  if (points.length < 2 && cached != null && _verboseMapDebug) {
+    debugPrint('[LINE_RENDER] keep cached line points displayKey=$displayKey currentPoints=${points.length}');
+  }
+
+  final pathHash = pointsForRender.map((p) => '${p['lat']!.toStringAsFixed(7)},${p['lng']!.toStringAsFixed(7)}').join('>');
+  final markerIdsHash = markerIdsKey
       .join('>');
   final renderKey = [
     displayKey,
-    line.title,
-    line.description,
+    line.title.trim(),
+    line.description.trim(),
     line.colorValue,
     isVisible,
     pathHash,
-    markerIdsKey,
+    markerIdsHash,
   ].join('|');
 
-  return <String, dynamic>{
+  final dto = <String, dynamic>{
     'displayKey': displayKey,
     'renderKey': renderKey,
     'id': line.id.trim().isNotEmpty ? line.id : id,
     'title': line.title,
     'description': line.description,
-    'points': points,
+    'points': pointsForRender,
     'markerIds': line.markerIds,
     'colorValue': line.colorValue,
     'isVisible': isVisible,
     if (line.canonicalLineId != null) 'canonicalLineId': line.canonicalLineId,
     if (line.originalLineId != null) 'originalLineId': line.originalLineId,
     if (line.sourceLineId != null) 'sourceLineId': line.sourceLineId,
+    if (line.parentLineId != null) 'parentLineId': line.parentLineId,
   };
+
+  _lastValidNativeLineJsonByDisplayKey[displayKey] = Map<String, dynamic>.from(dto);
+  if (_verboseMapDebug) {
+    debugPrint('[LINE_RENDER] line displayKey=$displayKey renderKey=$renderKey color=${line.colorValue} points=${pointsForRender.length}');
+  }
+  return dto;
 }
 
 List<Map<String, dynamic>> _buildNativeLineJsonList() {
   final lines = <Map<String, dynamic>>[];
+  final expectedDisplayKeys = <String>{};
 
   void addLineDto(
     String fallbackId,
     LineData line, {
     required String teamName,
   }) {
+    final displayKey = _nativeLineDisplayKey(line, fallbackId, teamName: teamName);
+    expectedDisplayKeys.add(displayKey);
     final dto = _nativeLineDtoFromLine(
       fallbackId,
       line,
@@ -4639,6 +4808,8 @@ List<Map<String, dynamic>> _buildNativeLineJsonList() {
       }
     }
   }
+
+  _lastValidNativeLineJsonByDisplayKey.removeWhere((displayKey, _) => !expectedDisplayKeys.contains(displayKey));
 
   final dedupedByDisplayKey = <String, Map<String, dynamic>>{};
 
@@ -4769,23 +4940,65 @@ Future<void> _renderMarkersOnNativeKakaoMap() async {
 }
 
 Future<void> _renderLinesOnNativeKakaoMap() async {
+  return _renderLinesOnNativeKakaoMapInternal();
+}
+
+int _nativeLineResultInt(dynamic result, String key) {
+  if (result is Map) {
+    final value = result[key];
+    if (value is num) return value.toInt();
+  }
+  return 0;
+}
+
+Future<void> _renderLinesOnNativeKakaoMapInternal({bool force = false, String reason = 'line-change'}) async {
   if (!mounted || !_shouldUseNativeKakaoMap) return;
 
   try {
     final lineList = _buildNativeLineJsonList();
+    final hasSourceLines = _lineDataMap.isNotEmpty || (isAdmin && _allTeamsMap.values.any((team) => team.isVisible && team.lines.isNotEmpty));
+    if (lineList.isEmpty && hasSourceLines) {
+      if (_verboseMapDebug) debugPrint('[LINE_RENDER] skip sending empty native lineList because source lines exist');
+      return;
+    }
     final hash = lineList.map((line) => (line['renderKey'] ?? '').toString()).join('||');
-    if (hash == _lastSentNativeLinesHash) {
+    if (!force && hash == _lastSentNativeLinesHash) {
       if (_verboseMapDebug) debugPrint('[NATIVE_KAKAO_RENDER] skipped lines hash unchanged');
       await _setShowAllLineLabelsOnKakaoMap(_showAllLineLabels);
       return;
     }
 
-    await _nativeKakaoMapCommands.invokeMethod('renderLines', lineList);
-    _lastSentNativeLinesHash = hash;
+    final result = await _nativeKakaoMapCommands.invokeMethod('renderLines', lineList);
+    final failed = _nativeLineResultInt(result, 'failed');
+    final pending = _nativeLineResultInt(result, 'pending');
+    if (failed <= 0 && pending <= 0) {
+      _lastSentNativeLinesHash = hash;
+      _pendingNativeLineRetryHash = null;
+      _nativeLineRetryTimer?.cancel();
+    } else {
+      debugPrint('[LINE_RENDER] native failed=$failed pending=$pending; keep previous hash for retry result=$result');
+      if (!force) {
+        _scheduleNativeLineRenderRetry(hash);
+      }
+    }
+    if (_verboseMapDebug) {
+      debugPrint('[LINE_RENDER] source=${_lineDataMap.length} native=${lineList.length} hash=$hash force=$force reason=$reason result=$result');
+    }
     await _setShowAllLineLabelsOnKakaoMap(_showAllLineLabels);
   } catch (e) {
     debugPrint('native renderLines failed: $e');
   }
+}
+
+void _scheduleNativeLineRenderRetry(String hash) {
+  if (hash.isEmpty || _pendingNativeLineRetryHash == hash) return;
+  _pendingNativeLineRetryHash = hash;
+  _nativeLineRetryTimer?.cancel();
+  _nativeLineRetryTimer = Timer(const Duration(milliseconds: 300), () {
+    if (!mounted || _pendingNativeLineRetryHash != hash) return;
+    _pendingNativeLineRetryHash = null;
+    _renderLinesOnNativeKakaoMapInternal(force: true, reason: 'line-style-change-retry');
+  });
 }
 
 Future<void> _renderLinesOnKakaoMap() async {
@@ -8594,9 +8807,10 @@ void _showCreateMenu() {
                         markerIds: existingLine?.markerIds ?? (isFreeDraw ? [] : List.from(_tempLineMarkerIds)),
                         colorValue: selectedColor.value,
                         isVisible: existingLine?.isVisible ?? true,
-                        canonicalLineId: existingLine?.canonicalLineId ?? existingLine?.originalLineId ?? existingLine?.sourceLineId ?? id,
-                        originalLineId: existingLine?.originalLineId ?? existingLine?.canonicalLineId ?? existingLine?.sourceLineId ?? id,
-                        sourceLineId: existingLine?.sourceLineId ?? existingLine?.canonicalLineId ?? existingLine?.originalLineId ?? id,
+                        canonicalLineId: existingLine?.canonicalLineId ?? existingLine?.originalLineId ?? existingLine?.sourceLineId ?? existingLine?.parentLineId ?? id,
+                        originalLineId: existingLine?.originalLineId ?? existingLine?.canonicalLineId ?? existingLine?.sourceLineId ?? existingLine?.parentLineId ?? id,
+                        sourceLineId: existingLine?.sourceLineId ?? existingLine?.canonicalLineId ?? existingLine?.originalLineId ?? existingLine?.parentLineId ?? id,
+                        parentLineId: existingLine?.parentLineId ?? existingLine?.canonicalLineId ?? existingLine?.originalLineId ?? existingLine?.sourceLineId ?? id,
                       );
                       Navigator.pop(ctx); 
 
@@ -10031,7 +10245,7 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
           ),
         ],
       ),
-      onTap: () {
+      onTap: () async {
         if (_isLineDeleteMode) {
           setState(() {
             if (isSelectedLine) {
@@ -10045,10 +10259,7 @@ Future<void> _syncToGoogleSheetAdmin(SiteData site, String targetTeamName) async
 
         if (!visibleForThisScreen) return;
         Navigator.pop(context);
-        if (line.points.isNotEmpty) {
-          final firstPoint = line.points.first;
-          _moveTo(firstPoint.latitude, firstPoint.longitude, 3);
-        }
+        await _focusLineFromList(line, teamName: teamName ?? widget.teamName);
       },
     );
   }

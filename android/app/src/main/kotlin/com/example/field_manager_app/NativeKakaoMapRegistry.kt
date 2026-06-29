@@ -93,16 +93,36 @@ object NativeKakaoMapRegistry {
         views.forEach { view -> view.clearMarkers() }
     }
 
-    fun renderLines(arguments: Any?) {
+    fun renderLines(arguments: Any?): Map<String, Int> {
         val lines = NativeLineDto.fromFlutterList(arguments)
         if (views.isEmpty()) {
             pendingLines = lines
             Log.d(LOG_TAG, "renderLines received before PlatformView registration: total=${lines.size}")
-            return
+            return mapOf(
+                "incoming" to lines.count { it.isVisible },
+                "rendered" to 0,
+                "added" to 0,
+                "updated" to 0,
+                "removed" to 0,
+                "reused" to 0,
+                "failed" to 0,
+                "pending" to 1
+            )
         }
 
         pendingLines = null
-        views.forEach { view -> view.renderLines(lines) }
+        val results = views.map { view -> view.renderLines(lines) }
+        fun total(key: String): Int = results.fold(0) { sum, item -> sum + (item[key] ?: 0) }
+        return mapOf(
+            "incoming" to lines.count { it.isVisible },
+            "rendered" to total("rendered"),
+            "added" to total("added"),
+            "updated" to total("updated"),
+            "removed" to total("removed"),
+            "reused" to total("reused"),
+            "failed" to total("failed"),
+            "pending" to total("pending")
+        )
     }
 
     fun moveTo(arguments: Any?) {

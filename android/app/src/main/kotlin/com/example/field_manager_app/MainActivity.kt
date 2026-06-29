@@ -37,8 +37,7 @@ class MainActivity: FlutterActivity() {
                     result.success(null)
                 }
                 "renderLines" -> {
-                    NativeKakaoMapRegistry.renderLines(call.arguments)
-                    result.success(null)
+                    result.success(NativeKakaoMapRegistry.renderLines(call.arguments))
                 }
                 "clearMarkers" -> {
                     NativeKakaoMapRegistry.clearMarkers()

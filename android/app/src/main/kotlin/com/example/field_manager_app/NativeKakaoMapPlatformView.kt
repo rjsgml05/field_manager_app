@@ -70,6 +70,7 @@ class NativeKakaoMapPlatformView(
     private var pendingShowAllLineLabels = false
     private val renderedMarkers = linkedMapOf<String, NativeMarkerState>()
     private val renderedLines = linkedMapOf<String, NativeLineState>()
+    private var nativeRouteSequence = 0L
     private val markerStyleCache = mutableMapOf<String, LabelStyles>()
     private val routeStyleCache = mutableMapOf<Int, RouteLineStyle>()
     private val lineLabelStyleCache = mutableMapOf<String, LabelStyles>()
@@ -155,14 +156,24 @@ class NativeKakaoMapPlatformView(
         }
     }
 
-    fun renderLines(lines: List<NativeLineDto>) {
+    fun renderLines(lines: List<NativeLineDto>): Map<String, Int> {
+        val visibleCount = lines.count { it.isVisible }
         if (kakaoMap == null || routeLineLayer == null) {
             pendingLines = lines
             Log.d(NativeKakaoMapRegistry.LOG_TAG, "line render pending total=${lines.size}")
-            return
+            return mapOf(
+                "incoming" to visibleCount,
+                "rendered" to renderedLines.size,
+                "added" to 0,
+                "updated" to 0,
+                "removed" to 0,
+                "reused" to 0,
+                "failed" to 0,
+                "pending" to 1
+            )
         }
 
-        applyLineDiff(lines)
+        return applyLineDiff(lines)
     }
 
     fun clearLines() {
@@ -585,14 +596,24 @@ private fun handleMarkerDragTouch(event: MotionEvent): Boolean {
         )
     }
 
-    private fun applyLineDiff(lines: List<NativeLineDto>) {
-        val layer = routeLineLayer ?: return
+    private fun applyLineDiff(lines: List<NativeLineDto>): Map<String, Int> {
+        val layer = routeLineLayer ?: return mapOf(
+            "incoming" to 0,
+            "rendered" to renderedLines.size,
+            "added" to 0,
+            "updated" to 0,
+            "removed" to 0,
+            "reused" to 0,
+            "failed" to lines.count { it.isVisible },
+            "pending" to 0
+        )
         val visibleLines = lines.filter { it.isVisible }
         val nextByKey = visibleLines.associateBy { it.displayKey }
         var added = 0
         var updated = 0
         var removed = 0
         var reused = 0
+        var failed = 0
 
         val staleKeys = renderedLines.keys - nextByKey.keys
         for (key in staleKeys) {
@@ -606,28 +627,33 @@ private fun handleMarkerDragTouch(event: MotionEvent): Boolean {
         for (line in visibleLines) {
             val current = renderedLines[line.displayKey]
             if (current == null) {
-                addRouteLine(layer, line)?.let { routeLine ->
-                    val state = NativeLineState(line.renderKey, routeLine, line, null)
+                val addedRoute = addRouteLine(layer, line)
+                if (addedRoute != null) {
+                    val (nativeRouteId, routeLine) = addedRoute
+                    val state = NativeLineState(line.renderKey, nativeRouteId, routeLine, line, null)
                     renderedLines[line.displayKey] = state
                     if (pendingShowAllLineLabels) ensureLineTitleLabel(line)
                     added++
+                } else {
+                    failed++
                 }
             } else if (current.renderKey != line.renderKey) {
-                val newRouteLine = addRouteLine(layer, line)
-                if (newRouteLine != null) {
+                val addedRoute = addRouteLine(layer, line)
+                if (addedRoute != null) {
+                    val (nativeRouteId, routeLine) = addedRoute
                     current.routeLine.remove()
                     current.titleLabel?.remove()
-                    val state = NativeLineState(line.renderKey, newRouteLine, line, null)
+                    val state = NativeLineState(line.renderKey, nativeRouteId, routeLine, line, null)
                     renderedLines[line.displayKey] = state
                     if (pendingShowAllLineLabels) ensureLineTitleLabel(line)
                     updated++
                 } else {
-                    current.line = line
                     reused++
                     Log.w(
                         NativeKakaoMapRegistry.LOG_TAG,
-                        "line update failed keep old line displayKey=${line.displayKey} old=${current.renderKey} new=${line.renderKey}"
+                        "line update failed; keep old route displayKey=${line.displayKey} oldRouteId=${current.nativeRouteId} oldRenderKey=${current.renderKey} newRenderKey=${line.renderKey}"
                     )
+                    failed++
                 }
             } else {
                 current.line = line
@@ -637,7 +663,17 @@ private fun handleMarkerDragTouch(event: MotionEvent): Boolean {
 
         Log.d(
             NativeKakaoMapRegistry.LOG_TAG,
-            "line diff total=${visibleLines.size} added=$added updated=$updated removed=$removed reused=$reused"
+            "line diff total=${visibleLines.size} rendered=${renderedLines.size} added=$added updated=$updated removed=$removed reused=$reused failed=$failed"
+        )
+        return mapOf(
+            "incoming" to visibleLines.size,
+            "rendered" to renderedLines.size,
+            "added" to added,
+            "updated" to updated,
+            "removed" to removed,
+            "reused" to reused,
+            "failed" to failed,
+            "pending" to 0
         )
     }
 
@@ -655,7 +691,13 @@ private fun handleMarkerDragTouch(event: MotionEvent): Boolean {
         }.getOrNull()
     }
 
-    private fun addRouteLine(layer: RouteLineLayer, line: NativeLineDto): RouteLine? {
+    private fun buildNativeRouteId(line: NativeLineDto): String {
+        nativeRouteSequence += 1
+        val raw = "${line.displayKey}|${line.renderKey}|$nativeRouteSequence|${System.nanoTime()}"
+        return "route_${Integer.toUnsignedString(raw.hashCode(), 16)}"
+    }
+
+    private fun addRouteLine(layer: RouteLineLayer, line: NativeLineDto): Pair<String, RouteLine>? {
         val points = line.points
             .filter { isValidCoordinate(it.lat, it.lng) }
             .map { LatLng.from(it.lat, it.lng) }
@@ -667,16 +709,22 @@ private fun handleMarkerDragTouch(event: MotionEvent): Boolean {
             return null
         }
 
+        val nativeRouteId = buildNativeRouteId(line)
         return runCatching {
             val segment = RouteLineSegment.from(points, styleForLine(line.colorValue))
-            layer.addRouteLine(
+            val routeLine = layer.addRouteLine(
                 RouteLineOptions
-                    .from(line.displayKey, segment)
+                    .from(nativeRouteId, segment)
                     .setVisible(true)
                     .setTag(line.displayKey)
             )
+            nativeRouteId to routeLine
         }.onFailure {
-            Log.w(NativeKakaoMapRegistry.LOG_TAG, "RouteLine add failed displayKey=${line.displayKey}", it)
+            Log.w(
+                NativeKakaoMapRegistry.LOG_TAG,
+                "RouteLine add failed displayKey=${line.displayKey} nativeRouteId=$nativeRouteId",
+                it
+            )
         }.getOrNull()
     }
 
@@ -934,6 +982,7 @@ data class NativeMarkerState(
 
 data class NativeLineState(
     val renderKey: String,
+    val nativeRouteId: String,
     val routeLine: RouteLine,
     var line: NativeLineDto,
     var titleLabel: Label?
