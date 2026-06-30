@@ -613,6 +613,55 @@
       line-height: 1.35;
     }
 
+    .search-result-pin {
+      display: grid;
+      justify-items: center;
+      gap: 4px;
+      pointer-events: none;
+      text-align: center;
+      transform: translateY(-3px);
+      z-index: 999999;
+    }
+
+    .search-result-pin-icon {
+      position: relative;
+      order: 2;
+      width: 28px;
+      height: 28px;
+      border: 3px solid #ffffff;
+      border-radius: 50% 50% 50% 8px;
+      background: #ef4444;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.36);
+      transform: rotate(-45deg);
+    }
+
+    .search-result-pin-icon::after {
+      position: absolute;
+      top: 7px;
+      left: 7px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ffffff;
+      content: "";
+    }
+
+    .search-result-pin-label {
+      order: 1;
+      max-width: 180px;
+      padding: 4px 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #111827;
+      color: #ffffff;
+      box-shadow: 0 3px 9px rgba(15, 23, 42, 0.26);
+      font-size: 12px;
+      font-weight: 900;
+      line-height: 1.2;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .photo-archive-panel {
       position: absolute;
       top: 62px;
@@ -2930,6 +2979,122 @@
   <script>
     console.log("[ADMIN_V2] init");
 
+    window.ADMIN_PERF_LOG_ENABLED = (function() {
+      try {
+        return (
+          new URLSearchParams(window.location.search).get("perf") === "1" ||
+          window.localStorage.getItem("ADMIN_PERF_LOG_ENABLED") === "1"
+        );
+      } catch (error) {
+        return false;
+      }
+    })();
+
+    var adminPerfCounters = {
+      loadAdminMarkers: 0,
+      renderTeams: 0,
+      renderMyData: 0,
+      renderMarkersForViewport: 0,
+      renderMarkers: 0,
+      renderLines: 0,
+      renderMapLines: 0,
+      renderLineLabels: 0,
+      renderPhotoArchive: 0,
+      queryPhotoArchive: 0,
+      scheduleViewportRender: 0,
+      scheduleAdminRender: 0,
+      flushAdminRender: 0,
+      firestoreSnapshot: 0,
+      applyTeamsSnapshot: 0
+    };
+    var adminPerfRecentCalls = {};
+
+    function nowPerfMs() {
+      return typeof performance !== "undefined" && performance.now
+        ? performance.now()
+        : Date.now();
+    }
+
+    function perfLog() {
+      if (!window.ADMIN_PERF_LOG_ENABLED) return;
+      console.log.apply(console, arguments);
+    }
+
+    function perfWarn() {
+      if (!window.ADMIN_PERF_LOG_ENABLED) return;
+      console.warn.apply(console, arguments);
+    }
+
+    function perfGroup(label, data) {
+      if (!window.ADMIN_PERF_LOG_ENABLED) return;
+      console.groupCollapsed(label);
+      if (data) console.log(data);
+    }
+
+    function perfGroupEnd() {
+      if (!window.ADMIN_PERF_LOG_ENABLED) return;
+      console.groupEnd();
+    }
+
+    function measurePerf(label, fn) {
+      if (!window.ADMIN_PERF_LOG_ENABLED) return fn();
+      var start = nowPerfMs();
+      try {
+        var result = fn();
+        perfLog("[ADMIN_PERF] " + label + ": " + (nowPerfMs() - start).toFixed(1) + "ms");
+        return result;
+      } catch (error) {
+        perfWarn("[ADMIN_PERF] " + label + " failed after " + (nowPerfMs() - start).toFixed(1) + "ms", error);
+        throw error;
+      }
+    }
+
+    async function measurePerfAsync(label, fn) {
+      if (!window.ADMIN_PERF_LOG_ENABLED) return await fn();
+      var start = nowPerfMs();
+      try {
+        var result = await fn();
+        perfLog("[ADMIN_PERF] " + label + ": " + (nowPerfMs() - start).toFixed(1) + "ms");
+        return result;
+      } catch (error) {
+        perfWarn("[ADMIN_PERF] " + label + " failed after " + (nowPerfMs() - start).toFixed(1) + "ms", error);
+        throw error;
+      }
+    }
+
+    function recordPerfCall(name) {
+      if (!window.ADMIN_PERF_LOG_ENABLED) return;
+      var now = Date.now();
+      var recent = (adminPerfRecentCalls[name] || []).filter(function(time) {
+        return now - time < 1000;
+      });
+      recent.push(now);
+      adminPerfRecentCalls[name] = recent;
+      if (recent.length >= 5) {
+        perfWarn("[ADMIN_PERF] possible render storm: " + name + " called " + recent.length + " times in 1s");
+      }
+    }
+
+    function adminPerfDataSummary() {
+      var teams = allTeams || [];
+      var own = ownTeam || { groups: [], markers: [], lines: [] };
+      var teamGroupCount = 0;
+      var teamMarkerCount = 0;
+      var teamLineCount = 0;
+      teams.forEach(function(team) {
+        teamGroupCount += (team.groups || []).length;
+        teamMarkerCount += (team.markers || []).length;
+        teamLineCount += (team.lines || []).length;
+      });
+      return {
+        teamCount: teams.length + (ownTeam ? 1 : 0),
+        otherTeamCount: teams.length,
+        groupCount: teamGroupCount + (own.groups || []).length,
+        markerCount: teamMarkerCount + (own.markers || []).length,
+        lineCount: teamLineCount + (own.lines || []).length
+      };
+    }
+
     var ADMIN_TEAM_DOC_ID = "admin";
     var BUSAN_CENTER = { lat: 35.1795, lng: 129.0756 };
     var firebaseConfig = {
@@ -3086,14 +3251,31 @@
     var placeSearchGeocoder = null;
     var placeSearchResults = [];
     var placeSearchRequestToken = 0;
+    var searchResultPinOverlay = null;
+    var searchResultPinPosition = null;
 
     var adminRenderFrameId = null;
     var viewportRenderTimer = null;
+    var pendingViewportRenderReasons = new Set();
+    var pendingViewportRenderForce = false;
+    var lastMarkerViewportRenderSignature = "";
+    var lastAdminMarkerDataSignature = "";
+    var adminMarkerRenderRevision = 0;
+    var isRenderingMarkersForViewport = false;
+    var markerRenderStartedSignature = "";
+    var pendingViewportEventDuringMarkerRender = false;
+    var pendingViewportEventReasonsDuringMarkerRender = new Set();
+    var pendingSingleMarkerUpdates = new Map();
+    var singleMarkerUpdateFlushScheduled = false;
     var markerViewportRenderSequence = 0;
     var latestVisibleMarkerSource = [];
     var pendingAdminRenderOptions = {
       fitBounds: false,
-      preserveViewport: true
+      preserveViewport: true,
+      reason: "unknown",
+      forceMarkerRender: false,
+      forceLines: false,
+      forceSidebar: false
     };
     var VIEWPORT_PADDING_RATIO = 0.45;
     var VIEWPORT_RENDER_DEBOUNCE_MS = 300;
@@ -3351,9 +3533,13 @@
       bulkMutationInProgress = false;
       pendingBulkRedraw = false;
 
+      bumpMarkerRenderRevision("bulk-mutation");
+      lastAdminMarkerDataSignature = buildAdminMarkerDataSignature();
       scheduleAdminRender({
         fitBounds: false,
-        preserveViewport: true
+        preserveViewport: true,
+        reason: "bulk-mutation",
+        forceMarkerRender: true
       });
     }
 
@@ -5112,6 +5298,12 @@
         return;
       }
 
+      var perfStart = window.ADMIN_PERF_LOG_ENABLED ? nowPerfMs() : 0;
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        adminPerfCounters.queryPhotoArchive += 1;
+        recordPerfCall("queryPhotoArchiveBatches");
+      }
+
       var teamSelect = getPhotoArchiveElement("photoArchiveTeamSelect");
       var results = getPhotoArchiveElement("photoArchiveResults");
       var teamName = teamSelect ? teamSelect.value : "";
@@ -5130,6 +5322,7 @@
         var snapshot = await db.collection("photoBatches")
           .where("teamName", "==", teamName)
           .get();
+        var snapshotCount = window.ADMIN_PERF_LOG_ENABLED && snapshot && typeof snapshot.size === "number" ? snapshot.size : 0;
 
         photoArchiveBatches = [];
         snapshot.forEach(function(doc) {
@@ -5147,14 +5340,31 @@
         });
 
         renderPhotoArchiveBatches();
+        if (window.ADMIN_PERF_LOG_ENABLED) {
+          perfLog("[ADMIN_PERF] queryPhotoArchiveBatches", {
+            call: adminPerfCounters.queryPhotoArchive,
+            teamName: teamName,
+            snapshotCount: snapshotCount,
+            visibleBatchCount: photoArchiveBatches.length,
+            elapsedMs: (nowPerfMs() - perfStart).toFixed(1)
+          });
+        }
         setPhotoArchiveMessage(photoArchiveBatches.length + "개 업로드 묶음을 찾았습니다.");
       } catch (error) {
         console.error("[PHOTO_ARCHIVE_QUERY_FAILED]", error);
+        if (window.ADMIN_PERF_LOG_ENABLED) {
+          perfWarn("[ADMIN_PERF] queryPhotoArchiveBatches failed after " + (nowPerfMs() - perfStart).toFixed(1) + "ms", error);
+        }
         setPhotoArchiveMessage("사진 보관함 조회 실패: " + (error && error.message ? error.message : error));
       }
     }
 
     function renderPhotoArchiveBatches() {
+      var perfStart = window.ADMIN_PERF_LOG_ENABLED ? nowPerfMs() : 0;
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        adminPerfCounters.renderPhotoArchive += 1;
+        recordPerfCall("renderPhotoArchiveBatches");
+      }
       var results = getPhotoArchiveElement("photoArchiveResults");
       if (!results) return;
       results.innerHTML = "";
@@ -5164,9 +5374,21 @@
         empty.className = "empty-text";
         empty.textContent = "해당 팀장의 사진 묶음이 없습니다.";
         results.appendChild(empty);
+        if (window.ADMIN_PERF_LOG_ENABLED) {
+          perfLog("[ADMIN_PERF] renderPhotoArchiveBatches", {
+            call: adminPerfCounters.renderPhotoArchive,
+            batchCount: 0,
+            cardCount: 0,
+            elapsedMs: (nowPerfMs() - perfStart).toFixed(1)
+          });
+        }
         return;
       }
 
+      var cardCount = 0;
+      var recoverableCount = 0;
+      var downloadableCount = 0;
+      var failedBatchCount = 0;
       photoArchiveBatches.forEach(function(batch) {
         if (batch.status === "deleted") return;
 
@@ -5289,7 +5511,24 @@
         card.appendChild(actions);
 
         results.appendChild(card);
+        if (window.ADMIN_PERF_LOG_ENABLED) {
+          cardCount += 1;
+          if (isPhotoBatchRecoverable(batch)) recoverableCount += 1;
+          if (isPhotoBatchDownloadable(batch)) downloadableCount += 1;
+          if (String(batch.status || "").toLowerCase() === "failed") failedBatchCount += 1;
+        }
       });
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        perfLog("[ADMIN_PERF] renderPhotoArchiveBatches", {
+          call: adminPerfCounters.renderPhotoArchive,
+          batchCount: photoArchiveBatches.length,
+          cardCount: cardCount,
+          recoverableCount: recoverableCount,
+          downloadableCount: downloadableCount,
+          failedBatchCount: failedBatchCount,
+          elapsedMs: (nowPerfMs() - perfStart).toFixed(1)
+        });
+      }
     }
 
     async function getPhotoDocs(batch) {
@@ -5714,27 +5953,52 @@
     }
 
     function flushAdminRender() {
+      var perfStart = window.ADMIN_PERF_LOG_ENABLED ? nowPerfMs() : 0;
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        adminPerfCounters.flushAdminRender += 1;
+        recordPerfCall("flushAdminRender");
+      }
       adminRenderFrameId = null;
 
       var options = {
         fitBounds: pendingAdminRenderOptions.fitBounds === true,
-        preserveViewport: pendingAdminRenderOptions.fitBounds !== true
+        preserveViewport: pendingAdminRenderOptions.fitBounds !== true,
+        reason: pendingAdminRenderOptions.reason || "admin-render-flush",
+        force: pendingAdminRenderOptions.forceMarkerRender === true,
+        forceMarkers: pendingAdminRenderOptions.forceMarkerRender === true,
+        forceLines: pendingAdminRenderOptions.forceLines === true,
+        forceSidebar: pendingAdminRenderOptions.forceSidebar === true
       };
 
       pendingAdminRenderOptions = {
         fitBounds: false,
-        preserveViewport: true
+        preserveViewport: true,
+        reason: "unknown",
+        forceMarkerRender: false,
+        forceLines: false,
+        forceSidebar: false
       };
 
       var visibleMarkers = getVisibleMarkers();
       var visibleLines = getVisibleLines();
 
-      renderTeams();
-      refreshPhotoArchiveTeamOptions();
-      renderMyData();
-      renderLines();
+      if (options.forceSidebar || options.fitBounds === true) {
+        renderTeams();
+        refreshPhotoArchiveTeamOptions();
+        renderMyData();
+      }
+      if (options.forceLines || options.fitBounds === true) {
+        renderLines();
+      } else if (window.ADMIN_PERF_LOG_ENABLED) {
+        perfLog("[ADMIN_PERF] skip line render for " + options.reason, {
+          reason: options.reason,
+          forceLines: false
+        });
+      }
       renderMarkersForViewport(visibleMarkers, options);
-      renderMapLines(visibleLines);
+      if (options.forceLines || options.fitBounds === true) {
+        renderMapLines(visibleLines);
+      }
 
       setMarkerCount(visibleMarkers.length);
       setTeamCount(allTeams.length);
@@ -5742,10 +6006,62 @@
       if (options.fitBounds === true && !initialAutoFitDone) {
         initialAutoFitDone = true;
       }
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        perfLog("[ADMIN_PERF] flushAdminRender", {
+          call: adminPerfCounters.flushAdminRender,
+          reason: options.reason,
+          forceMarkers: options.forceMarkers === true,
+          forceLines: options.forceLines === true,
+          forceSidebar: options.forceSidebar === true,
+          fitBounds: options.fitBounds === true,
+          visibleMarkerCount: visibleMarkers.length,
+          visibleLineCount: visibleLines.length,
+          markerOverlayCount: Object.keys(markerObjects).length,
+          lineOverlayCount: Object.keys(lineOverlays).length,
+          lineLabelOverlayCount: Object.keys(lineLabelOverlays).length,
+          elapsedMs: (nowPerfMs() - perfStart).toFixed(1)
+        });
+      }
     }
 
     function scheduleAdminRender(options) {
       options = options || {};
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        adminPerfCounters.scheduleAdminRender += 1;
+        recordPerfCall("scheduleAdminRender");
+      }
+      var incomingForceMarkers = options.forceMarkerRender === true || options.forceMarkers === true;
+      var incomingForceLines = Object.prototype.hasOwnProperty.call(options, "forceLines")
+        ? options.forceLines === true
+        : true;
+      var incomingForceSidebar = Object.prototype.hasOwnProperty.call(options, "forceSidebar")
+        ? options.forceSidebar === true
+        : true;
+      if (incomingForceMarkers || !pendingAdminRenderOptions.forceMarkerRender) {
+        pendingAdminRenderOptions.reason = options.reason || pendingAdminRenderOptions.reason || "unknown";
+      }
+      pendingAdminRenderOptions.forceMarkerRender =
+        pendingAdminRenderOptions.forceMarkerRender ||
+        incomingForceMarkers;
+      pendingAdminRenderOptions.forceLines =
+        pendingAdminRenderOptions.forceLines ||
+        incomingForceLines;
+      pendingAdminRenderOptions.forceSidebar =
+        pendingAdminRenderOptions.forceSidebar ||
+        incomingForceSidebar;
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        perfLog("[ADMIN_PERF] scheduleAdminRender", {
+          call: adminPerfCounters.scheduleAdminRender,
+          fitBounds: options.fitBounds === true,
+          alreadyScheduled: adminRenderFrameId !== null,
+          bulkMutationInProgress: bulkMutationInProgress === true,
+          pendingBulkRedraw: pendingBulkRedraw === true,
+          reason: pendingAdminRenderOptions.reason,
+          forceMarkers: pendingAdminRenderOptions.forceMarkerRender === true,
+          forceLines: pendingAdminRenderOptions.forceLines === true,
+          forceSidebar: pendingAdminRenderOptions.forceSidebar === true
+        });
+      }
 
       if (options.fitBounds === true) {
         pendingAdminRenderOptions.fitBounds = true;
@@ -5825,7 +6141,7 @@ setMapStatus("Map connected");
               if (drawingAlignedOverlay) {
                 updateDrawingAlignedOverlayTransform({ rebaseAnchor: true });
               }
-              scheduleViewportRender();
+              scheduleViewportRender("map-idle");
             });
 
             kakao.maps.event.addListener(map, "dragstart", function() {
@@ -5838,12 +6154,14 @@ setMapStatus("Map connected");
               if (drawingAlignedOverlay) {
                 updateDrawingAlignedOverlayTransform({ rebaseAnchor: true });
               }
+              scheduleViewportRender("map-drag");
             });
 
             kakao.maps.event.addListener(map, "zoom_changed", function() {
               if (drawingAlignedOverlay) {
                 updateDrawingAlignedOverlayTransform({ rebaseAnchor: true });
               }
+              scheduleViewportRender("map-zoom");
             });
 
   kakao.maps.event.addListener(map, "click", function(mouseEvent) {
@@ -6046,18 +6364,40 @@ setMapStatus("Map connected");
 
     async function loadAdminMarkers() {
       if (!db || !map) return;
+      var perfStart = window.ADMIN_PERF_LOG_ENABLED ? nowPerfMs() : 0;
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        adminPerfCounters.loadAdminMarkers += 1;
+        recordPerfCall("loadAdminMarkers");
+      }
       setRefreshEnabled(false);
       setFirebaseStatus("Loading");
 
       try {
         var snapshot = await db.collection("teams").get();
+        if (window.ADMIN_PERF_LOG_ENABLED) {
+          perfLog("[ADMIN_PERF] loadAdminMarkers snapshot", {
+            call: adminPerfCounters.loadAdminMarkers,
+            docCount: snapshot && typeof snapshot.size === "number" ? snapshot.size : 0,
+            elapsedMs: (nowPerfMs() - perfStart).toFixed(1)
+          });
+        }
         applyTeamsSnapshot(snapshot, { fitBounds: !initialAutoFitDone });
         setFirebaseStatus("Ready");
         setAdminMessage("Read-only data refreshed.");
         console.log("[ADMIN_V2] markers loaded", ownTeam.markers.length);
+        if (window.ADMIN_PERF_LOG_ENABLED) {
+          perfLog("[ADMIN_PERF] loadAdminMarkers complete", {
+            call: adminPerfCounters.loadAdminMarkers,
+            data: adminPerfDataSummary(),
+            elapsedMs: (nowPerfMs() - perfStart).toFixed(1)
+          });
+        }
       } catch (error) {
         setFirebaseStatus("Error");
         console.error("[ADMIN_V2] markers load failed", error);
+        if (window.ADMIN_PERF_LOG_ENABLED) {
+          perfWarn("[ADMIN_PERF] loadAdminMarkers failed after " + (nowPerfMs() - perfStart).toFixed(1) + "ms", error);
+        }
       } finally {
         setRefreshEnabled(true);
       }
@@ -6065,6 +6405,11 @@ setMapStatus("Map connected");
 
       function applyTeamsSnapshot(snapshot, options) {
       options = options || {};
+      var perfStart = window.ADMIN_PERF_LOG_ENABLED ? nowPerfMs() : 0;
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        adminPerfCounters.applyTeamsSnapshot += 1;
+        recordPerfCall("applyTeamsSnapshot");
+      }
       var teams = [];
       var adminTeam = null;
 
@@ -6082,11 +6427,36 @@ setMapStatus("Map connected");
 
       syncVisibilityState();
       applyPendingMarkerMutationsToLocalState();
+      var nextMarkerDataSignature = buildAdminMarkerDataSignature();
+      var markerDataChanged = nextMarkerDataSignature !== lastAdminMarkerDataSignature;
+      if (markerDataChanged) {
+        lastAdminMarkerDataSignature = nextMarkerDataSignature;
+        bumpMarkerRenderRevision("firestore-snapshot");
+      } else if (window.ADMIN_PERF_LOG_ENABLED) {
+        perfLog("[ADMIN_PERF] firestore snapshot marker render skipped", {
+          markerDataChanged: false,
+          reason: "same-marker-data"
+        });
+      }
 
       scheduleAdminRender({
         fitBounds: options.fitBounds === true,
-        preserveViewport: options.fitBounds !== true
+        preserveViewport: options.fitBounds !== true,
+        reason: "firestore-snapshot",
+        forceMarkers: markerDataChanged || options.fitBounds === true,
+        forceLines: true,
+        forceSidebar: markerDataChanged
       });
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        perfLog("[ADMIN_PERF] applyTeamsSnapshot", {
+          call: adminPerfCounters.applyTeamsSnapshot,
+          docCount: snapshot && typeof snapshot.size === "number" ? snapshot.size : 0,
+          fitBounds: options.fitBounds === true,
+          markerDataChanged: markerDataChanged,
+          data: adminPerfDataSummary(),
+          elapsedMs: (nowPerfMs() - perfStart).toFixed(1)
+        });
+      }
     }
 
     function subscribeAdminTeamsRealtime() {
@@ -6097,6 +6467,21 @@ setMapStatus("Map connected");
 
       unsubscribeTeamsSnapshot = db.collection("teams").onSnapshot(function(snapshot) {
         console.log("[ADMIN_V2_REALTIME] teams snapshot", snapshot.size);
+        if (window.ADMIN_PERF_LOG_ENABLED) {
+          adminPerfCounters.firestoreSnapshot += 1;
+          var changes = typeof snapshot.docChanges === "function" ? snapshot.docChanges() : [];
+          var changeSummary = { added: 0, modified: 0, removed: 0 };
+          changes.forEach(function(change) {
+            if (change && change.type && changeSummary[change.type] !== undefined) {
+              changeSummary[change.type] += 1;
+            }
+          });
+          perfLog("[ADMIN_PERF] firestore teams snapshot", {
+            call: adminPerfCounters.firestoreSnapshot,
+            docCount: snapshot && typeof snapshot.size === "number" ? snapshot.size : 0,
+            changes: changeSummary
+          });
+        }
         var shouldFit = !initialAutoFitDone;
         applyTeamsSnapshot(snapshot, { fitBounds: shouldFit });
         setFirebaseStatus("Ready");
@@ -6744,6 +7129,181 @@ setMapStatus("Map connected");
       return markerObj;
     }
 
+    function singleMarkerUpdateKey(marker) {
+      return rawMarkerPrimaryId(marker) || initiatingMarkerCanonicalId(marker);
+    }
+
+    function updateSingleMarkerOverlay(marker, reason) {
+      if (!marker) return false;
+      var candidates = markerIdCandidates(marker);
+      var markerObj = null;
+      var markerKey = "";
+
+      for (var i = 0; i < candidates.length; i += 1) {
+        markerKey = candidates[i];
+        if (markerObjects[markerKey]) {
+          markerObj = markerObjects[markerKey];
+          break;
+        }
+      }
+
+      if (!markerObj) {
+        var bounds = getPaddedMapBounds(VIEWPORT_PADDING_RATIO);
+        var markerShouldBeRendered = bounds ? isMarkerInBounds(marker, bounds) : true;
+        if (window.ADMIN_PERF_LOG_ENABLED) {
+          perfLog("[ADMIN_PERF] updateSingleMarkerOverlay skipped", {
+            markerKey: singleMarkerUpdateKey(marker),
+            reason: reason || "unknown",
+            cause: markerShouldBeRendered ? "missing-visible-overlay" : "outside-viewport"
+          });
+        }
+        return markerShouldBeRendered ? false : true;
+      }
+
+      var lat = Number(marker.lat);
+      var lng = Number(marker.lng);
+      var nextImageKey = markerImageKey(marker);
+      if (Number.isFinite(lat) && Number.isFinite(lng) &&
+          (markerObj.__lat !== lat || markerObj.__lng !== lng)) {
+        markerObj.setPosition(new kakao.maps.LatLng(lat, lng));
+        markerObj.__lat = lat;
+        markerObj.__lng = lng;
+      }
+
+      if (markerObj.__imageKey !== nextImageKey) {
+        markerObj.setImage(createMarkerImage(marker));
+        markerObj.__imageKey = nextImageKey;
+      }
+
+      if (markerObj.__draggable !== markerMoveMode && typeof markerObj.setDraggable === "function") {
+        markerObj.setDraggable(markerMoveMode);
+        markerObj.__draggable = markerMoveMode;
+      }
+
+      markerObj.__data = marker;
+      markerObj.__signature = markerSignature(marker);
+      markerObj.setMap(map);
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        perfLog("[ADMIN_PERF] updateSingleMarkerOverlay", {
+          markerKey: markerKey,
+          reason: reason || "unknown"
+        });
+      }
+      return true;
+    }
+
+    function assignMarkerRowData(row, marker) {
+      if (!row || !marker) return;
+      row.dataset.markerKey = singleMarkerUpdateKey(marker);
+      row.dataset.markerCanonicalId = initiatingMarkerCanonicalId(marker);
+      row.dataset.markerIds = markerIdCandidates(marker).join("|");
+    }
+
+    function rowMatchesMarker(row, marker) {
+      if (!row || !marker) return false;
+      var candidates = markerIdCandidates(marker);
+      var ownValues = [
+        row.dataset.markerKey,
+        row.dataset.markerCanonicalId
+      ].filter(Boolean);
+      var rowIds = String(row.dataset.markerIds || "")
+        .split("|")
+        .map(cleanMarkerId)
+        .filter(Boolean);
+      ownValues = ownValues.concat(rowIds);
+      return candidates.some(function(candidate) {
+        return ownValues.indexOf(candidate) !== -1;
+      });
+    }
+
+    function updateSingleMarkerSidebarRow(marker, reason) {
+      if (!marker || typeof document === "undefined" || typeof document.querySelectorAll !== "function") return false;
+      var rows = Array.from(document.querySelectorAll(".marker-row"));
+      var matched = 0;
+      var checked = markerImageChecked(marker);
+
+      rows.forEach(function(row) {
+        if (!rowMatchesMarker(row, marker)) return;
+        matched += 1;
+        assignMarkerRowData(row, marker);
+        row.classList.toggle("checked-marker-row", checked);
+        row.classList.toggle("multi-selected-marker-row", isMarkerMultiSelected(marker));
+        var dot = row.querySelector(".marker-dot");
+        if (dot) dot.style.background = marker.color;
+        var title = row.querySelector(".row-title");
+        if (title) title.textContent = marker.title;
+      });
+
+      if (!matched) return false;
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        perfLog("[ADMIN_PERF] updateSingleMarkerSidebarRow", {
+          markerKey: singleMarkerUpdateKey(marker),
+          reason: reason || "unknown",
+          matchedRows: matched
+        });
+      }
+      return true;
+    }
+
+    function queueSingleMarkerUpdate(marker, reason) {
+      var markerKey = singleMarkerUpdateKey(marker);
+      if (!markerKey || !marker) return false;
+
+      pendingSingleMarkerUpdates.set(markerKey, {
+        marker: marker,
+        reason: reason || "single-marker-update"
+      });
+
+      if (singleMarkerUpdateFlushScheduled) return true;
+      singleMarkerUpdateFlushScheduled = true;
+
+      Promise.resolve().then(function() {
+        singleMarkerUpdateFlushScheduled = false;
+        var entries = Array.from(pendingSingleMarkerUpdates.entries());
+        pendingSingleMarkerUpdates.clear();
+
+        var overlayFailed = 0;
+        var rowFailed = 0;
+
+        entries.forEach(function(entry) {
+          var payload = entry[1];
+          var okOverlay = updateSingleMarkerOverlay(payload.marker, payload.reason);
+          var okRow = updateSingleMarkerSidebarRow(payload.marker, payload.reason);
+          if (!okOverlay) overlayFailed += 1;
+          if (!okRow) rowFailed += 1;
+        });
+
+        if (window.ADMIN_PERF_LOG_ENABLED) {
+          perfLog("[ADMIN_PERF] flushSingleMarkerUpdates", {
+            count: entries.length,
+            overlayFailed: overlayFailed,
+            rowFailed: rowFailed
+          });
+        }
+
+        if (overlayFailed || rowFailed) {
+          if (window.ADMIN_PERF_LOG_ENABLED) {
+            perfLog("[ADMIN_PERF] marker-check fast path fallback", {
+              overlayFailed: overlayFailed,
+              rowFailed: rowFailed
+            });
+          }
+          scheduleAdminRender({
+            reason: "single-marker-update-fallback",
+            forceMarkers: overlayFailed > 0,
+            forceSidebar: rowFailed > 0,
+            forceLines: false
+          });
+        } else if (window.ADMIN_PERF_LOG_ENABLED) {
+          perfLog("[ADMIN_PERF] marker-check fast path applied", {
+            count: entries.length
+          });
+        }
+      });
+
+      return true;
+    }
+
     function getPaddedMapBounds(paddingRatio) {
       if (!map || typeof map.getBounds !== "function" || !window.kakao || !kakao.maps) {
         return null;
@@ -6797,6 +7357,60 @@ setMapStatus("Map connected");
       return source.filter(function(marker) {
         return isMarkerInBounds(marker, bounds);
       });
+    }
+
+    function bumpMarkerRenderRevision(reason) {
+      adminMarkerRenderRevision += 1;
+      lastMarkerViewportRenderSignature = "";
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        perfLog("[ADMIN_PERF] marker render revision", {
+          revision: adminMarkerRenderRevision,
+          reason: reason || "unknown"
+        });
+      }
+    }
+
+    function buildAdminMarkerDataSignature() {
+      var parts = [];
+      function addTeamMarkers(team) {
+        if (!team || !Array.isArray(team.markers)) return;
+        parts.push("team=" + String(team.docId || team.teamName || ""));
+        parts.push("count=" + team.markers.length);
+        team.markers.forEach(function(marker) {
+          parts.push(markerSignature(marker));
+        });
+      }
+
+      addTeamMarkers(ownTeam);
+      allTeams.forEach(addTeamMarkers);
+      return parts.join("||");
+    }
+
+    function roundCoordForViewportSignature(value) {
+      return Number(value || 0).toFixed(4);
+    }
+
+    function buildMarkerViewportSignature(sourceMarkers, canonicalMarkers) {
+      if (!map || typeof map.getBounds !== "function" || typeof map.getLevel !== "function") return "";
+
+      var bounds = map.getBounds();
+      if (!bounds || typeof bounds.getSouthWest !== "function" || typeof bounds.getNorthEast !== "function") return "";
+
+      var sw = bounds.getSouthWest();
+      var ne = bounds.getNorthEast();
+      if (!sw || !ne) return "";
+
+      return [
+        "level=" + map.getLevel(),
+        "sw=" + roundCoordForViewportSignature(sw.getLat()) + "," + roundCoordForViewportSignature(sw.getLng()),
+        "ne=" + roundCoordForViewportSignature(ne.getLat()) + "," + roundCoordForViewportSignature(ne.getLng()),
+        "source=" + (Array.isArray(sourceMarkers) ? sourceMarkers.length : 0),
+        "canonical=" + (Array.isArray(canonicalMarkers) ? canonicalMarkers.length : 0),
+        "revision=" + adminMarkerRenderRevision,
+        "multi=" + (markerMultiSelectMode ? "1" : "0"),
+        "selected=" + selectedMarkers.length,
+        "move=" + (markerMoveMode ? "1" : "0")
+      ].join("|");
     }
 
     function removeMarkerClusterOverlays(keep) {
@@ -7016,7 +7630,7 @@ setMapStatus("Map connected");
               map.setLevel(Math.max(1, map.getLevel() - 3));
             }
 
-            scheduleViewportRender();
+            scheduleViewportRender("cluster-click");
           });
 
           overlay = new kakao.maps.CustomOverlay({
@@ -7055,27 +7669,29 @@ setMapStatus("Map connected");
       });
 
       stats.removed = removeMarkerClusterOverlays(keep);
-      console.log(
-        "[WEB_CLUSTER_RENDER] reused=" +
-        stats.reused +
-        " created=" +
-        stats.created +
-        " removed=" +
-        stats.removed +
-        " moved=" +
-        stats.moved +
-        " textUpdated=" +
-        stats.textUpdated +
-        " level=" +
-        level +
-        " gridSize=" +
-        clusterBuild.gridSize +
-        " target=" +
-        clusterBuild.target +
-        " attempts=" +
-        clusterBuild.attempts +
-        " mode=stable-grid"
-      );
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        console.log(
+          "[WEB_CLUSTER_RENDER] reused=" +
+          stats.reused +
+          " created=" +
+          stats.created +
+          " removed=" +
+          stats.removed +
+          " moved=" +
+          stats.moved +
+          " textUpdated=" +
+          stats.textUpdated +
+          " level=" +
+          level +
+          " gridSize=" +
+          clusterBuild.gridSize +
+          " target=" +
+          clusterBuild.target +
+          " attempts=" +
+          clusterBuild.attempts +
+          " mode=stable-grid"
+        );
+      }
       return {
         count: clusters.length,
         gridSize: clusterBuild.gridSize,
@@ -7084,34 +7700,187 @@ setMapStatus("Map connected");
       };
     }
 
-    function scheduleViewportRender() {
-      if (viewportRenderTimer !== null) {
-        window.clearTimeout(viewportRenderTimer);
-      }
+    function scheduleViewportRender(reason, options) {
+      options = options || {};
+      reason = reason || "unknown";
 
-      viewportRenderTimer = window.setTimeout(function() {
-        viewportRenderTimer = null;
-        renderMarkersForViewport(latestVisibleMarkerSource, {
-          fitBounds: false,
-          preserveViewport: true
-        });
-      }, VIEWPORT_RENDER_DEBOUNCE_MS);
-    }
-
-    async function renderMarkersForViewport(markers, options) {
-      latestVisibleMarkerSource = Array.isArray(markers) ? markers.slice() : [];
-
-      if (bulkMutationInProgress) {
-        pendingBulkRedraw = true;
+      if (isRenderingMarkersForViewport && options.force !== true) {
+        pendingViewportEventDuringMarkerRender = true;
+        pendingViewportEventReasonsDuringMarkerRender.add(reason);
+        if (window.ADMIN_PERF_LOG_ENABLED) {
+          perfLog("[ADMIN_PERF] ignore map event during marker render", {
+            reason: reason,
+            pendingReasons: Array.from(pendingViewportEventReasonsDuringMarkerRender)
+          });
+        }
         return;
       }
 
-      return renderMarkers(latestVisibleMarkerSource, options);
+      pendingViewportRenderReasons.add(reason);
+      pendingViewportRenderForce = pendingViewportRenderForce || options.force === true;
+
+      if (viewportRenderTimer !== null) {
+        if (window.ADMIN_PERF_LOG_ENABLED) {
+          perfLog("[ADMIN_PERF] merge scheduleViewportRender", {
+            reason: reason,
+            force: pendingViewportRenderForce === true,
+            pendingReasons: Array.from(pendingViewportRenderReasons)
+          });
+        }
+        return;
+      }
+
+      var scheduledAt = window.ADMIN_PERF_LOG_ENABLED ? nowPerfMs() : 0;
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        adminPerfCounters.scheduleViewportRender += 1;
+        recordPerfCall("scheduleViewportRender");
+        perfLog("[ADMIN_PERF] scheduleViewportRender", {
+          call: adminPerfCounters.scheduleViewportRender,
+          reason: reason,
+          debounceMs: options.debounceMs || VIEWPORT_RENDER_DEBOUNCE_MS,
+          mergedPendingTimer: viewportRenderTimer !== null,
+          force: pendingViewportRenderForce === true,
+          pendingReasons: Array.from(pendingViewportRenderReasons),
+          sourceMarkerCount: latestVisibleMarkerSource.length
+        });
+      }
+
+      viewportRenderTimer = window.setTimeout(function() {
+        var reasons = Array.from(pendingViewportRenderReasons);
+        var force = pendingViewportRenderForce === true;
+        pendingViewportRenderReasons.clear();
+        pendingViewportRenderForce = false;
+        viewportRenderTimer = null;
+        if (window.ADMIN_PERF_LOG_ENABLED) {
+          perfLog("[ADMIN_PERF] scheduleViewportRender fired", {
+            reason: reasons.join(",") || "unknown",
+            force: force,
+            waitedMs: (nowPerfMs() - scheduledAt).toFixed(1),
+            sourceMarkerCount: latestVisibleMarkerSource.length
+          });
+        }
+        renderMarkersForViewport(latestVisibleMarkerSource, {
+          fitBounds: false,
+          preserveViewport: true,
+          reason: reasons.join(",") || "unknown",
+          force: force
+        });
+      }, options.debounceMs || VIEWPORT_RENDER_DEBOUNCE_MS);
+    }
+
+    async function renderMarkersForViewport(markers, options) {
+      options = options || {};
+      var reason = options.reason || "unknown";
+      var force = options.force === true;
+      var perfStart = window.ADMIN_PERF_LOG_ENABLED ? nowPerfMs() : 0;
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        adminPerfCounters.renderMarkersForViewport += 1;
+        recordPerfCall("renderMarkersForViewport");
+      }
+      latestVisibleMarkerSource = Array.isArray(markers) ? markers.slice() : [];
+      var canonicalMarkers = dedupeVisibleMarkers(latestVisibleMarkerSource);
+      var signature = buildMarkerViewportSignature(latestVisibleMarkerSource, canonicalMarkers);
+      markerRenderStartedSignature = signature;
+
+      if (bulkMutationInProgress) {
+        pendingBulkRedraw = true;
+        if (window.ADMIN_PERF_LOG_ENABLED) {
+          perfLog("[ADMIN_PERF] renderMarkersForViewport skipped", {
+            call: adminPerfCounters.renderMarkersForViewport,
+            reason: "bulkMutationInProgress",
+            sourceMarkerCount: latestVisibleMarkerSource.length,
+            elapsedMs: (nowPerfMs() - perfStart).toFixed(1)
+          });
+        }
+        return;
+      }
+
+      if (!force && signature && signature === lastMarkerViewportRenderSignature) {
+        if (window.ADMIN_PERF_LOG_ENABLED) {
+          perfLog("[ADMIN_PERF] renderMarkersForViewport skipped same viewport", {
+            call: adminPerfCounters.renderMarkersForViewport,
+            reason: reason,
+            signature: signature,
+            sourceMarkerCount: latestVisibleMarkerSource.length,
+            canonicalMarkerCount: canonicalMarkers.length,
+            markerOverlayCount: Object.keys(markerObjects).length,
+            clusterOverlayCount: Object.keys(markerClusterOverlays).length,
+            elapsedMs: (nowPerfMs() - perfStart).toFixed(1)
+          });
+        }
+        return;
+      }
+
+      isRenderingMarkersForViewport = true;
+      try {
+        var result = await renderMarkers(latestVisibleMarkerSource, options);
+        canonicalMarkers = dedupeVisibleMarkers(latestVisibleMarkerSource);
+        var endSignature = buildMarkerViewportSignature(latestVisibleMarkerSource, canonicalMarkers) || signature;
+        var viewportChangedDuringRender =
+          pendingViewportEventDuringMarkerRender &&
+          markerRenderStartedSignature &&
+          endSignature &&
+          markerRenderStartedSignature !== endSignature;
+        if (viewportChangedDuringRender) {
+          lastMarkerViewportRenderSignature = markerRenderStartedSignature;
+        } else if (endSignature) {
+          lastMarkerViewportRenderSignature = endSignature;
+        }
+        if (window.ADMIN_PERF_LOG_ENABLED) {
+          perfLog("[ADMIN_PERF] renderMarkersForViewport", {
+            call: adminPerfCounters.renderMarkersForViewport,
+            reason: reason,
+            force: force,
+            viewportChangedDuringRender: viewportChangedDuringRender,
+            sourceMarkerCount: latestVisibleMarkerSource.length,
+            canonicalMarkerCount: canonicalMarkers.length,
+            signature: endSignature,
+            elapsedMs: (nowPerfMs() - perfStart).toFixed(1)
+          });
+        }
+        return result;
+      } finally {
+        isRenderingMarkersForViewport = false;
+        if (pendingViewportEventDuringMarkerRender && viewportRenderTimer === null) {
+          var afterRenderCanonicalMarkers = dedupeVisibleMarkers(latestVisibleMarkerSource);
+          var afterRenderSignature = buildMarkerViewportSignature(latestVisibleMarkerSource, afterRenderCanonicalMarkers);
+          var eventReasons = window.ADMIN_PERF_LOG_ENABLED
+            ? Array.from(pendingViewportEventReasonsDuringMarkerRender)
+            : [];
+          pendingViewportEventDuringMarkerRender = false;
+          pendingViewportEventReasonsDuringMarkerRender.clear();
+
+          if (
+            markerRenderStartedSignature &&
+            afterRenderSignature &&
+            markerRenderStartedSignature !== afterRenderSignature
+          ) {
+            scheduleViewportRender("after-marker-render-bounds-changed", {
+              force: false
+            });
+          } else if (window.ADMIN_PERF_LOG_ENABLED) {
+            perfLog("[ADMIN_PERF] skip after-marker-render because signature unchanged", {
+              startSignature: markerRenderStartedSignature,
+              endSignature: afterRenderSignature,
+              pendingReasons: eventReasons
+            });
+          }
+        } else {
+          pendingViewportEventDuringMarkerRender = false;
+          pendingViewportEventReasonsDuringMarkerRender.clear();
+        }
+        markerRenderStartedSignature = "";
+      }
     }
 
     async function renderMarkers(markers, options) {
       options = options || {};
-      var startedAt = Date.now();
+      var startedAt = window.ADMIN_PERF_LOG_ENABLED ? Date.now() : 0;
+      var perfStart = window.ADMIN_PERF_LOG_ENABLED ? nowPerfMs() : 0;
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        adminPerfCounters.renderMarkers += 1;
+        recordPerfCall("renderMarkers");
+      }
       var allRenderItems = dedupeVisibleMarkers(markers);
       var renderItems = getRenderableMarkersForCurrentViewport(allRenderItems);
       var level = map && typeof map.getLevel === "function" ? map.getLevel() : 0;
@@ -7199,56 +7968,89 @@ setMapStatus("Map connected");
         });
       }
 
-      console.log("[ADMIN_V2_MARKERS]", {
-        raw: markers.length,
-        canonical: allRenderItems.length,
-        viewport: renderItems.length,
-        rendered: shouldCluster ? 0 : renderItems.length,
-        clusters: clusterCount,
-        level: level,
-        clusterGridSize: clusterGridSize,
-        clusterTarget: clusterTarget,
-        clusterAdjustAttempts: clusterAdjustAttempts,
-        created: created,
-        reused: reused,
-        moved: moved,
-        imageUpdated: imageUpdated,
-        removed: removed,
-        imageCache: Object.keys(markerImageCache).length
-      });
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        console.log("[ADMIN_V2_MARKERS]", {
+          raw: markers.length,
+          canonical: allRenderItems.length,
+          viewport: renderItems.length,
+          rendered: shouldCluster ? 0 : renderItems.length,
+          clusters: clusterCount,
+          level: level,
+          clusterGridSize: clusterGridSize,
+          clusterTarget: clusterTarget,
+          clusterAdjustAttempts: clusterAdjustAttempts,
+          created: created,
+          reused: reused,
+          moved: moved,
+          imageUpdated: imageUpdated,
+          removed: removed,
+          imageCache: Object.keys(markerImageCache).length
+        });
+        perfLog("[ADMIN_PERF] renderMarkers", {
+          call: adminPerfCounters.renderMarkers,
+          raw: markers.length,
+          canonical: allRenderItems.length,
+          viewport: renderItems.length,
+          rendered: shouldCluster ? 0 : renderItems.length,
+          clusters: clusterCount,
+          level: level,
+          clusterGridSize: clusterGridSize,
+          clusterTarget: clusterTarget,
+          clusterAdjustAttempts: clusterAdjustAttempts,
+          created: created,
+          reused: reused,
+          moved: moved,
+          imageUpdated: imageUpdated,
+          removed: removed,
+          markerOverlayCount: Object.keys(markerObjects).length,
+          clusterOverlayCount: Object.keys(markerClusterOverlays).length,
+          imageCache: Object.keys(markerImageCache).length,
+          elapsedMs: (nowPerfMs() - perfStart).toFixed(1)
+        });
 
-      console.log(
-        "[WEB_MARKER_VIEWPORT_RENDER] total=" +
-        allRenderItems.length +
-        " visible=" +
-        renderItems.length +
-        " rendered=" +
-        (shouldCluster ? 0 : renderItems.length) +
-        " clusters=" +
-        clusterCount +
-        " level=" +
-        level +
-        " gridSize=" +
-        clusterGridSize +
-        " target=" +
-        clusterTarget +
-        " adjustAttempts=" +
-        clusterAdjustAttempts +
-        " mode=" +
-        (shouldCluster ? "stable-grid" : "individual") +
-        " elapsedMs=" +
-        String(Date.now() - startedAt)
-      );
+        console.log(
+          "[WEB_MARKER_VIEWPORT_RENDER] total=" +
+          allRenderItems.length +
+          " visible=" +
+          renderItems.length +
+          " rendered=" +
+          (shouldCluster ? 0 : renderItems.length) +
+          " clusters=" +
+          clusterCount +
+          " level=" +
+          level +
+          " gridSize=" +
+          clusterGridSize +
+          " target=" +
+          clusterTarget +
+          " adjustAttempts=" +
+          clusterAdjustAttempts +
+          " mode=" +
+          (shouldCluster ? "stable-grid" : "individual") +
+          " elapsedMs=" +
+          String(Date.now() - startedAt)
+        );
+      }
 
       if (options.fitBounds === true) {
         fitBoundsToVisibleItems();
-        scheduleViewportRender();
+        scheduleViewportRender("fitBounds", { force: true });
       }
     }
 
       function renderMapLines(lines) {
+      var perfStart = window.ADMIN_PERF_LOG_ENABLED ? nowPerfMs() : 0;
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        adminPerfCounters.renderMapLines += 1;
+        recordPerfCall("renderMapLines");
+      }
+      var inputLineCount = Array.isArray(lines) ? lines.length : 0;
       lines = dedupeVisibleLines(lines);
       var keep = {};
+      var created = 0;
+      var reused = 0;
+      var replaced = 0;
+      var removed = 0;
 
       lines.forEach(function(line) {
         if (!line.points || line.points.length < 2) return;
@@ -7271,11 +8073,13 @@ setMapStatus("Map connected");
         var overlay = lineOverlays[line.id];
 
         if (overlay && overlay.__signature === signature) {
+          reused += 1;
           return;
         }
 
         if (overlay) {
           overlay.setMap(null);
+          replaced += 1;
         }
 
         var path = line.points.map(function(point) {
@@ -7293,6 +8097,7 @@ setMapStatus("Map connected");
 
         overlay.__signature = signature;
         lineOverlays[line.id] = overlay;
+        created += 1;
 
         kakao.maps.event.addListener(overlay, "click", function() {
           if (isMapObjectSelectionBlocked()) return;
@@ -7305,9 +8110,23 @@ setMapStatus("Map connected");
 
         lineOverlays[id].setMap(null);
         delete lineOverlays[id];
+        removed += 1;
       });
 
       renderLineLabels(lines);
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        perfLog("[ADMIN_PERF] renderMapLines", {
+          call: adminPerfCounters.renderMapLines,
+          inputLineCount: inputLineCount,
+          visibleLineCount: lines.length,
+          created: created,
+          reused: reused,
+          replaced: replaced,
+          removed: removed,
+          lineOverlayCount: Object.keys(lineOverlays).length,
+          elapsedMs: (nowPerfMs() - perfStart).toFixed(1)
+        });
+      }
     }
 
     function shouldShowLineLabel(line) {
@@ -8049,9 +8868,14 @@ setMapStatus("Map connected");
 
     function refreshMarkerMultiSelectionViews() {
       if (typeof scheduleViewportRender === "function") {
-        scheduleViewportRender();
+        scheduleViewportRender("marker-multiselect", { force: true });
       } else if (typeof renderMarkersForViewport === "function" && typeof getVisibleMarkers === "function") {
-        renderMarkersForViewport(getVisibleMarkers(), { fitBounds: false, preserveViewport: true });
+        renderMarkersForViewport(getVisibleMarkers(), {
+          fitBounds: false,
+          preserveViewport: true,
+          reason: "marker-multiselect",
+          force: true
+        });
       }
 
       if (typeof renderTeams === "function") renderTeams();
@@ -8464,8 +9288,17 @@ setMapStatus("Map connected");
     }
 
         function renderLineLabels(lines) {
+      var perfStart = window.ADMIN_PERF_LOG_ENABLED ? nowPerfMs() : 0;
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        adminPerfCounters.renderLineLabels += 1;
+        recordPerfCall("renderLineLabels");
+      }
       var keep = {};
       var labelLines = [];
+      var reused = 0;
+      var created = 0;
+      var replaced = 0;
+      var removed = 0;
 
       (lines || []).forEach(function(line) {
         if (!shouldShowLineLabel(line)) return;
@@ -8479,6 +9312,7 @@ setMapStatus("Map connected");
 
         lineLabelOverlays[id].setMap(null);
         delete lineLabelOverlays[id];
+        removed += 1;
       });
 
       labelLines.forEach(function(line) {
@@ -8497,10 +9331,14 @@ setMapStatus("Map connected");
 
         if (overlay && overlay.__signature === signature) {
           overlay.setMap(map);
+          reused += 1;
           return;
         }
 
-        if (overlay) overlay.setMap(null);
+        if (overlay) {
+          overlay.setMap(null);
+          replaced += 1;
+        }
 
         var label = document.createElement("div");
         label.className = "line-label";
@@ -8524,7 +9362,21 @@ setMapStatus("Map connected");
 
         overlay.__signature = signature;
         lineLabelOverlays[line.id] = overlay;
+        created += 1;
       });
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        perfLog("[ADMIN_PERF] renderLineLabels", {
+          call: adminPerfCounters.renderLineLabels,
+          inputLineCount: Array.isArray(lines) ? lines.length : 0,
+          labelLineCount: labelLines.length,
+          created: created,
+          reused: reused,
+          replaced: replaced,
+          removed: removed,
+          lineLabelOverlayCount: Object.keys(lineLabelOverlays).length,
+          elapsedMs: (nowPerfMs() - perfStart).toFixed(1)
+        });
+      }
     }
 
     function lineLabelPosition(line) {
@@ -8569,7 +9421,7 @@ setMapStatus("Map connected");
         map.setLevel(TARGET_MARKER_LEVEL);
       }
       map.setCenter(new kakao.maps.LatLng(marker.lat, marker.lng));
-      scheduleViewportRender();
+      scheduleViewportRender("sidebar-marker-click", { force: true });
       showMarkerInfo(marker);
       focusedMarkerId = marker.id;
       setTimeout(function() {
@@ -9177,10 +10029,26 @@ setMapStatus("Map connected");
     function applyCanonicalSyncLocally(sourceMarker, fields, options, message) {
       options = options || {};
       var updatedMarker = null;
+      var updatedMarkers = [];
       var point = Object.prototype.hasOwnProperty.call(fields, "lat") &&
         Object.prototype.hasOwnProperty.call(fields, "lng")
         ? { lat: fields.lat, lng: fields.lng }
         : null;
+      var pendingMutationKey = initiatingMarkerCanonicalId(sourceMarker);
+      var pendingMutation = pendingMutationKey ? pendingMarkerMutations[pendingMutationKey] : null;
+      var mutationType = options.mutationType || (pendingMutation && pendingMutation.mutationType) || "marker-mutation";
+      var useSingleMarkerFastPath =
+        mutationType === "marker-check" ||
+        mutationType === "marker-content";
+      var queuedMarkerKeys = {};
+      function rememberUpdatedMarker(marker) {
+        if (!marker) return;
+        updatedMarker = marker;
+        var key = singleMarkerUpdateKey(marker);
+        if (key && queuedMarkerKeys[key]) return;
+        if (key) queuedMarkerKeys[key] = true;
+        updatedMarkers.push(marker);
+      }
       var localDocs = [];
       if (ownTeam) {
         localDocs.push({
@@ -9200,7 +10068,7 @@ setMapStatus("Map connected");
       if (component.ok) {
         component.nodes.forEach(function(node) {
           applyMarkerFields(node.marker, fields);
-          updatedMarker = node.marker;
+          rememberUpdatedMarker(node.marker);
           if (point && options.updateConnectedLines === true) {
             var data = typeof node.doc.data === "function" ? (node.doc.data() || {}) : (node.doc.data || {});
             updateConnectedLinePoints(data.lines, markerIdCandidates(node.marker).concat(component.ids), point, node.docId);
@@ -9210,14 +10078,26 @@ setMapStatus("Map connected");
         ownTeam.markers.forEach(function(item) {
           if (!normalizedMarkerMatches(item, sourceMarker)) return;
           applyMarkerFields(item, fields);
-          updatedMarker = item;
+          rememberUpdatedMarker(item);
         });
       }
 
-      scheduleAdminRender({
-        fitBounds: false,
-        preserveViewport: true
-      });
+      bumpMarkerRenderRevision(useSingleMarkerFastPath ? mutationType + "-local" : (options.updateConnectedLines === true ? "marker-move-local" : "marker-mutation-local"));
+      lastAdminMarkerDataSignature = buildAdminMarkerDataSignature();
+      if (useSingleMarkerFastPath && updatedMarkers.length) {
+        updatedMarkers.forEach(function(marker) {
+          queueSingleMarkerUpdate(marker, mutationType);
+        });
+      } else {
+        scheduleAdminRender({
+          fitBounds: false,
+          preserveViewport: true,
+          reason: options.updateConnectedLines === true ? "marker-position" : mutationType,
+          forceMarkerRender: true,
+          forceLines: options.updateConnectedLines === true || mutationType === "marker-group",
+          forceSidebar: true
+        });
+      }
 
       if (
         updatedMarker &&
@@ -9240,7 +10120,11 @@ setMapStatus("Map connected");
         applyCanonicalSyncLocally(
           pending.initiatingMarker || { rawId: key },
           pending.fields || {},
-          { updateConnectedLines: pending.updateConnectedLines === true, silent: true },
+          {
+            updateConnectedLines: pending.updateConnectedLines === true,
+            mutationType: pending.mutationType,
+            silent: true
+          },
           ""
         );
       });
@@ -9705,9 +10589,10 @@ setMapStatus("Map connected");
         seq: sequence,
         initiatingMarker: marker,
         fields: fields,
-        updateConnectedLines: true
+        updateConnectedLines: true,
+        mutationType: "marker-position"
       };
-      applyCanonicalSyncLocally(marker, fields, { updateConnectedLines: true }, "\uC0C8 \uC8FC\uC18C \uD655\uC778 \uC911...");
+      applyCanonicalSyncLocally(marker, fields, { updateConnectedLines: true, mutationType: "marker-position" }, "\uC0C8 \uC8FC\uC18C \uD655\uC778 \uC911...");
 
       try {
         var address = await resolveMarkerAddressOnly(lat, lng);
@@ -9728,7 +10613,8 @@ setMapStatus("Map connected");
         var changedState = { lat: lat, lng: lng, address: address };
         fields = canonicalMarkerFields(Object.assign({}, marker, changedState), marker);
         pendingMarkerMutations[canonicalId].fields = fields;
-        applyCanonicalSyncLocally(marker, fields, { updateConnectedLines: true }, "\uB9C8\uCEE4 \uC704\uCE58\uC640 \uC8FC\uC18C \uC800\uC7A5 \uC911...");
+        pendingMarkerMutations[canonicalId].mutationType = "marker-position";
+        applyCanonicalSyncLocally(marker, fields, { updateConnectedLines: true, mutationType: "marker-position" }, "\uB9C8\uCEE4 \uC704\uCE58\uC640 \uC8FC\uC18C \uC800\uC7A5 \uC911...");
         var saved = await commitCanonicalMarkerMutation({
           initiatingMarker: marker,
           changedState: changedState,
@@ -9762,7 +10648,7 @@ setMapStatus("Map connected");
         }),
         marker
       );
-      return applyCanonicalSyncLocally(marker, fields, { updateConnectedLines: true }, "마커 위치가 저장되었습니다.");
+      return applyCanonicalSyncLocally(marker, fields, { updateConnectedLines: true, mutationType: "marker-position" }, "마커 위치가 저장되었습니다.");
     }
 
     function countMarkersByGroup(markers) {
@@ -9774,6 +10660,11 @@ setMapStatus("Map connected");
     }
 
     function renderTeams() {
+      var perfStart = window.ADMIN_PERF_LOG_ENABLED ? nowPerfMs() : 0;
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        adminPerfCounters.renderTeams += 1;
+        recordPerfCall("renderTeams");
+      }
       var list = document.getElementById("teamList");
       list.innerHTML = "";
 
@@ -9782,6 +10673,16 @@ setMapStatus("Map connected");
         empty.className = "empty-text";
         empty.textContent = "팀 데이터가 없습니다.";
         list.appendChild(empty);
+        if (window.ADMIN_PERF_LOG_ENABLED) {
+          perfLog("[ADMIN_PERF] renderTeams", {
+            call: adminPerfCounters.renderTeams,
+            teamCount: 0,
+            groupCount: 0,
+            markerCount: 0,
+            domRows: list.querySelectorAll(".team-row, .group-row, .marker-row").length,
+            elapsedMs: (nowPerfMs() - perfStart).toFixed(1)
+          });
+        }
         return;
       }
 
@@ -9815,6 +10716,16 @@ setMapStatus("Map connected");
         renderTeamGroups(details, team);
         list.appendChild(details);
       });
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        perfLog("[ADMIN_PERF] renderTeams", {
+          call: adminPerfCounters.renderTeams,
+          teamCount: allTeams.length,
+          groupCount: allTeams.reduce(function(total, team) { return total + (team.groups || []).length; }, 0),
+          markerCount: allTeams.reduce(function(total, team) { return total + (team.markers || []).length; }, 0),
+          domRows: list.querySelectorAll(".team-row, .group-row, .marker-row").length,
+          elapsedMs: (nowPerfMs() - perfStart).toFixed(1)
+        });
+      }
     }
 
     function renderTeamGroups(parent, team) {
@@ -9845,6 +10756,11 @@ setMapStatus("Map connected");
     }
 
     function renderMyData() {
+      var perfStart = window.ADMIN_PERF_LOG_ENABLED ? nowPerfMs() : 0;
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        adminPerfCounters.renderMyData += 1;
+        recordPerfCall("renderMyData");
+      }
       var list = document.getElementById("myGroupList");
       var total = document.getElementById("groupTotal");
       list.innerHTML = "";
@@ -9855,6 +10771,15 @@ setMapStatus("Map connected");
         empty.className = "empty-text";
         empty.textContent = "그룹 없음";
         list.appendChild(empty);
+        if (window.ADMIN_PERF_LOG_ENABLED) {
+          perfLog("[ADMIN_PERF] renderMyData", {
+            call: adminPerfCounters.renderMyData,
+            groupCount: 0,
+            markerCount: 0,
+            domRows: list.querySelectorAll(".group-row, .marker-row").length,
+            elapsedMs: (nowPerfMs() - perfStart).toFixed(1)
+          });
+        }
         return;
       }
 
@@ -9872,6 +10797,15 @@ setMapStatus("Map connected");
         renderMarkerRows(details, markers);
         list.appendChild(details);
       });
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        perfLog("[ADMIN_PERF] renderMyData", {
+          call: adminPerfCounters.renderMyData,
+          groupCount: ownTeam.groups.length,
+          markerCount: ownTeam.markers.length,
+          domRows: list.querySelectorAll(".group-row, .marker-row").length,
+          elapsedMs: (nowPerfMs() - perfStart).toFixed(1)
+        });
+      }
     }
 
     function makeGroupSummary(team, group, count) {
@@ -9944,6 +10878,7 @@ setMapStatus("Map connected");
         var row = document.createElement("div");
         var rowChecked = markerImageChecked(marker);
         row.className = "marker-row" + (rowChecked ? " checked-marker-row" : "") + (isTeamChild ? " team-marker-row" : "");
+        assignMarkerRowData(row, marker);
         if (isMarkerMultiSelected(marker)) {
           row.classList.add("multi-selected-marker-row");
         }
@@ -9967,6 +10902,11 @@ setMapStatus("Map connected");
     }
 
     function renderLines() {
+      var perfStart = window.ADMIN_PERF_LOG_ENABLED ? nowPerfMs() : 0;
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        adminPerfCounters.renderLines += 1;
+        recordPerfCall("renderLines");
+      }
       var body = document.getElementById("lineSectionBody");
       body.innerHTML = "";
       var lines = [];
@@ -9978,6 +10918,14 @@ setMapStatus("Map connected");
         empty.className = "empty-text";
         empty.textContent = "선 데이터가 없습니다.";
         body.appendChild(empty);
+        if (window.ADMIN_PERF_LOG_ENABLED) {
+          perfLog("[ADMIN_PERF] renderLines", {
+            call: adminPerfCounters.renderLines,
+            lineCount: 0,
+            domRows: body.querySelectorAll(".line-row").length,
+            elapsedMs: (nowPerfMs() - perfStart).toFixed(1)
+          });
+        }
         return;
       }
 
@@ -10041,6 +10989,14 @@ setMapStatus("Map connected");
         row.appendChild(summary);
         body.appendChild(row);
       });
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        perfLog("[ADMIN_PERF] renderLines", {
+          call: adminPerfCounters.renderLines,
+          lineCount: lines.length,
+          domRows: body.querySelectorAll(".line-row").length,
+          elapsedMs: (nowPerfMs() - perfStart).toFixed(1)
+        });
+      }
     }
 
     function makeRowMain(titleText, subText) {
@@ -10084,7 +11040,12 @@ setMapStatus("Map connected");
 
     function refreshVisibleMap() {
       var markers = getVisibleMarkers();
-      renderMarkersForViewport(markers);
+      renderMarkersForViewport(markers, {
+        fitBounds: false,
+        preserveViewport: true,
+        reason: "visibility-change",
+        force: true
+      });
       renderMapLines(getVisibleLines());
       setMarkerCount(markers.length);
     }
@@ -10466,9 +11427,13 @@ setMapStatus("Map connected");
         }
       }
 
+      bumpMarkerRenderRevision("marker-delete-local");
+      lastAdminMarkerDataSignature = buildAdminMarkerDataSignature();
       scheduleAdminRender({
         fitBounds: false,
-        preserveViewport: true
+        preserveViewport: true,
+        reason: "marker-delete",
+        forceMarkerRender: true
       });
     }
 
@@ -10856,12 +11821,16 @@ setMapStatus("Map connected");
         seq: sequence,
         initiatingMarker: editableMarker,
         fields: optimisticFields,
-        updateConnectedLines: shouldUpdateConnectedLines
+        updateConnectedLines: shouldUpdateConnectedLines,
+        mutationType: updates.group ? "marker-group" : "marker-content"
       };
       applyCanonicalSyncLocally(
         editableMarker,
         optimisticFields,
-        { updateConnectedLines: shouldUpdateConnectedLines },
+        {
+          updateConnectedLines: shouldUpdateConnectedLines,
+          mutationType: updates.group ? "marker-group" : "marker-content"
+        },
         updates.group ? "마커 그룹 저장 중." : "마커 정보 저장 중..."
       );
 
@@ -10931,9 +11900,20 @@ setMapStatus("Map connected");
         });
       }
 
-      renderMyData();
-      renderTeams();
-      renderMarkersForViewport(getVisibleMarkers(), { fitBounds: false, preserveViewport: true });
+      bumpMarkerRenderRevision("marker-edit-local");
+      lastAdminMarkerDataSignature = buildAdminMarkerDataSignature();
+      if (updatedMarker) {
+        queueSingleMarkerUpdate(updatedMarker, "marker-content");
+      } else {
+        scheduleAdminRender({
+          fitBounds: false,
+          preserveViewport: true,
+          reason: "marker-content-fallback",
+          forceMarkers: true,
+          forceLines: false,
+          forceSidebar: true
+        });
+      }
       setMarkerCount(getVisibleMarkers().length);
       if (updatedMarker && !document.getElementById("infoCard").classList.contains("hidden")) {
         showMarkerInfo(updatedMarker);
@@ -10952,9 +11932,10 @@ setMapStatus("Map connected");
         seq: sequence,
         initiatingMarker: marker,
         fields: optimisticFields,
-        updateConnectedLines: false
+        updateConnectedLines: false,
+        mutationType: "marker-check"
       };
-      applyCanonicalSyncLocally(marker, optimisticFields, { updateConnectedLines: false }, "마커 ON/OFF 저장 중...");
+      applyCanonicalSyncLocally(marker, optimisticFields, { updateConnectedLines: false, mutationType: "marker-check" }, "마커 ON/OFF 저장 중...");
 
       try {
         var saved = await commitCanonicalMarkerMutation({
@@ -11012,15 +11993,26 @@ setMapStatus("Map connected");
       if (ownTeam) {
         ownTeam.markers.forEach(function(item) {
           if (normalizedMarkerMatches(item, marker)) {
-            item.isChecked = nextValue;
+            setMarkerCheckFields(item, nextValue);
             updatedMarker = item;
           }
         });
       }
 
-      renderMyData();
-      renderTeams();
-      renderMarkersForViewport(getVisibleMarkers(), { fitBounds: false, preserveViewport: true });
+      bumpMarkerRenderRevision("marker-check-local");
+      lastAdminMarkerDataSignature = buildAdminMarkerDataSignature();
+      if (updatedMarker) {
+        queueSingleMarkerUpdate(updatedMarker, "marker-check");
+      } else {
+        scheduleAdminRender({
+          fitBounds: false,
+          preserveViewport: true,
+          reason: "marker-check-fallback",
+          forceMarkers: true,
+          forceLines: false,
+          forceSidebar: true
+        });
+      }
       setMarkerCount(getVisibleMarkers().length);
       setAdminMessage("마커 ON/OFF가 업데이트되었습니다.");
       showMarkerInfo(updatedMarker || Object.assign({}, marker, { isChecked: nextValue }));
@@ -12757,7 +13749,9 @@ function showGroupDeleteModal(team, group) {
         await loadAdminMarkers();
         scheduleAdminRender({
           fitBounds: false,
-          preserveViewport: true
+          preserveViewport: true,
+          reason: "marker-delete",
+          forceMarkerRender: true
         });
         setAdminMessage("그룹을 삭제했습니다.");
         showMarkerEditToast("그룹을 삭제했습니다.");
@@ -12779,9 +13773,13 @@ function showGroupDeleteModal(team, group) {
       bulkMutationInProgress = false;
       pendingBulkRedraw = false;
       forceCloseGroupDeleteProgress();
+      bumpMarkerRenderRevision("marker-delete-local");
+      lastAdminMarkerDataSignature = buildAdminMarkerDataSignature();
       scheduleAdminRender({
         fitBounds: false,
-        preserveViewport: true
+        preserveViewport: true,
+        reason: "marker-delete",
+        forceMarkerRender: true
       });
     }
 
@@ -13911,7 +14909,8 @@ function showLineBulkTeamSelectModal(selectedLines) {
       closeLineMultiDeleteModal();
       scheduleAdminRender({
         fitBounds: false,
-        preserveViewport: true
+        preserveViewport: true,
+        reason: "line-mutation"
       });
       setAdminMessage(
         "선 " +
@@ -14117,7 +15116,8 @@ function showLineBulkSelectionModal(mode) {
       closeLineMultiDeleteModal();
       scheduleAdminRender({
         fitBounds: false,
-        preserveViewport: true
+        preserveViewport: true,
+        reason: "line-mutation"
       });
       return;
     }
@@ -18934,12 +19934,15 @@ async function showAiImportModal() {
         if (shouldRedraw) {
           scheduleAdminRender({
             fitBounds: false,
-            preserveViewport: true
+            preserveViewport: true,
+            reason: "marker-delete",
+            forceMarkerRender: true
           });
         } else {
           scheduleAdminRender({
             fitBounds: false,
-            preserveViewport: true
+            preserveViewport: true,
+            reason: "manual"
           });
         }
       }
@@ -19067,6 +20070,56 @@ var messages = {
       }
     }
 
+    function clearSearchResultPin() {
+      if (searchResultPinOverlay) {
+        searchResultPinOverlay.setMap(null);
+        searchResultPinOverlay = null;
+      }
+      searchResultPinPosition = null;
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        perfLog("[ADMIN_PERF] clearSearchResultPin");
+      }
+    }
+
+    function showSearchResultPin(lat, lng, title) {
+      if (!map || !window.kakao || !kakao.maps) return;
+
+      var numericLat = Number(lat);
+      var numericLng = Number(lng);
+      if (!Number.isFinite(numericLat) || !Number.isFinite(numericLng)) return;
+
+      clearSearchResultPin();
+
+      var position = new kakao.maps.LatLng(numericLat, numericLng);
+      var content = document.createElement("div");
+      var icon = document.createElement("div");
+      var label = document.createElement("div");
+
+      content.className = "search-result-pin";
+      icon.className = "search-result-pin-icon";
+      label.className = "search-result-pin-label";
+      label.textContent = title || "검색 위치";
+
+      content.appendChild(icon);
+      content.appendChild(label);
+
+      searchResultPinPosition = position;
+      searchResultPinOverlay = new kakao.maps.CustomOverlay({
+        position: position,
+        content: content,
+        yAnchor: 1,
+        zIndex: 999999
+      });
+      searchResultPinOverlay.setMap(map);
+      if (window.ADMIN_PERF_LOG_ENABLED) {
+        perfLog("[ADMIN_PERF] showSearchResultPin", {
+          lat: numericLat,
+          lng: numericLng,
+          title: label.textContent
+        });
+      }
+    }
+
     function openPlaceSearchPanel() {
       var panel = getPlaceSearchElement("placeSearchPanel");
       var input = getPlaceSearchElement("placeSearchInput");
@@ -19093,9 +20146,14 @@ var messages = {
       }
     }
 
-    function closePlaceSearchPanel() {
+    function closePlaceSearchPanel(options) {
+      options = options || {};
       var panel = getPlaceSearchElement("placeSearchPanel");
       var button = getPlaceSearchElement("placeSearchToggleButton");
+
+      if (!options.keepSearchPin) {
+        clearSearchResultPin();
+      }
 
       if (panel) {
         panel.classList.add("hidden");
@@ -19106,10 +20164,14 @@ var messages = {
       }
     }
 
-    function clearPlaceSearch() {
+    function clearPlaceSearch(options) {
+      options = options || {};
       var input = getPlaceSearchElement("placeSearchInput");
       var resultsEl = getPlaceSearchElement("placeSearchResults");
 
+      if (!options.keepSearchPin) {
+        clearSearchResultPin();
+      }
       placeSearchRequestToken += 1;
       placeSearchResults = [];
 
@@ -19259,12 +20321,13 @@ var messages = {
       }
 
       var position = new kakao.maps.LatLng(lat, lng);
+      var title = place.place_name || place.road_address_name || place.address_name || "검색 위치";
 
-      map.setCenter(position);
-
-      if (typeof map.getLevel === "function" && map.getLevel() > 3) {
-        map.setLevel(3);
+      if (typeof map.setLevel === "function") {
+        map.setLevel(2);
       }
+      map.setCenter(position);
+      showSearchResultPin(lat, lng, title);
 
       setPlaceSearchMessage("선택 위치로 이동했습니다.");
     }
