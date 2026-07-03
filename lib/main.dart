@@ -794,6 +794,7 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   static const bool _enableNativeMarkerPerformanceTest = false;
   static const int _nativeMarkerPerformanceTestCount = 400;
   static const int _nativeFocusedZoomLevel = 18;
+  static const int _temporaryLocationTrackingDurationSeconds = 30;
   static const int fieldPhotoMaxDimension = 1600;
   static const int fieldPhotoJpegQuality = 80;
   static const int fieldPhotoSkipCompressBytes = 900 * 1024;
@@ -817,9 +818,16 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   WebViewController? _webViewController;
   Timer? _markerUpdateTimer;
   Timer? _mapInteractionSafetyTimer;
+  StreamSubscription<Position>? _temporaryLocationSubscription;
+  Timer? _temporaryLocationTrackingTimer;
+  Timer? _temporaryLocationCountdownTimer;
   bool _isMapInteracting = false;
   bool _hasPendingMarkerUpdate = false;
   bool _didInitialGpsMove = false;
+  bool _isTemporaryLocationTracking = false;
+  int _temporaryLocationTrackingRemainingSeconds = 0;
+  DateTime? _lastLocationUpdatedAt;
+  double? _lastLocationAccuracy;
   String? _lastSentMarkersHash;
   String? _lastSentLinesHash;
   String? _lastSentNativeLinesHash;
@@ -1280,6 +1288,181 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
     } catch (e) {
       debugPrint('[INITIAL_GPS] 최초 현재 위치 이동 실패: $e');
     }
+  }
+
+  Future<bool> _ensureLocationReadyForTemporaryTracking() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+
+    if (!serviceEnabled) {
+      if (mounted) _showSnack("휴대폰 위치 서비스를 켜주세요.");
+      return false;
+    }
+
+    var permission = await Geolocator.checkPermission();
+
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (
+      permission == LocationPermission.denied ||
+      permission == LocationPermission.deniedForever
+    ) {
+      if (mounted) _showSnack("현재 위치를 보려면 위치 권한이 필요합니다.");
+      return false;
+    }
+
+    return true;
+  }
+
+  bool _isValidCurrentLocationCoordinate(double lat, double lng) {
+    return lat.isFinite &&
+        lng.isFinite &&
+        lat >= -90 &&
+        lat <= 90 &&
+        lng >= -180 &&
+        lng <= 180 &&
+        !(lat == 0 && lng == 0);
+  }
+
+  LocationSettings get _temporaryLocationSettings => const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 2,
+      );
+
+  String _buildLocationTrackingStatusText() {
+    final seconds = _temporaryLocationTrackingRemainingSeconds;
+    final accuracy = _lastLocationAccuracy;
+
+    if (accuracy != null && accuracy.isFinite) {
+      return "내 위치 추적 중 ${seconds}초 · 정확도 ${accuracy.round()}m";
+    }
+
+    return "내 위치 추적 중 ${seconds}초";
+  }
+
+  Future<void> _onGpsButtonPressed() async {
+    if (_isTemporaryLocationTracking) {
+      await _stopTemporaryLocationTracking(reason: 'manual');
+      return;
+    }
+
+    await _startTemporaryLocationTracking();
+  }
+
+  Future<void> _startTemporaryLocationTracking() async {
+    try {
+      final ready = await _ensureLocationReadyForTemporaryTracking();
+      if (!ready || !mounted) return;
+
+      await _temporaryLocationSubscription?.cancel();
+      _temporaryLocationTrackingTimer?.cancel();
+      _temporaryLocationCountdownTimer?.cancel();
+
+      setState(() {
+        _isTemporaryLocationTracking = true;
+        _temporaryLocationTrackingRemainingSeconds =
+            _temporaryLocationTrackingDurationSeconds;
+        _lastLocationAccuracy = null;
+        _lastLocationUpdatedAt = null;
+      });
+
+      try {
+        final position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        );
+        await _handleTemporaryLocationUpdate(position);
+      } catch (e) {
+        debugPrint("임시 위치 추적 최초 위치 실패: $e");
+      }
+
+      if (!mounted || !_isTemporaryLocationTracking) return;
+
+      _temporaryLocationSubscription = Geolocator.getPositionStream(
+        locationSettings: _temporaryLocationSettings,
+      ).listen(
+        (position) {
+          _handleTemporaryLocationUpdate(position);
+        },
+        onError: (error) {
+          debugPrint("임시 위치 추적 스트림 에러: $error");
+          _showSnack("현재 위치를 불러오지 못했습니다.");
+          _stopTemporaryLocationTracking(reason: 'streamError');
+        },
+      );
+
+      _temporaryLocationTrackingTimer = Timer(
+        const Duration(seconds: _temporaryLocationTrackingDurationSeconds),
+        () {
+          _stopTemporaryLocationTracking(reason: 'timeout');
+        },
+      );
+
+      _temporaryLocationCountdownTimer = Timer.periodic(
+        const Duration(seconds: 1),
+        (_) {
+          if (!mounted || !_isTemporaryLocationTracking) return;
+
+          setState(() {
+            _temporaryLocationTrackingRemainingSeconds =
+                (_temporaryLocationTrackingRemainingSeconds - 1)
+                    .clamp(0, _temporaryLocationTrackingDurationSeconds)
+                    .toInt();
+          });
+        },
+      );
+    } catch (e) {
+      debugPrint("임시 위치 추적 시작 에러: $e");
+      await _stopTemporaryLocationTracking(reason: 'startError');
+      if (mounted) _showSnack("현재 위치를 불러오지 못했습니다.");
+    }
+  }
+
+  Future<void> _handleTemporaryLocationUpdate(Position position) async {
+    if (!mounted || !_isTemporaryLocationTracking) return;
+
+    final lat = position.latitude;
+    final lng = position.longitude;
+
+    if (!_isValidCurrentLocationCoordinate(lat, lng)) {
+      debugPrint("임시 위치 추적 좌표 무시: lat=$lat lng=$lng");
+      return;
+    }
+
+    setState(() {
+      _lastLocationUpdatedAt = DateTime.now();
+      _lastLocationAccuracy = position.accuracy;
+    });
+
+    await _showCurrentLocationOnMap(lat, lng);
+
+    if (!mounted || !_isTemporaryLocationTracking) return;
+
+    await _moveTo(
+      lat,
+      lng,
+      _shouldUseNativeKakaoMap ? _nativeFocusedZoomLevel : 3,
+    );
+  }
+
+  Future<void> _stopTemporaryLocationTracking({String reason = 'unknown'}) async {
+    await _temporaryLocationSubscription?.cancel();
+    _temporaryLocationSubscription = null;
+
+    _temporaryLocationTrackingTimer?.cancel();
+    _temporaryLocationTrackingTimer = null;
+
+    _temporaryLocationCountdownTimer?.cancel();
+    _temporaryLocationCountdownTimer = null;
+
+    if (!mounted) return;
+
+    setState(() {
+      _isTemporaryLocationTracking = false;
+      _temporaryLocationTrackingRemainingSeconds = 0;
+    });
+
+    debugPrint("임시 위치 추적 종료: $reason");
   }
 
   void _showSnack(String message) {
@@ -3856,6 +4039,9 @@ void dispose() {
   _markerUpdateTimer?.cancel();
   _mapInteractionSafetyTimer?.cancel();
   _nativeLineRetryTimer?.cancel();
+  _temporaryLocationSubscription?.cancel();
+  _temporaryLocationTrackingTimer?.cancel();
+  _temporaryLocationCountdownTimer?.cancel();
   WidgetsBinding.instance.removeObserver(this);
   MockLocationPlugin.stopMockLocation();
   _myTeamSub?.cancel();    // ← 추가
@@ -3873,6 +4059,13 @@ void dispose() {
       _isMapInteracting = false;
       _hasPendingMarkerUpdate = true;
       _scheduleMarkerUpdate(ms: 150);
+    }
+    if (
+      state == AppLifecycleState.inactive ||
+      state == AppLifecycleState.paused ||
+      state == AppLifecycleState.detached
+    ) {
+      _stopTemporaryLocationTracking(reason: 'lifecycle');
     }
     if (state == AppLifecycleState.detached) {
       MockLocationPlugin.stopMockLocation(); 
@@ -8208,67 +8401,19 @@ Future<void> _showInputSheet({LatLng? newPoint, SiteData? existingData, String? 
               padding: const EdgeInsets.only(bottom: 100),
               child: FloatingActionButton(
                 heroTag: "gps",
-                onPressed: () async {
-                  try {
-                    final serviceEnabled =
-                        await Geolocator.isLocationServiceEnabled();
-
-                    if (!serviceEnabled) {
-                      if (!mounted) return;
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("휴대폰 위치 서비스를 켜주세요."),
-                        ),
-                      );
-                      return;
-                    }
-
-                    var permission = await Geolocator.checkPermission();
-
-                    if (permission == LocationPermission.denied) {
-                      permission = await Geolocator.requestPermission();
-                    }
-
-                    if (
-                      permission == LocationPermission.denied ||
-                      permission == LocationPermission.deniedForever
-                    ) {
-                      if (!mounted) return;
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("현재 위치를 보려면 위치 권한이 필요합니다."),
-                        ),
-                      );
-                      return;
-                    }
-
-                    final position = await Geolocator.getCurrentPosition(
-                      desiredAccuracy: LocationAccuracy.high,
-                    );
-
-                    await _showCurrentLocationOnMap(
-                      position.latitude,
-                      position.longitude,
-                    );
-
-                    await _moveTo(
-                      position.latitude,
-                      position.longitude,
-                      _shouldUseNativeKakaoMap ? _nativeFocusedZoomLevel : 3,
-                    );
-                  } catch (e) {
-                    if (!mounted) return;
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("현재 위치를 불러오지 못했습니다."),
-                      ),
-                    );
-                  }
-                },
-                child: const Icon(Icons.my_location),
+                tooltip: _isTemporaryLocationTracking
+                    ? "내 위치 추적 종료"
+                    : "내 위치 추적 시작",
+                backgroundColor: _isTemporaryLocationTracking
+                    ? Colors.green
+                    : null,
+                onPressed: _onGpsButtonPressed,
+                child: Icon(
+                  _isTemporaryLocationTracking
+                      ? Icons.gps_fixed
+                      : Icons.my_location,
+                  color: _isTemporaryLocationTracking ? Colors.white : null,
+                ),
               )
             ),
           ]
@@ -8297,6 +8442,48 @@ body: Stack(
           ),
         ),
       ),
+
+          if (_isTemporaryLocationTracking)
+            Positioned(
+              left: 12,
+              right: 96,
+              bottom: 18,
+              child: _uiBlocker(
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 9,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.78),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.gps_fixed,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _buildLocationTrackingStatusText(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
 
           _buildAdminGroupQuickSlots(),
 
