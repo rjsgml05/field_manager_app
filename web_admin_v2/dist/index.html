@@ -216,7 +216,7 @@
       display: grid;
       grid-template-columns: 18px 1fr;
       gap: 7px;
-      align-items: center;
+      align-items: start;
       margin: 0 7px 6px 32px;
       padding: 6px 18px 6px 6px;
       cursor: pointer;
@@ -280,6 +280,15 @@
       white-space: nowrap;
       font-size: 13px;
       font-weight: 800;
+    }
+
+    .marker-row .row-title {
+      overflow: visible;
+      text-overflow: initial;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.35;
     }
 
     .row-sub {
@@ -917,6 +926,10 @@
       margin: 0 0 10px;
       font-size: 17px;
       font-weight: 900;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.35;
     }
 
     .marker-meta {
@@ -970,7 +983,7 @@
 
     .flat-marker-title {
       min-width: 18px;
-      max-width: 86px;
+      max-width: 140px;
       margin-top: 2px;
       padding: 2px 5px;
       border: 1px solid #4b5563;
@@ -979,9 +992,12 @@
       color: #111827;
       font-size: 11px;
       font-weight: 800;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      white-space: normal;
+      overflow: visible;
+      text-overflow: initial;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.2;
       box-shadow: 0 1px 4px rgba(15, 23, 42, 0.14);
     }
 
@@ -1050,6 +1066,8 @@
       font-weight: 900;
       line-height: 1.3;
       color: #1d4ed8;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .marker-card-subtitle {
@@ -1102,9 +1120,12 @@
     }
 
     .marker-primary-title {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      overflow: visible;
+      text-overflow: initial;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.25;
       font-size: 20px;
       font-weight: 900;
       color: #111827;
@@ -2103,9 +2124,7 @@
 }
 
 .drawing-pin-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
   gap: 10px;
 }
 
@@ -2115,9 +2134,141 @@
   font-weight: 900;
 }
 
+.drawing-scale-lock-panel {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+
+.drawing-scale-lock-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.drawing-scale-lock-row input[type="number"] {
+  width: 92px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid #93c5fd;
+  border-radius: 6px;
+  color: #111827;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.drawing-scale-lock-help,
+.drawing-scale-lock-status {
+  margin: 0;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.drawing-scale-lock-status.warning {
+  color: #b45309;
+}
+
+.drawing-scale-lock-status.error {
+  color: #dc2626;
+}
+
 .drawing-pin-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+.drawing-reference-rect-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.drawing-reference-rect-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.drawing-reference-rect-item.warning {
+  border-color: #fbbf24;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.drawing-reference-rect-empty {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.drawing-reference-rect-button {
+  min-width: 54px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid #93c5fd;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.drawing-reference-rect-button.danger {
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+.drawing-map-reference-point {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 18px;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.34);
+}
+
+.drawing-map-reference-point.first {
+  background: #f59e0b;
+}
+
+.drawing-map-reference-rect-label {
+  min-width: 76px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.94);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 900;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.28);
 }
 
 .drawing-library-list {
@@ -2208,6 +2359,7 @@
   font-size: 13px;
   font-weight: 900;
   line-height: 1.4;
+  white-space: pre-line;
 }
 
 .drawing-select-message.error {
@@ -2216,6 +2368,16 @@
 
 .drawing-select-message.success {
   color: #16a34a;
+}
+
+.drawing-convert-progress {
+  width: 100%;
+  height: 8px;
+  accent-color: #16a34a;
+}
+
+.drawing-convert-progress.hidden {
+  display: none;
 }
 
 .drawing-library-check-wrap {
@@ -2836,6 +2998,7 @@
       <button id="drawingLibrarySelectQueueButton" class="drawing-dialog-button" type="button">대기열 추가</button>
       <button id="drawingLibrarySelectDeleteButton" class="drawing-dialog-button danger" type="button">저장 데이터 삭제</button>
       <button id="drawingLibraryCancelQueueButton" class="drawing-dialog-button hidden" type="button">선택 취소</button>
+      <button id="drawingLibrarySelectAllDeleteButton" class="drawing-dialog-button hidden" type="button">&#47784;&#46160;&#49440;&#53469;</button>
       <button id="drawingLibraryConfirmQueueButton" class="drawing-dialog-button primary hidden" type="button">선택 완료</button>
     </div>
 
@@ -2857,6 +3020,7 @@
     </p>
 
     <p id="drawingSelectMessage" class="drawing-select-message" aria-live="polite"></p>
+    <progress id="drawingHighQualityProgress" class="drawing-convert-progress hidden" max="1" value="0"></progress>
 
     <div id="drawingPageGrid" class="drawing-page-grid">
       <p class="drawing-queue-empty">PDF 페이지를 불러오는 중입니다.</p>
@@ -2864,7 +3028,9 @@
 
     <div class="drawing-select-actions">
       <button id="drawingSelectCancelButton" class="drawing-dialog-button" type="button">취소</button>
+      <button id="drawingSelectAllButton" class="drawing-dialog-button" type="button">전체선택</button>
       <button id="drawingSavePagesButton" class="drawing-dialog-button" type="button">선택 페이지 고화질 변환·저장</button>
+      <button id="drawingCancelSaveButton" class="drawing-dialog-button danger hidden" type="button">변환 취소</button>
       <button id="drawingAddQueueButton" class="drawing-dialog-button primary" type="button">이번만 작업 대기열 추가</button>
     </div>
   </section>
@@ -2922,11 +3088,26 @@
     <div class="drawing-pin-actions">
       <div id="drawingPinInfo" class="drawing-pin-info">기준핀 0개 / 최소 4개 필요</div>
 
+      <div class="drawing-scale-lock-panel">
+        <label class="drawing-scale-lock-row">
+          <input id="drawingScaleLockEnabled" type="checkbox">
+          <span>축척 잠금 사용</span>
+          <span>S = 1 :</span>
+          <input id="drawingScaleDenominatorInput" type="number" min="1" step="1" inputmode="numeric" placeholder="500">
+        </label>
+        <p class="drawing-scale-lock-help">
+          예: S=1:500 도면이면 500을 입력하세요. 축척 잠금을 켜면 기준점에 맞추기 위해 도면을 늘리거나 찌그러뜨리지 않습니다.
+        </p>
+        <p id="drawingScaleLockStatus" class="drawing-scale-lock-status"></p>
+      </div>
+
       <div class="drawing-pin-buttons">
+        <button id="drawingReferenceRectButton" class="drawing-dialog-button" type="button">&#44592;&#51456;&#44148;&#47932; &#52628;&#44032;</button>
         <button id="drawingPinUndoButton" class="drawing-dialog-button" type="button">마지막 핀 삭제</button>
         <button id="drawingPinResetButton" class="drawing-dialog-button" type="button">전체 초기화</button>
         <button id="drawingPinDoneButton" class="drawing-dialog-button primary" type="button">닫기</button>
       </div>
+      <div id="drawingReferenceRectList" class="drawing-reference-rect-list" aria-live="polite"></div>
     </div>
   </section>
 </div>
@@ -3156,6 +3337,8 @@
     var drawingPagePreviewByNumber = {};
     var drawingPdfHighResolutionByPage = {};
     var drawingPdfHighResolutionPendingByPage = {};
+    var DRAWING_HIGH_QUALITY_CONVERT_CONCURRENCY = 2;
+    var drawingHighQualityConvertState = null;
     var drawingQueue = [];
     var activeDrawingQueueId = "";
     var drawingQueueSequence = 0;
@@ -3163,6 +3346,7 @@
     var drawingLibrarySelectionAction = "";
     var drawingLibrarySelectedPageIds = {};
     var drawingLibraryLoadedItems = [];
+    var drawingLibraryVisibleItems = [];
     var drawingQueueDeleteMode = false;
     var drawingQueueSelectedIds = {};
     var DRAWING_MIN_CONTROL_POINTS = 4;
@@ -3181,6 +3365,18 @@
       awaitingMapPoint: false
 };
 
+    var drawingReferenceRectState = {
+      active: false,
+      phase: "",
+      queueId: "",
+      pointerId: null,
+      startPoint: null,
+      currentPoint: null,
+      pdfPolygon: [],
+      mapPolygon: [],
+      suppressNextClick: false
+    };
+
     var drawingCanvasZoomState = {
         crop: 1,
         pin: 1
@@ -3197,6 +3393,7 @@
 };
 
     var drawingControlMapOverlays = [];
+    var drawingReferenceMapPreviewOverlays = [];
     var drawingAlignedOverlay = null;
     var drawingAlignedOverlayImage = null;
     var drawingAlignedOverlayDragWrapper = null;
@@ -6179,6 +6376,10 @@ setMapStatus("Map connected");
     return;
   }
 
+  if (handleDrawingReferenceMapPolygonClick(mouseEvent)) {
+    return;
+  }
+
   if (freeLineCreateMode) {
     addPendingFreeLinePoint(
       mouseEvent.latLng.getLat(),
@@ -6929,7 +7130,7 @@ setMapStatus("Map connected");
 
     function markerLabelText(marker) {
       var text = String(marker.title || marker.name || marker.markerId || marker.rawId || marker.id || "");
-      return text.length > 12 ? text.slice(0, 11) + "…" : text;
+      return text;
     }
 
     function extractMarkerSortNumber(value) {
@@ -7231,7 +7432,10 @@ setMapStatus("Map connected");
         var dot = row.querySelector(".marker-dot");
         if (dot) dot.style.background = marker.color;
         var title = row.querySelector(".row-title");
-        if (title) title.textContent = marker.title;
+        if (title) {
+          title.textContent = marker.title;
+          title.title = marker.title;
+        }
       });
 
       if (!matched) return false;
@@ -11005,6 +11209,7 @@ setMapStatus("Map connected");
       var title = document.createElement("div");
       title.className = "row-title";
       title.textContent = titleText;
+      title.title = String(titleText || "");
       var sub = document.createElement("div");
       sub.className = "row-sub";
       sub.textContent = subText;
@@ -11109,8 +11314,9 @@ setMapStatus("Map connected");
       var titleWrap = document.createElement("div");
       titleWrap.className = "marker-card-title";
       var title = document.createElement("h3");
-      title.textContent = "[" + marker.groupName + "] " + marker.title;
-      title.title = markerTechTitle(marker);
+      var fullMarkerTitle = "[" + marker.groupName + "] " + marker.title;
+      title.textContent = fullMarkerTitle;
+      title.title = fullMarkerTitle;
       var subtitle = document.createElement("div");
       subtitle.className = "marker-card-subtitle";
       subtitle.textContent = (marker.markerId || marker.rawId || marker.id) + " / " + (marker.isChecked ? "ON" : "OFF");
@@ -11131,6 +11337,7 @@ setMapStatus("Map connected");
       var primaryTitle = document.createElement("div");
       primaryTitle.className = "marker-primary-title";
       primaryTitle.textContent = marker.title;
+      primaryTitle.title = marker.title;
       root.appendChild(primaryTitle);
 
       var address = document.createElement("div");
@@ -15874,6 +16081,64 @@ function setDrawingSelectMessage(message, type) {
   }
 }
 
+function getSelectableDrawingPageInputs() {
+  return Array.from(
+    document.querySelectorAll("#drawingPageGrid .drawing-page-check")
+  ).filter(function(input) {
+    return !input.disabled;
+  });
+}
+
+function updateDrawingSelectAllButton() {
+  var button = document.getElementById("drawingSelectAllButton");
+  if (!button) return;
+
+  button.disabled = !getSelectableDrawingPageInputs().length;
+}
+
+function updateDrawingPdfSelectionSummary(defaultMessage) {
+  var inputs = getSelectableDrawingPageInputs();
+  var selectedCount = inputs.filter(function(input) {
+    return input.checked;
+  }).length;
+
+  updateDrawingSelectAllButton();
+
+  if (!inputs.length) {
+    setDrawingSelectMessage("선택할 PDF 페이지가 없습니다.", "error");
+    return;
+  }
+
+  if (selectedCount) {
+    setDrawingSelectMessage("선택된 페이지 " + selectedCount + "장", "");
+    return;
+  }
+
+  if (defaultMessage) {
+    setDrawingSelectMessage(defaultMessage, "");
+  }
+}
+
+function selectAllDrawingPdfSelectionPages() {
+  var inputs = getSelectableDrawingPageInputs();
+
+  if (!inputs.length) {
+    updateDrawingPdfSelectionSummary();
+    return;
+  }
+
+  inputs.forEach(function(input) {
+    input.checked = true;
+
+    var card = input.closest(".drawing-page-card");
+    if (card) {
+      card.classList.add("selected");
+    }
+  });
+
+  updateDrawingPdfSelectionSummary();
+}
+
 function showDrawingQueuePanel() {
   var panel = document.getElementById("drawingQueuePanel");
   if (panel) {
@@ -15929,20 +16194,40 @@ function readImageFileAsDataUrl(file) {
 }
 
 async function renderPdfPageAsDataUrl(pdf, pageNumber, scale) {
-  var page = await pdf.getPage(pageNumber);
-  var viewport = page.getViewport({ scale: scale || 0.32 });
-  var canvas = document.createElement("canvas");
-  var context = canvas.getContext("2d");
+  var page = null;
+  var canvas = null;
+  var renderTask = null;
 
-  canvas.width = Math.ceil(viewport.width);
-  canvas.height = Math.ceil(viewport.height);
+  try {
+    page = await pdf.getPage(pageNumber);
+    var viewport = page.getViewport({ scale: scale || 0.32 });
+    canvas = document.createElement("canvas");
+    var context = canvas.getContext("2d");
 
-  await page.render({
-    canvasContext: context,
-    viewport: viewport
-  }).promise;
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
 
-  return canvas.toDataURL("image/png");
+    renderTask = page.render({
+      canvasContext: context,
+      viewport: viewport
+    });
+
+    await renderTask.promise;
+
+    return canvas.toDataURL("image/png");
+  } finally {
+    if (page && typeof page.cleanup === "function") {
+      page.cleanup();
+    }
+
+    if (canvas) {
+      canvas.width = 0;
+      canvas.height = 0;
+      if (typeof canvas.remove === "function") {
+        canvas.remove();
+      }
+    }
+  }
 }
 
 function buildDrawingPdfSourceKey(file) {
@@ -16000,7 +16285,14 @@ function queueDrawingItem(item) {
   croppedWidth: Number(item.croppedWidth || 0),
   croppedHeight: Number(item.croppedHeight || 0),
   cropRect: item.cropRect || null,
+  cropQuad: Array.isArray(item.cropQuad) ? item.cropQuad.slice() : null,
   controlPoints: Array.isArray(item.controlPoints) ? item.controlPoints.slice() : [],
+  referenceRectangles: Array.isArray(item.referenceRectangles)
+    ? item.referenceRectangles.slice()
+    : [],
+  sourcePdfRenderScale: Number(item.sourcePdfRenderScale || item.pdfRenderScale || 0),
+  scaleLockEnabled: item.scaleLockEnabled === true,
+  scaleDenominator: Number(item.scaleDenominator || 0),
   libraryDrawingId: item.libraryDrawingId || "",
   libraryPageId: item.libraryPageId || "",
   libraryImageUrl: item.libraryImageUrl || "",
@@ -16026,6 +16318,9 @@ function removeDrawingQueueItem(queueId) {
     activeDrawingQueueId = "";
     clearDrawingControlMapOverlays();
     cancelDrawingMapPinCapture();
+    if (drawingReferenceRectState.queueId === queueId) {
+      cancelDrawingReferenceRectCapture(false);
+    }
     closeDrawingPinModal();
   }
 
@@ -16074,8 +16369,42 @@ function drawingControlPointStatusText(count) {
   return "기준핀 " + count + "개 / 전체 핀 최소오차 정합 적용";
 }
 
+function drawingControlPointStatusTextForItem(item) {
+  var count = item && Array.isArray(item.controlPoints)
+    ? item.controlPoints.length
+    : 0;
+
+  if (item && item.scaleLockEnabled === true) {
+    if (count <= 0) {
+      return "축척 잠금 / 기준핀 0개 / 최소 1개 필요";
+    }
+
+    if (drawingScaleDenominatorValue(item)) {
+      return "축척 잠금 S=1:" +
+        drawingScaleDenominatorValue(item) +
+        " / 기준핀 " +
+        count +
+        "개 / 배치 가능";
+    }
+
+    return "축척 잠금 / 축척 분모 확인 필요";
+  }
+
+  return drawingControlPointStatusText(count);
+}
+
 function drawingAlignmentStatusText(transform) {
   if (!transform) return "";
+
+  if (transform.scaleLockEnabled === true) {
+    return "지적편집도 위 배치 완료 / 축척 잠금 S=1:" +
+      transform.scaleDenominator +
+      " / 기준점 " +
+      transform.usedPointCount +
+      "개 / 평균오차 " +
+      Number(transform.averageErrorMeters || 0).toFixed(1) +
+      "m";
+  }
 
   return "지적편집도 위 배치 완료 / 정합점 " +
     transform.usedPointCount +
@@ -16093,6 +16422,155 @@ function hasDrawingManualOffset(item) {
 
 function hasDrawingManualRotation(item) {
   return Math.abs(Number((item && item.manualRotationDeg) || 0)) > 0.000001;
+}
+
+function drawingScaleDenominatorValue(item) {
+  var value = Number(item && item.scaleDenominator);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function isDrawingScaleLockActive(item) {
+  return item && item.scaleLockEnabled === true && !!drawingScaleDenominatorValue(item);
+}
+
+function drawingPdfRenderScaleValue(item) {
+  var value = Number(
+    (item && (item.sourcePdfRenderScale || item.pdfRenderScale)) || 0
+  );
+
+  if (Number.isFinite(value) && value > 0) {
+    return value;
+  }
+
+  if (
+    item &&
+    (
+      item.sourceType === "pdf" ||
+      item.sourceType === "saved_pdf_page" ||
+      Number.isFinite(Number(item.pageNumber))
+    )
+  ) {
+    return 2;
+  }
+
+  return null;
+}
+
+function drawingSupportsScaleLock(item) {
+  return !!drawingPdfRenderScaleValue(item);
+}
+
+function canPlaceDrawingOverlay(item) {
+  if (!item || !Array.isArray(item.controlPoints)) return false;
+
+  if (item.scaleLockEnabled === true) {
+    return item.controlPoints.length >= 1;
+  }
+
+  return item.controlPoints.length >= DRAWING_MIN_CONTROL_POINTS;
+}
+
+function syncDrawingScaleLockUi(item) {
+  var checkbox = document.getElementById("drawingScaleLockEnabled");
+  var input = document.getElementById("drawingScaleDenominatorInput");
+
+  if (!checkbox || !input) return;
+
+  var denominator = drawingScaleDenominatorValue(item);
+  checkbox.checked = item && item.scaleLockEnabled === true && !!denominator;
+  input.value = denominator ? String(denominator) : "";
+  updateDrawingScaleLockStatus(item);
+}
+
+function readDrawingScaleLockUiIntoItem() {
+  var item = getDrawingPinQueueItem();
+  var checkbox = document.getElementById("drawingScaleLockEnabled");
+  var input = document.getElementById("drawingScaleDenominatorInput");
+
+  if (!item || !checkbox || !input) return;
+
+  var rawValue = String(input.value || "").replace(/[^\d]/g, "");
+  if (rawValue !== input.value) {
+    input.value = rawValue;
+  }
+
+  var denominator = Number(rawValue);
+  var hasValidDenominator = Number.isFinite(denominator) && denominator > 0;
+
+  item.scaleDenominator = hasValidDenominator ? Math.round(denominator) : 0;
+  item.scaleLockEnabled = checkbox.checked === true && (hasValidDenominator || rawValue !== "");
+
+  if (checkbox.checked === true && !hasValidDenominator && rawValue === "") {
+    item.scaleLockEnabled = false;
+  }
+
+  item.status = drawingControlPointStatusTextForItem(item);
+  updateDrawingScaleLockStatus(item);
+  renderDrawingQueue();
+
+  if (drawingAlignedOverlayQueueId === item.id) {
+    updateDrawingAlignedOverlayTransform({ rebaseAnchor: true });
+  }
+}
+
+function updateDrawingScaleLockStatus(item) {
+  var status = document.getElementById("drawingScaleLockStatus");
+  if (!status) return;
+
+  status.classList.remove("warning", "error");
+
+  if (!item) {
+    status.textContent = "";
+    return;
+  }
+
+  if (item.scaleLockEnabled === true && !drawingScaleDenominatorValue(item)) {
+    status.classList.add("error");
+    status.textContent = "축척 잠금을 적용할 수 없습니다. 1 이상의 축척 분모를 입력하세요.";
+    return;
+  }
+
+  if (!isDrawingScaleLockActive(item)) {
+    status.textContent = "축척 잠금 OFF · 기존 기준점 최소오차 정합을 사용합니다.";
+    return;
+  }
+
+  if (!drawingSupportsScaleLock(item)) {
+    status.classList.add("error");
+    status.textContent = "축척 잠금을 적용할 수 없습니다. PDF 도면 페이지에서 작업해 주세요.";
+    return;
+  }
+
+  var transform = canPlaceDrawingOverlay(item)
+    ? calculateDrawingAffineTransform(item)
+    : null;
+
+  if (transform && transform.scaleLockEnabled === true) {
+    if (transform.maxDistanceErrorPercent >= 20) {
+      status.classList.add("error");
+    } else if (transform.maxDistanceErrorPercent >= 5) {
+      status.classList.add("warning");
+    }
+
+    status.textContent =
+      "축척 잠금 ON · S=1:" +
+      drawingScaleDenominatorValue(item) +
+      " · 기준점 " +
+      transform.usedPointCount +
+      "개 · 평균 오차 " +
+      Number(transform.averageErrorMeters || 0).toFixed(1) +
+      "m · 최대 오차 " +
+      Number(transform.maxErrorMeters || 0).toFixed(1) +
+      "m · 최대 거리오차 " +
+      Number(transform.maxDistanceErrorPercent || 0).toFixed(1) +
+      "%";
+    return;
+  }
+
+  status.textContent =
+    "축척 잠금 ON · S=1:" +
+    drawingScaleDenominatorValue(item) +
+    " · 기준점은 위치/회전 보정과 오차 확인에만 사용됩니다.";
 }
 
 function beginDrawingQueueDeleteSelection() {
@@ -16262,6 +16740,14 @@ function renderDrawingQueue() {
       );
     }
 
+    if (item.scaleLockEnabled === true) {
+      statusParts.push(
+        drawingScaleDenominatorValue(item)
+          ? "축척 잠금 S=1:" + drawingScaleDenominatorValue(item)
+          : "축척 잠금 입력 확인"
+      );
+    }
+
     status.textContent = statusParts.join(" / ");
 
     var actions = document.createElement("div");
@@ -16298,7 +16784,7 @@ function renderDrawingQueue() {
 
     actions.appendChild(pinButton);
 
-    if (item.controlPoints.length >= DRAWING_MIN_CONTROL_POINTS) {
+    if (canPlaceDrawingOverlay(item)) {
       var alignButton = document.createElement("button");
       alignButton.type = "button";
       alignButton.className = "drawing-small-button primary";
@@ -16471,6 +16957,46 @@ async function findExistingDrawingPageLibraryItem(sourcePdfKey, pageNumber) {
   return found;
 }
 
+async function loadExistingDrawingPageLibraryItemsByPage(sourcePdfKey, pageNumbers) {
+  var existingByPage = {};
+
+  if (!db || !sourcePdfKey || !Array.isArray(pageNumbers) || !pageNumbers.length) {
+    return existingByPage;
+  }
+
+  var pageLookup = {};
+  pageNumbers.forEach(function(pageNumber) {
+    var normalizedPage = Number(pageNumber);
+    if (Number.isFinite(normalizedPage)) {
+      pageLookup[String(normalizedPage)] = true;
+    }
+  });
+
+  if (!Object.keys(pageLookup).length) {
+    return existingByPage;
+  }
+
+  var snapshot = await db.collection("drawing_page_library")
+    .where("sourcePdfKey", "==", sourcePdfKey)
+    .get();
+
+  snapshot.forEach(function(doc) {
+    var data = doc.data() || {};
+    var pageNumber = Number(data.pageNumber);
+    var pageKey = String(pageNumber);
+
+    if (
+      data.isDeleted !== true &&
+      Number.isFinite(pageNumber) &&
+      pageLookup[pageKey] === true
+    ) {
+      existingByPage[pageKey] = Object.assign({ id: doc.id }, data);
+    }
+  });
+
+  return existingByPage;
+}
+
 async function saveConvertedPdfPageToLibrary(options) {
   options = options || {};
 
@@ -16610,8 +17136,10 @@ function updateDrawingLibrarySelectionButtons() {
   var deleteButton = document.getElementById("drawingLibrarySelectDeleteButton");
   var confirmButton = document.getElementById("drawingLibraryConfirmQueueButton");
   var cancelButton = document.getElementById("drawingLibraryCancelQueueButton");
+  var selectAllButton = document.getElementById("drawingLibrarySelectAllDeleteButton");
   var uploadButton = document.getElementById("drawingLibraryNewUploadButton");
   var isSelectionMode = drawingLibrarySelectionAction !== "";
+  var isDeleteSelectionMode = drawingLibrarySelectionAction === "delete";
 
   drawingLibrarySelectionMode = isSelectionMode;
 
@@ -16633,6 +17161,11 @@ function updateDrawingLibrarySelectionButtons() {
 
   if (cancelButton) {
     cancelButton.classList.toggle("hidden", !isSelectionMode);
+  }
+
+  if (selectAllButton) {
+    selectAllButton.classList.toggle("hidden", !isDeleteSelectionMode);
+    selectAllButton.disabled = !isDeleteSelectionMode || !drawingLibraryVisibleItems.length;
   }
 
   if (uploadButton) {
@@ -16657,6 +17190,7 @@ async function beginDrawingLibraryQueueSelection() {
 
   updateDrawingLibrarySelectionButtons();
   renderDrawingLibrary(drawingLibraryLoadedItems);
+  updateDrawingLibrarySelectionButtons();
   setDrawingLibraryMessage(
     "작업 대기열에 넣을 페이지를 선택한 뒤 선택 완료를 누르세요.",
     ""
@@ -16680,6 +17214,7 @@ async function beginDrawingLibraryDeleteSelection() {
 
   updateDrawingLibrarySelectionButtons();
   renderDrawingLibrary(drawingLibraryLoadedItems);
+  updateDrawingLibrarySelectionButtons();
   setDrawingLibraryMessage(
     "Firebase에서 삭제할 저장 페이지를 체크한 뒤 선택 삭제를 누르세요.",
     "error"
@@ -16694,6 +17229,32 @@ function cancelDrawingLibraryQueueSelection() {
   updateDrawingLibrarySelectionButtons();
   renderDrawingLibrary(drawingLibraryLoadedItems);
   setDrawingLibraryMessage("");
+}
+
+function selectAllDrawingLibraryDeleteItems() {
+  if (drawingLibrarySelectionAction !== "delete") return;
+
+  var visibleItems = Array.isArray(drawingLibraryVisibleItems)
+    ? drawingLibraryVisibleItems
+    : [];
+
+  drawingLibrarySelectedPageIds = {};
+
+  visibleItems.forEach(function(item) {
+    if (item && item.id) {
+      drawingLibrarySelectedPageIds[item.id] = true;
+    }
+  });
+
+  renderDrawingLibrary(visibleItems);
+  updateDrawingLibrarySelectionButtons();
+
+  if (!visibleItems.length) {
+    setDrawingLibraryMessage("\uC120\uD0DD\uD560 \uC800\uC7A5 \uB3C4\uBA74\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.", "error");
+    return;
+  }
+
+  setDrawingLibraryMessage("\uC120\uD0DD\uB41C \uD398\uC774\uC9C0 " + visibleItems.length + "\uAC1C", "");
 }
 
 async function confirmDrawingLibraryQueueSelection() {
@@ -16741,6 +17302,7 @@ function renderDrawingLibrary(items) {
   if (!list) return;
 
   items = Array.isArray(items) ? items : [];
+  drawingLibraryVisibleItems = items.slice();
 
   if (!drawingLibrarySelectionMode) {
     drawingLibraryLoadedItems = items.slice();
@@ -16951,6 +17513,7 @@ function addSavedPdfPageToQueue(pageItem) {
     pageNumber: pageItem.pageNumber || null,
     sourceImageUrl: pageItem.imageUrl,
     imageUrl: pageItem.imageUrl,
+    sourcePdfRenderScale: Number(pageItem.sourcePdfRenderScale || 2),
     croppedImageUrl: "",
     previewUrl: pageItem.thumbnailUrl || pageItem.imageUrl,
     croppedWidth: 0,
@@ -17101,7 +17664,9 @@ async function renderPdfSelectionPages(pdf, fileName) {
   var title = document.getElementById("drawingSelectTitle");
 
   setDrawingSelectMessage("PDF 페이지 미리보기를 불러오는 중입니다.");
+  setDrawingHighQualityProgressVisible(false);
   grid.innerHTML = "";
+  updateDrawingSelectAllButton();
   title.textContent = "PDF 도면 선택 - " + fileName;
 
   for (var pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
@@ -17129,6 +17694,7 @@ async function renderPdfSelectionPages(pdf, fileName) {
       if (parentCard) {
         parentCard.classList.toggle("selected", this.checked);
       }
+      updateDrawingPdfSelectionSummary("저장하거나 작업할 페이지를 선택하세요.");
     });
 
     bottom.appendChild(label);
@@ -17156,6 +17722,7 @@ async function renderPdfSelectionPages(pdf, fileName) {
   }
 
   setDrawingSelectMessage("저장하거나 작업할 페이지를 선택하세요.");
+  updateDrawingSelectAllButton();
 }
 
 async function openPdfDrawingSelector(file) {
@@ -17250,7 +17817,8 @@ async function addSelectedPdfPagesToQueue() {
         sourceFileName: drawingSelectionFileName,
         pageNumber: pageNumber,
         previewUrl: previewUrl,
-        imageUrl: highResolutionUrl
+        imageUrl: highResolutionUrl,
+        sourcePdfRenderScale: 2
       });
     }
 
@@ -17274,6 +17842,148 @@ async function addSelectedPdfPagesToQueue() {
   }
 }
 
+function yieldDrawingHighQualityConvertUi() {
+  return new Promise(function(resolve) {
+    setTimeout(resolve, 0);
+  });
+}
+
+function setDrawingHighQualityConvertRunning(isRunning) {
+  var saveButton = document.getElementById("drawingSavePagesButton");
+  var cancelButton = document.getElementById("drawingCancelSaveButton");
+
+  if (saveButton) {
+    saveButton.disabled = isRunning;
+    saveButton.textContent = isRunning
+      ? "고화질 변환·저장 중..."
+      : "선택 페이지 고화질 변환·저장";
+  }
+
+  if (cancelButton) {
+    cancelButton.classList.toggle("hidden", !isRunning);
+    cancelButton.disabled = !isRunning;
+  }
+}
+
+function setDrawingHighQualityProgressVisible(isVisible) {
+  var progress = document.getElementById("drawingHighQualityProgress");
+  if (!progress) return;
+
+  progress.classList.toggle("hidden", !isVisible);
+}
+
+function updateDrawingHighQualityProgress(state, heading, type) {
+  if (!state) return;
+
+  var progress = document.getElementById("drawingHighQualityProgress");
+  var processedCount = Number(state.skipped || 0) +
+    Number(state.completed || 0) +
+    Number(state.failed || 0);
+  var totalSelected = Number(state.totalSelected || 0);
+  var runningPages = Array.isArray(state.runningPages)
+    ? state.runningPages.slice().sort(function(a, b) { return a - b; })
+    : [];
+  var lines = [
+    heading || (state.cancelled ? "고화질 변환 취소 중" : "고화질 변환 중"),
+    "선택 " + totalSelected + "장 · 이미 변환됨 " + Number(state.skipped || 0) + "장 · 변환 필요 " + Number(state.pending || 0) + "장",
+    "완료 " + Number(state.completed || 0) + "장 / 실패 " + Number(state.failed || 0) + "장"
+  ];
+
+  if (runningPages.length) {
+    lines.push(
+      "현재 변환 중: " +
+      runningPages.map(function(pageNumber) {
+        return pageNumber + "페이지";
+      }).join(", ")
+    );
+  }
+
+  if (state.failures && state.failures.length) {
+    lines.push(
+      "실패 페이지: " +
+      state.failures.map(function(item) {
+        return item.pageNumber + "페이지";
+      }).join(", ")
+    );
+  }
+
+  if (progress) {
+    progress.max = Math.max(totalSelected, 1);
+    progress.value = Math.min(processedCount, totalSelected);
+    progress.classList.remove("hidden");
+  }
+
+  setDrawingSelectMessage(lines.join("\n"), type || "");
+}
+
+async function runDrawingHighQualityConversionQueue(pageNumbers, state, worker) {
+  var nextIndex = 0;
+  var workerCount = Math.min(
+    DRAWING_HIGH_QUALITY_CONVERT_CONCURRENCY,
+    pageNumbers.length
+  );
+  var workers = [];
+
+  async function runWorker() {
+    while (!state.cancelled && nextIndex < pageNumbers.length) {
+      var pageNumber = pageNumbers[nextIndex];
+      nextIndex += 1;
+      await worker(pageNumber);
+    }
+  }
+
+  for (var i = 0; i < workerCount; i += 1) {
+    workers.push(runWorker());
+  }
+
+  await Promise.all(workers);
+}
+
+async function convertAndSaveDrawingHighQualityPage(pageNumber, state) {
+  state.runningPages.push(pageNumber);
+  updateDrawingHighQualityProgress(state);
+  await yieldDrawingHighQualityConvertUi();
+
+  try {
+    var highResolutionUrl = await getCachedHighResolutionPdfPage(pageNumber);
+    await yieldDrawingHighQualityConvertUi();
+
+    await saveConvertedPdfPageToLibrary({
+      sourcePdfName: drawingSelectionFileName,
+      sourcePdfKey: drawingPdfSourceKey,
+      pageNumber: pageNumber,
+      imageDataUrl: highResolutionUrl,
+      previewDataUrl: drawingPagePreviewByNumber[String(pageNumber)] || ""
+    });
+
+    state.completed += 1;
+  } catch (error) {
+    console.error("[ADMIN_V2_DRAWING_PAGE_LIBRARY_SAVE_PAGE] failed", pageNumber, error);
+    state.failed += 1;
+    state.failures.push({
+      pageNumber: pageNumber,
+      error: error
+    });
+  } finally {
+    state.runningPages = state.runningPages.filter(function(item) {
+      return Number(item) !== Number(pageNumber);
+    });
+    updateDrawingHighQualityProgress(state);
+    await yieldDrawingHighQualityConvertUi();
+  }
+}
+
+function cancelDrawingHighQualityConversion() {
+  if (!drawingHighQualityConvertState) return;
+
+  drawingHighQualityConvertState.cancelled = true;
+  updateDrawingHighQualityProgress(
+    drawingHighQualityConvertState,
+    "변환 취소 요청됨"
+  );
+  setAdminMessage("진행 중인 페이지까지만 마치고 고화질 변환을 중단합니다.");
+}
+
 async function saveSelectedPdfPagesToLibrary() {
   var selectedInputs = Array.from(
     document.querySelectorAll(".drawing-page-check:checked")
@@ -17295,63 +18005,127 @@ async function saveSelectedPdfPagesToLibrary() {
     return;
   }
 
-  var button = document.getElementById("drawingSavePagesButton");
-  var progressMessage = "선택한 PDF 페이지를 고화질로 변환하고 저장하는 중입니다.";
+  var selectedPageNumbers = selectedInputs.map(function(input) {
+    return Number(input.value);
+  }).filter(function(pageNumber) {
+    return Number.isFinite(pageNumber);
+  });
 
-  setDrawingSelectMessage(progressMessage);
-  setAdminMessage(progressMessage);
-
-  if (button) {
-    button.disabled = true;
-    button.textContent = "고화질 변환·저장 중...";
-  }
-
-  var savedCount = 0;
-  var reusedCount = 0;
+  var progressMessage = "선택한 PDF 페이지의 기존 변환 여부를 확인하는 중입니다.";
+  var finalMessage = "";
+  var shouldOpenLibrary = false;
 
   try {
-    for (var i = 0; i < selectedInputs.length; i += 1) {
-      var pageNumber = Number(selectedInputs[i].value);
-      var beforeExisting = await findExistingDrawingPageLibraryItem(
-        drawingPdfSourceKey,
-        pageNumber
+    setDrawingHighQualityConvertRunning(true);
+    setDrawingHighQualityProgressVisible(true);
+    drawingHighQualityConvertState = {
+      totalSelected: selectedPageNumbers.length,
+      skipped: 0,
+      pending: 0,
+      completed: 0,
+      failed: 0,
+      runningPages: [],
+      cancelled: false,
+      failures: []
+    };
+    setDrawingSelectMessage(progressMessage);
+    setAdminMessage(progressMessage);
+    await yieldDrawingHighQualityConvertUi();
+
+    var existingByPage = await loadExistingDrawingPageLibraryItemsByPage(
+      drawingPdfSourceKey,
+      selectedPageNumbers
+    );
+    var skippedCount = Object.keys(existingByPage).length;
+    var convertPageNumbers = selectedPageNumbers.filter(function(pageNumber) {
+      return existingByPage[String(pageNumber)] === undefined;
+    });
+
+    drawingHighQualityConvertState.skipped = skippedCount;
+    drawingHighQualityConvertState.pending = convertPageNumbers.length;
+
+    updateDrawingHighQualityProgress(
+      drawingHighQualityConvertState,
+      "고화질 변환 준비 완료"
+    );
+    await yieldDrawingHighQualityConvertUi();
+
+    if (convertPageNumbers.length) {
+      await runDrawingHighQualityConversionQueue(
+        convertPageNumbers,
+        drawingHighQualityConvertState,
+        function(pageNumber) {
+          return convertAndSaveDrawingHighQualityPage(
+            pageNumber,
+            drawingHighQualityConvertState
+          );
+        }
       );
-      var highResolutionUrl = await getCachedHighResolutionPdfPage(pageNumber);
-
-      await saveConvertedPdfPageToLibrary({
-        sourcePdfName: drawingSelectionFileName,
-        sourcePdfKey: drawingPdfSourceKey,
-        pageNumber: pageNumber,
-        imageDataUrl: highResolutionUrl,
-        previewDataUrl: drawingPagePreviewByNumber[String(pageNumber)] || ""
-      });
-
-      if (beforeExisting) {
-        reusedCount += 1;
-      } else {
-        savedCount += 1;
-      }
     }
 
     await loadDrawingLibrary();
-    var successMessage =
-      "선택한 PDF 페이지 " +
-      selectedInputs.length +
-      "장을 보관함에 반영했습니다. 신규 저장 " +
-      savedCount +
-      "장 / 기존 재사용 " +
-      reusedCount +
-      "장입니다.";
 
-    setDrawingSelectMessage(successMessage, "success");
-    setAdminMessage(successMessage);
+    var unprocessedCount = Math.max(
+      0,
+      drawingHighQualityConvertState.pending -
+        drawingHighQualityConvertState.completed -
+        drawingHighQualityConvertState.failed
+    );
 
-    await new Promise(function(resolve) {
-      setTimeout(resolve, 700);
-    });
+    if (drawingHighQualityConvertState.cancelled) {
+      finalMessage =
+        "변환이 취소되었습니다.\n완료 " +
+        drawingHighQualityConvertState.completed +
+        "장 · 스킵 " +
+        drawingHighQualityConvertState.skipped +
+        "장 · 실패 " +
+        drawingHighQualityConvertState.failed +
+        "장 · 미처리 " +
+        unprocessedCount +
+        "장";
+      setDrawingSelectMessage(finalMessage, "");
+      setAdminMessage(finalMessage.replace(/\n/g, " "));
+    } else if (drawingHighQualityConvertState.failed > 0) {
+      finalMessage =
+        "고화질 변환 완료\n완료 " +
+        drawingHighQualityConvertState.completed +
+        "장 · 스킵 " +
+        drawingHighQualityConvertState.skipped +
+        "장 · 실패 " +
+        drawingHighQualityConvertState.failed +
+        "장";
 
-    closeDrawingSelectModal();
-    openDrawingLibrary();
+      if (drawingHighQualityConvertState.failures.length) {
+        finalMessage += "\n실패 페이지: " +
+          drawingHighQualityConvertState.failures.map(function(item) {
+            return item.pageNumber + "페이지";
+          }).join(", ");
+      }
+
+      setDrawingSelectMessage(finalMessage, "error");
+      setAdminMessage(finalMessage.replace(/\n/g, " "));
+    } else {
+      finalMessage =
+        "고화질 변환 완료\n선택 " +
+        drawingHighQualityConvertState.totalSelected +
+        "장 · 스킵 " +
+        drawingHighQualityConvertState.skipped +
+        "장 · 신규 저장 " +
+        drawingHighQualityConvertState.completed +
+        "장";
+      setDrawingSelectMessage(finalMessage, "success");
+      setAdminMessage(finalMessage.replace(/\n/g, " "));
+      shouldOpenLibrary = true;
+    }
+
+    if (shouldOpenLibrary) {
+      await new Promise(function(resolve) {
+        setTimeout(resolve, 700);
+      });
+
+      closeDrawingSelectModal();
+      openDrawingLibrary();
+    }
   } catch (error) {
     console.error("[ADMIN_V2_DRAWING_PAGE_LIBRARY_SAVE] failed", error);
     var errorMessage = "";
@@ -17365,10 +18139,8 @@ async function saveSelectedPdfPagesToLibrary() {
     setDrawingSelectMessage(errorMessage, "error");
     setAdminMessage(errorMessage);
   } finally {
-    if (button) {
-      button.disabled = false;
-      button.textContent = "선택 페이지 고화질 변환·저장";
-    }
+    setDrawingHighQualityConvertRunning(false);
+    drawingHighQualityConvertState = null;
   }
 }
 
@@ -17882,6 +18654,7 @@ function confirmDrawingCropSelection() {
   item.manualMapOffsetLng = 0;
   item.manualRotationDeg = 0;
   item.controlPoints = [];
+  item.referenceRectangles = [];
   item.status = "범위 선택 완료 / 기준핀 대기";
 
   if (drawingAlignedOverlayQueueId === item.id) {
@@ -17902,6 +18675,774 @@ function confirmDrawingCropSelection() {
 }
 function getDrawingPinQueueItem() {
   return getDrawingQueueItem(drawingPinState.queueId);
+}
+
+function ensureDrawingReferenceRectangles(item) {
+  if (!item) return [];
+
+  if (!Array.isArray(item.referenceRectangles)) {
+    item.referenceRectangles = [];
+  }
+
+  return item.referenceRectangles;
+}
+
+function drawingReferenceRectName(rect, index) {
+  return (rect && rect.name) || ("\uAE30\uC900\uAC74\uBB3C " + (index + 1));
+}
+
+function drawingReferencePdfPolygon(rectangle) {
+  if (!rectangle) return [];
+
+  if (Array.isArray(rectangle.pdfPolygon)) {
+    return rectangle.pdfPolygon.filter(function(point) {
+      return point && Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y));
+    }).map(function(point) {
+      return {
+        x: Number(point.x),
+        y: Number(point.y)
+      };
+    });
+  }
+
+  if (rectangle.pdfRect) {
+    var rect = rectangle.pdfRect;
+    return [
+      { x: Number(rect.x1), y: Number(rect.y1) },
+      { x: Number(rect.x2), y: Number(rect.y1) },
+      { x: Number(rect.x2), y: Number(rect.y2) },
+      { x: Number(rect.x1), y: Number(rect.y2) }
+    ];
+  }
+
+  return [];
+}
+
+function drawingReferenceMapPolygon(rectangle) {
+  if (!rectangle) return [];
+
+  if (Array.isArray(rectangle.mapPolygon)) {
+    return rectangle.mapPolygon.filter(function(point) {
+      return point && Number.isFinite(Number(point.lat)) && Number.isFinite(Number(point.lng));
+    }).map(function(point) {
+      return {
+        lat: Number(point.lat),
+        lng: Number(point.lng)
+      };
+    });
+  }
+
+  if (rectangle.mapRect) {
+    var rect = rectangle.mapRect;
+    return [rect.nw, rect.ne, rect.se, rect.sw].filter(Boolean).map(function(point) {
+      return {
+        lat: Number(point.lat),
+        lng: Number(point.lng)
+      };
+    });
+  }
+
+  return [];
+}
+
+function drawingReferencePolygonCenter(points) {
+  if (!Array.isArray(points) || !points.length) return null;
+
+  var sumX = 0;
+  var sumY = 0;
+  var sumLat = 0;
+  var sumLng = 0;
+
+  points.forEach(function(point) {
+    sumX += Number(point.x || 0);
+    sumY += Number(point.y || 0);
+    sumLat += Number(point.lat || 0);
+    sumLng += Number(point.lng || 0);
+  });
+
+  if (Number.isFinite(Number(points[0].lat))) {
+    return {
+      lat: sumLat / points.length,
+      lng: sumLng / points.length
+    };
+  }
+
+  return {
+    x: sumX / points.length,
+    y: sumY / points.length
+  };
+}
+
+function drawingReferencePolygonControlPointCount(rectangle) {
+  var pointCount = drawingReferencePdfPolygon(rectangle).length;
+  return pointCount >= 3 ? (pointCount * 2) + 1 : 0;
+}
+
+function drawingReferencePointDistance(a, b) {
+  if (!a || !b) return Infinity;
+
+  var dx = Number(a.x) - Number(b.x);
+  var dy = Number(a.y) - Number(b.y);
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function isNearFirstDrawingReferencePdfPoint(point) {
+  var points = drawingReferenceRectState.pdfPolygon || [];
+  var first = points[0];
+  var canvas = document.getElementById("drawingPinCanvas");
+  var bounds = canvas ? canvas.getBoundingClientRect() : null;
+  var scale = bounds && bounds.width
+    ? canvas.width / bounds.width
+    : 1;
+
+  return drawingReferencePointDistance(point, first) <= (14 * scale);
+}
+
+function drawingReferenceMapContainerPoint(latLng) {
+  if (!map || !latLng) return null;
+
+  var projection = map.getProjection();
+  if (!projection || typeof projection.containerPointFromCoords !== "function") return null;
+
+  var point = projection.containerPointFromCoords(latLng);
+  return {
+    x: Number(point.x),
+    y: Number(point.y)
+  };
+}
+
+function isNearFirstDrawingReferenceMapPoint(latLng) {
+  var points = drawingReferenceRectState.mapPolygon || [];
+  var first = points[0];
+
+  if (!first) return false;
+
+  var currentPoint = drawingReferenceMapContainerPoint(latLng);
+  var firstPoint = drawingReferenceMapContainerPoint(
+    new kakao.maps.LatLng(first.lat, first.lng)
+  );
+
+  if (!currentPoint || !firstPoint) return false;
+
+  return drawingReferencePointDistance(currentPoint, firstPoint) <= 16;
+}
+
+function drawDrawingReferencePolygonOnCanvas(context, points, label, preview) {
+  if (!context || !Array.isArray(points) || !points.length) return;
+
+  context.save();
+  context.lineWidth = preview ? 3 : 2;
+  context.strokeStyle = preview ? "#f59e0b" : "#2563eb";
+  context.fillStyle = preview
+    ? "rgba(245, 158, 11, 0.16)"
+    : "rgba(37, 99, 235, 0.15)";
+  context.setLineDash(preview ? [10, 6] : []);
+  context.beginPath();
+  context.moveTo(points[0].x, points[0].y);
+  points.slice(1).forEach(function(point) {
+    context.lineTo(point.x, point.y);
+  });
+
+  if (!preview || points.length >= 3) {
+    context.closePath();
+    context.fill();
+  }
+
+  context.stroke();
+  context.setLineDash([]);
+
+  points.forEach(function(point, index) {
+    context.beginPath();
+    context.arc(point.x, point.y, index === 0 ? 6 : 5, 0, Math.PI * 2);
+    context.fillStyle = index === 0 ? "#fff7ed" : "#ffffff";
+    context.fill();
+    context.lineWidth = 2;
+    context.strokeStyle = index === 0 ? "#f59e0b" : "#2563eb";
+    context.stroke();
+  });
+
+  if (label) {
+    context.font = "900 13px Arial, sans-serif";
+    context.textAlign = "left";
+    context.textBaseline = "top";
+    var labelWidth = Math.max(70, context.measureText(label).width + 14);
+    var labelX = Math.max(0, points[0].x);
+    var labelY = Math.max(0, points[0].y - 24);
+
+    context.fillStyle = preview
+      ? "rgba(245, 158, 11, 0.95)"
+      : "rgba(37, 99, 235, 0.95)";
+    context.fillRect(labelX, labelY, labelWidth, 22);
+    context.fillStyle = "#ffffff";
+    context.fillText(label, labelX + 7, labelY + 4);
+  }
+
+  context.restore();
+}
+
+function getDrawingReferenceControlPoints(rectangle) {
+  if (!rectangle) return [];
+
+  var pdfPolygon = drawingReferencePdfPolygon(rectangle);
+  var mapPolygon = drawingReferenceMapPolygon(rectangle);
+
+  if (
+    pdfPolygon.length < 3 ||
+    mapPolygon.length < 3 ||
+    pdfPolygon.length !== mapPolygon.length
+  ) {
+    return [];
+  }
+
+  var pairs = [];
+
+  pdfPolygon.forEach(function(pdfPoint, index) {
+    pairs.push({
+      key: "vertex-" + (index + 1),
+      imageX: pdfPoint.x,
+      imageY: pdfPoint.y,
+      mapPoint: mapPolygon[index]
+    });
+  });
+
+  pdfPolygon.forEach(function(pdfPoint, index) {
+    var nextIndex = (index + 1) % pdfPolygon.length;
+    var nextPdfPoint = pdfPolygon[nextIndex];
+    var mapPoint = mapPolygon[index];
+    var nextMapPoint = mapPolygon[nextIndex];
+
+    pairs.push({
+      key: "edge-" + (index + 1),
+      imageX: (Number(pdfPoint.x) + Number(nextPdfPoint.x)) / 2,
+      imageY: (Number(pdfPoint.y) + Number(nextPdfPoint.y)) / 2,
+      mapPoint: {
+        lat: (Number(mapPoint.lat) + Number(nextMapPoint.lat)) / 2,
+        lng: (Number(mapPoint.lng) + Number(nextMapPoint.lng)) / 2
+      }
+    });
+  });
+
+  var pdfCenter = drawingReferencePolygonCenter(pdfPolygon);
+  var mapCenter = drawingReferencePolygonCenter(mapPolygon);
+
+  if (pdfCenter && mapCenter) {
+    pairs.push({
+      key: "center",
+      imageX: pdfCenter.x,
+      imageY: pdfCenter.y,
+      mapPoint: mapCenter
+    });
+  }
+
+  return pairs.map(function(pair) {
+    var mapPoint = pair.mapPoint || {};
+
+    return {
+      imageX: Number(pair.imageX),
+      imageY: Number(pair.imageY),
+      lat: Number(mapPoint.lat),
+      lng: Number(mapPoint.lng),
+      sourceType: "referenceRectangle",
+      referenceRectangleId: rectangle.id,
+      referencePolygonId: rectangle.id,
+      referencePointKey: pair.key
+    };
+  }).filter(function(point) {
+    return (
+      Number.isFinite(point.imageX) &&
+      Number.isFinite(point.imageY) &&
+      Number.isFinite(point.lat) &&
+      Number.isFinite(point.lng)
+    );
+  });
+}
+
+function refreshDrawingReferenceControlPoints(item) {
+  if (!item) return;
+
+  var manualPoints = Array.isArray(item.controlPoints)
+    ? item.controlPoints.filter(function(point) {
+        return point && point.sourceType !== "referenceRectangle";
+      })
+    : [];
+  var autoPoints = [];
+
+  ensureDrawingReferenceRectangles(item).forEach(function(rectangle) {
+    autoPoints = autoPoints.concat(getDrawingReferenceControlPoints(rectangle));
+  });
+
+  item.controlPoints = manualPoints.concat(autoPoints);
+}
+
+function drawingReferenceLatLngObject(latLng) {
+  if (!latLng) return null;
+
+  return {
+    lat: Number(typeof latLng.getLat === "function" ? latLng.getLat() : latLng.lat),
+    lng: Number(typeof latLng.getLng === "function" ? latLng.getLng() : latLng.lng)
+  };
+}
+
+function isValidDrawingReferencePolygonPair(pdfPolygon, mapPolygon) {
+  return (
+    Array.isArray(pdfPolygon) &&
+    Array.isArray(mapPolygon) &&
+    pdfPolygon.length >= 3 &&
+    mapPolygon.length >= 3 &&
+    pdfPolygon.length === mapPolygon.length
+  );
+}
+
+function addDrawingReferenceRectangle(item, pdfPolygon, mapPolygon) {
+  if (!item || !isValidDrawingReferencePolygonPair(pdfPolygon, mapPolygon)) return null;
+
+  var rectangles = ensureDrawingReferenceRectangles(item);
+  var rectangle = {
+    id: "poly_ref_" + Date.now() + "_" + rectangles.length,
+    name: "\uAE30\uC900\uAC74\uBB3C " + (rectangles.length + 1),
+    pdfPolygon: pdfPolygon.map(function(point) {
+      return {
+        x: Math.round(Number(point.x)),
+        y: Math.round(Number(point.y))
+      };
+    }),
+    mapPolygon: mapPolygon.map(function(point) {
+      return {
+        lat: Number(point.lat),
+        lng: Number(point.lng)
+      };
+    }),
+    createdAt: Date.now()
+  };
+
+  rectangles.push(rectangle);
+  refreshDrawingReferenceControlPoints(item);
+  item.status = drawingControlPointStatusTextForItem(item);
+
+  return rectangle;
+}
+
+function removeDrawingReferenceRectangle(rectangleId) {
+  var item = getDrawingPinQueueItem();
+
+  if (!item || !rectangleId) return;
+
+  item.referenceRectangles = ensureDrawingReferenceRectangles(item).filter(
+    function(rectangle) {
+      return rectangle && rectangle.id !== rectangleId;
+    }
+  );
+  refreshDrawingReferenceControlPoints(item);
+  item.status = drawingControlPointStatusTextForItem(item);
+
+  if (
+    drawingAlignedOverlayQueueId === item.id &&
+    canPlaceDrawingOverlay(item)
+  ) {
+    updateDrawingAlignedOverlayTransform();
+  } else if (
+    drawingAlignedOverlayQueueId === item.id &&
+    item.controlPoints.length < DRAWING_MIN_CONTROL_POINTS
+  ) {
+    clearDrawingAlignedOverlay();
+  }
+
+  renderDrawingQueue();
+  renderDrawingControlMapOverlays(item);
+  drawDrawingPinCanvas();
+  updateDrawingPinInfo();
+
+  setAdminMessage("\uAE30\uC900\uAC74\uBB3C\uACFC \uC790\uB3D9 \uAE30\uC900\uC810\uC744 \uC0AD\uC81C\uD588\uC2B5\uB2C8\uB2E4.");
+}
+
+function focusDrawingReferenceRectangle(rectangleId) {
+  var item = getDrawingPinQueueItem();
+  var rectangle = ensureDrawingReferenceRectangles(item).find(function(entry) {
+    return entry && entry.id === rectangleId;
+  });
+
+  if (!rectangle) return;
+
+  var mapCenter = drawingReferencePolygonCenter(drawingReferenceMapPolygon(rectangle));
+
+  if (map && mapCenter) {
+    map.setCenter(
+      new kakao.maps.LatLng(
+        mapCenter.lat,
+        mapCenter.lng
+      )
+    );
+  }
+
+  drawDrawingPinCanvas();
+  renderDrawingControlMapOverlays(item);
+  setAdminMessage(rectangle.name + " \uAE30\uC900\uAC1D\uCCB4\uB97C \uD45C\uC2DC\uD588\uC2B5\uB2C8\uB2E4.");
+}
+
+function renderDrawingReferenceRectList(item) {
+  var list = document.getElementById("drawingReferenceRectList");
+
+  if (!list) return;
+
+  list.innerHTML = "";
+
+  var rectangles = ensureDrawingReferenceRectangles(item);
+
+  if (!item || !rectangles.length) {
+    var empty = document.createElement("p");
+    empty.className = "drawing-reference-rect-empty";
+    empty.textContent = "\uB4F1\uB85D\uB41C \uAE30\uC900\uAC74\uBB3C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.";
+    list.appendChild(empty);
+    return;
+  }
+
+  var transform = calculateDrawingAffineTransform(item);
+
+  rectangles.forEach(function(rectangle, index) {
+    var row = document.createElement("div");
+    row.className = "drawing-reference-rect-item";
+    var relatedIndexes = [];
+
+    item.controlPoints.forEach(function(point, pointIndex) {
+      if (
+        point &&
+        point.referenceRectangleId === rectangle.id &&
+        point.sourceType === "referenceRectangle"
+      ) {
+        relatedIndexes.push(pointIndex);
+      }
+    });
+
+    var averageError = null;
+
+    if (transform && Array.isArray(transform.perPointErrors)) {
+      var totalError = 0;
+      var errorCount = 0;
+
+      relatedIndexes.forEach(function(pointIndex) {
+        var errorItem = transform.perPointErrors[pointIndex];
+
+        if (errorItem && Number.isFinite(errorItem.errorPixels)) {
+          totalError += errorItem.errorPixels;
+          errorCount += 1;
+        }
+      });
+
+      if (errorCount) {
+        averageError = totalError / errorCount;
+      }
+    }
+
+    if (averageError !== null && averageError > 24) {
+      row.classList.add("warning");
+    }
+
+    var pointCount = drawingReferencePdfPolygon(rectangle).length;
+    var autoPointCount = drawingReferencePolygonControlPointCount(rectangle);
+    var label = document.createElement("span");
+    label.textContent =
+      drawingReferenceRectName(rectangle, index) +
+      " \u00B7 \uB2E4\uAC01\uD615 " + pointCount + "\uC810" +
+      " \u00B7 \uAE30\uC900\uC810 " + autoPointCount + "\uAC1C" +
+      (
+        averageError !== null
+          ? " \u00B7 \uD3C9\uADE0\uC624\uCC28 " + averageError.toFixed(1) + "px"
+          : ""
+      );
+
+    var viewButton = document.createElement("button");
+    viewButton.type = "button";
+    viewButton.className = "drawing-reference-rect-button";
+    viewButton.textContent = "\uBCF4\uAE30";
+    viewButton.addEventListener("click", function() {
+      focusDrawingReferenceRectangle(rectangle.id);
+    });
+
+    var deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "drawing-reference-rect-button danger";
+    deleteButton.textContent = "\uC0AD\uC81C";
+    deleteButton.addEventListener("click", function() {
+      removeDrawingReferenceRectangle(rectangle.id);
+    });
+
+    row.appendChild(label);
+    row.appendChild(viewButton);
+    row.appendChild(deleteButton);
+    list.appendChild(row);
+  });
+}
+
+function resetDrawingReferenceRectState() {
+  drawingReferenceRectState = {
+    active: false,
+    phase: "",
+    queueId: "",
+    pointerId: null,
+    startPoint: null,
+    currentPoint: null,
+    pdfPolygon: [],
+    mapPolygon: [],
+    suppressNextClick: false
+  };
+}
+
+function clearDrawingReferenceMapPreviewOverlays() {
+  drawingReferenceMapPreviewOverlays.forEach(function(overlay) {
+    if (overlay && typeof overlay.setMap === "function") {
+      overlay.setMap(null);
+    }
+  });
+
+  drawingReferenceMapPreviewOverlays = [];
+}
+
+function renderDrawingReferenceMapPreviewOverlays() {
+  clearDrawingReferenceMapPreviewOverlays();
+
+  if (
+    !map ||
+    !drawingReferenceRectState.active ||
+    drawingReferenceRectState.phase !== "map"
+  ) {
+    return;
+  }
+
+  var points = drawingReferenceRectState.mapPolygon || [];
+
+  if (points.length >= 2) {
+    var path = points.map(function(point) {
+      return new kakao.maps.LatLng(point.lat, point.lng);
+    });
+    var polygon = points.length >= 3
+      ? new kakao.maps.Polygon({
+          map: map,
+          path: path,
+          strokeWeight: 2,
+          strokeColor: "#f59e0b",
+          strokeOpacity: 0.98,
+          strokeStyle: "shortdash",
+          fillColor: "#f59e0b",
+          fillOpacity: 0.16,
+          zIndex: 6
+        })
+      : new kakao.maps.Polyline({
+          map: map,
+          path: path,
+          strokeWeight: 2,
+          strokeColor: "#f59e0b",
+          strokeOpacity: 0.98,
+          strokeStyle: "shortdash",
+          zIndex: 6
+        });
+
+    drawingReferenceMapPreviewOverlays.push(polygon);
+  }
+
+  points.forEach(function(point, index) {
+    var marker = document.createElement("div");
+    marker.className = "drawing-map-reference-point" + (index === 0 ? " first" : "");
+    marker.textContent = String(index + 1);
+
+    var overlay = new kakao.maps.CustomOverlay({
+      map: map,
+      position: new kakao.maps.LatLng(point.lat, point.lng),
+      content: marker,
+      xAnchor: 0,
+      yAnchor: 0,
+      zIndex: 7
+    });
+
+    drawingReferenceMapPreviewOverlays.push(overlay);
+  });
+}
+
+function showDrawingMapRectCapture() {
+  var banner = document.getElementById("drawingMapPinCaptureBanner");
+  var text = document.getElementById("drawingMapPinCaptureText");
+
+  if (banner) banner.classList.remove("hidden");
+
+  if (text) {
+    text.textContent = "\uC9C0\uB3C4\uC5D0\uC11C \uAC19\uC740 \uAC74\uBB3C/\uBD80\uC9C0 \uC678\uACFD\uC744 \uAC19\uC740 \uC21C\uC11C\uB85C \uD074\uB9AD\uD558\uC138\uC694. 3\uC810 \uC774\uC0C1 \uD6C4 \uCCAB \uC810\uC744 \uB2E4\uC2DC \uD074\uB9AD\uD558\uBA74 \uC644\uB8CC\uB429\uB2C8\uB2E4.";
+  }
+
+  if (map) {
+    renderDrawingReferenceMapPreviewOverlays();
+  }
+}
+
+function hideDrawingMapRectCapture() {
+  var banner = document.getElementById("drawingMapPinCaptureBanner");
+
+  if (banner) banner.classList.add("hidden");
+
+  clearDrawingReferenceMapPreviewOverlays();
+}
+
+function cancelDrawingReferenceRectCapture(reopenPinModal) {
+  var queueId = drawingReferenceRectState.queueId;
+
+  hideDrawingMapRectCapture();
+  resetDrawingReferenceRectState();
+
+  if (reopenPinModal && queueId) {
+    openDrawingPinModal(queueId);
+  } else if (drawingPinState.queueId) {
+    drawDrawingPinCanvas();
+  }
+
+  setAdminMessage("\uAE30\uC900\uAC74\uBB3C \uCD94\uAC00\uB97C \uCDE8\uC18C\uD588\uC2B5\uB2C8\uB2E4.");
+}
+
+function beginDrawingReferenceRectangleCapture() {
+  var item = getDrawingPinQueueItem();
+
+  if (!item || !drawingPinState.image) {
+    setAdminMessage("\uBA3C\uC800 \uB3C4\uBA74 \uBC94\uC704\uC640 \uAE30\uC900\uD540 \uD654\uBA74\uC744 \uC5F4\uC5B4\uC8FC\uC138\uC694.");
+    return;
+  }
+
+  if (drawingPinState.awaitingMapPoint) {
+    setAdminMessage("\uC9C0\uB3C4 \uAE30\uC900\uD540 \uC120\uD0DD\uC744 \uB9C8\uBB34\uB9AC\uD558\uAC70\uB098 \uCDE8\uC18C\uD55C \uB4A4 \uAE30\uC900\uAC74\uBB3C\uC744 \uCD94\uAC00\uD558\uC138\uC694.");
+    return;
+  }
+
+  if (drawingReferenceRectState.active) {
+    var confirmed = window.confirm("\uC9C4\uD589 \uC911\uC778 \uAE30\uC900\uAC74\uBB3C \uC120\uD0DD\uC744 \uCDE8\uC18C\uD560\uAE4C\uC694?");
+    if (!confirmed) return;
+    cancelDrawingReferenceRectCapture(false);
+  }
+
+  drawingReferenceRectState = {
+    active: true,
+    phase: "pdf",
+    queueId: item.id,
+    pointerId: null,
+    startPoint: null,
+    currentPoint: null,
+    pdfPolygon: [],
+    mapPolygon: [],
+    suppressNextClick: false
+  };
+
+  drawDrawingPinCanvas();
+  setAdminMessage("\uAC74\uBB3C, \uD559\uAD50, \uB18D\uD611, \uC6B4\uB3D9\uC7A5, \uACF5\uC7A5\uCC98\uB7FC \uBA85\uD655\uD55C \uAC1D\uCCB4\uC758 \uC678\uACFD\uC744 PDF\uC5D0\uC11C \uC21C\uC11C\uB300\uB85C \uD074\uB9AD\uD558\uC138\uC694. 3\uC810 \uC774\uC0C1 \uD6C4 \uCCAB \uC810\uC744 \uB2E4\uC2DC \uD074\uB9AD\uD558\uBA74 \uC644\uB8CC\uB429\uB2C8\uB2E4.");
+}
+
+function handleDrawingReferencePdfPolygonClick(event) {
+  if (
+    !drawingReferenceRectState.active ||
+    drawingReferenceRectState.phase !== "pdf"
+  ) {
+    return false;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  var point = drawingPinCanvasPoint(event);
+  var points = drawingReferenceRectState.pdfPolygon || [];
+
+  if (points.length && isNearFirstDrawingReferencePdfPoint(point)) {
+    if (points.length < 3) {
+      setAdminMessage("\uAE30\uC900\uAC1D\uCCB4\uB294 3\uC810 \uC774\uC0C1\uC774\uC5B4\uC57C \uD569\uB2C8\uB2E4. \uC678\uACFD \uC810\uC744 \uB354 \uD074\uB9AD\uD558\uC138\uC694.");
+      return true;
+    }
+
+    drawDrawingPinCanvas();
+    drawingReferenceRectState.phase = "map";
+    drawingReferenceRectState.mapPolygon = [];
+    closeDrawingPinModal();
+    showDrawingMapRectCapture();
+    setAdminMessage("\uC774\uC81C \uC9C0\uB3C4\uC5D0\uC11C \uAC19\uC740 \uAC1D\uCCB4\uC758 \uC678\uACFD\uC744 PDF\uC640 \uAC19\uC740 \uC2DC\uC791\uC810, \uAC19\uC740 \uBC29\uD5A5, \uAC19\uC740 \uAC1C\uC218\uB85C \uD074\uB9AD\uD558\uC138\uC694.");
+    return true;
+  }
+
+  drawingReferenceRectState.pdfPolygon = points.concat({
+    x: Math.round(point.x),
+    y: Math.round(point.y)
+  });
+
+  drawDrawingPinCanvas();
+  setAdminMessage(
+    "\uAE30\uC900\uAC1D\uCCB4 PDF \uC810 " +
+    drawingReferenceRectState.pdfPolygon.length +
+    "\uAC1C\uB97C \uC120\uD0DD\uD588\uC2B5\uB2C8\uB2E4. 3\uC810 \uC774\uC0C1 \uD6C4 \uCCAB \uC810\uC744 \uB2E4\uC2DC \uD074\uB9AD\uD558\uBA74 \uC644\uB8CC\uB429\uB2C8\uB2E4."
+  );
+
+  return true;
+}
+
+function handleDrawingReferenceMapPolygonClick(mouseEvent) {
+  if (
+    !drawingReferenceRectState.active ||
+    drawingReferenceRectState.phase !== "map"
+  ) {
+    return false;
+  }
+
+  var latLng = mouseEvent && mouseEvent.latLng;
+  var point = drawingReferenceLatLngObject(latLng);
+  var points = drawingReferenceRectState.mapPolygon || [];
+
+  if (!point) return true;
+
+  if (points.length && isNearFirstDrawingReferenceMapPoint(latLng)) {
+    if (points.length < 3) {
+      setAdminMessage("\uC9C0\uB3C4 \uAE30\uC900\uAC1D\uCCB4\uB294 3\uC810 \uC774\uC0C1\uC774\uC5B4\uC57C \uD569\uB2C8\uB2E4. \uC678\uACFD \uC810\uC744 \uB354 \uD074\uB9AD\uD558\uC138\uC694.");
+      return true;
+    }
+
+    finishDrawingReferenceMapPolygon();
+    return true;
+  }
+
+  drawingReferenceRectState.mapPolygon = points.concat(point);
+  renderDrawingReferenceMapPreviewOverlays();
+
+  setAdminMessage(
+    "\uC9C0\uB3C4 \uAE30\uC900\uAC1D\uCCB4 \uC810 " +
+    drawingReferenceRectState.mapPolygon.length +
+    "\uAC1C\uB97C \uC120\uD0DD\uD588\uC2B5\uB2C8\uB2E4. PDF\uC640 \uAC19\uC740 \uAC1C\uC218\uB85C \uCC0D\uACE0, \uCCAB \uC810\uC744 \uB2E4\uC2DC \uD074\uB9AD\uD558\uBA74 \uC644\uB8CC\uB429\uB2C8\uB2E4."
+  );
+
+  return true;
+}
+
+function finishDrawingReferenceMapPolygon() {
+  var item = getDrawingQueueItem(drawingReferenceRectState.queueId);
+  var pdfPolygon = (drawingReferenceRectState.pdfPolygon || []).slice();
+  var mapPolygon = (drawingReferenceRectState.mapPolygon || []).slice();
+
+  if (!isValidDrawingReferencePolygonPair(pdfPolygon, mapPolygon)) {
+    setAdminMessage("PDF\uC640 \uC9C0\uB3C4\uC5D0\uC11C \uC120\uD0DD\uD55C \uC810 \uAC1C\uC218\uAC00 \uB2E4\uB985\uB2C8\uB2E4. \uAC19\uC740 \uC2DC\uC791\uC810, \uAC19\uC740 \uBC29\uD5A5, \uAC19\uC740 \uAC1C\uC218\uB85C \uB2E4\uC2DC \uC120\uD0DD\uD558\uC138\uC694.");
+    return;
+  }
+
+  hideDrawingMapRectCapture();
+  resetDrawingReferenceRectState();
+
+  if (!item) {
+    setAdminMessage("\uAE30\uC900\uAC74\uBB3C\uC744 \uC800\uC7A5\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uB2E4\uC2DC \uC120\uD0DD\uD558\uC138\uC694.");
+    return;
+  }
+
+  var rectangle = addDrawingReferenceRectangle(item, pdfPolygon, mapPolygon);
+
+  renderDrawingQueue();
+  renderDrawingControlMapOverlays(item);
+
+  if (drawingAlignedOverlayQueueId === item.id) {
+    updateDrawingAlignedOverlayTransform({ rebaseAnchor: true });
+  }
+
+  openDrawingPinModal(item.id);
+
+  setAdminMessage(
+    rectangle.name +
+    " \uAE30\uC900\uAC1D\uCCB4\uB97C \uCD94\uAC00\uD588\uC2B5\uB2C8\uB2E4. \uAF2D\uC9D3\uC810, \uBCC0 \uC911\uC810, \uC911\uC2EC\uC810\uC774 \uC790\uB3D9 \uAE30\uC900\uC810\uC73C\uB85C \uBC18\uC601\uB429\uB2C8\uB2E4."
+  );
 }
 
 function closeDrawingPinModal() {
@@ -17948,6 +19489,7 @@ function openDrawingPinModal(queueId) {
   var image = new Image();
 
   title.textContent = "도면 기준핀 지정 - " + item.title;
+  syncDrawingScaleLockUi(item);
   overlay.classList.remove("hidden");
 
   image.onload = function() {
@@ -17981,8 +19523,38 @@ function drawDrawingPinCanvas() {
   context.clearRect(0, 0, canvas.width, canvas.height);
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
 
+  ensureDrawingReferenceRectangles(item).forEach(function(rectangle, index) {
+    drawDrawingReferencePolygonOnCanvas(
+      context,
+      drawingReferencePdfPolygon(rectangle),
+      drawingReferenceRectName(rectangle, index),
+      false
+    );
+  });
+
+  if (
+    drawingReferenceRectState.active &&
+    drawingReferenceRectState.phase === "pdf" &&
+    drawingReferenceRectState.pdfPolygon &&
+    drawingReferenceRectState.pdfPolygon.length
+  ) {
+    drawDrawingReferencePolygonOnCanvas(
+      context,
+      drawingReferenceRectState.pdfPolygon,
+      "\uAE30\uC900\uAC74\uBB3C",
+      true
+    );
+  }
+
   item.controlPoints.forEach(function(point, index) {
-    drawDrawingImagePin(context, point.imageX, point.imageY, index + 1, false);
+    drawDrawingImagePin(
+      context,
+      point.imageX,
+      point.imageY,
+      index + 1,
+      false,
+      point.sourceType === "referenceRectangle"
+    );
   });
 
   if (drawingPinState.pendingImagePoint) {
@@ -17991,17 +19563,18 @@ function drawDrawingPinCanvas() {
       drawingPinState.pendingImagePoint.x,
       drawingPinState.pendingImagePoint.y,
       item.controlPoints.length + 1,
-      true
+      true,
+      false
     );
   }
 }
 
-function drawDrawingImagePin(context, x, y, number, pending) {
+function drawDrawingImagePin(context, x, y, number, pending, automatic) {
   var radius = 13;
 
   context.beginPath();
   context.arc(x, y, radius, 0, Math.PI * 2);
-  context.fillStyle = pending ? "#f97316" : "#16a34a";
+  context.fillStyle = pending ? "#f97316" : (automatic ? "#2563eb" : "#16a34a");
   context.fill();
   context.lineWidth = 3;
   context.strokeStyle = "#ffffff";
@@ -18038,6 +19611,15 @@ function drawingPinCanvasPoint(event) {
 
 function beginDrawingPinPair(event) {
   var item = getDrawingPinQueueItem();
+
+  if (drawingReferenceRectState.suppressNextClick) {
+    drawingReferenceRectState.suppressNextClick = false;
+    return;
+  }
+
+  if (drawingReferenceRectState.active) {
+    return;
+  }
 
   if (!item || !drawingPinState.image || drawingPinState.awaitingMapPoint) {
     return;
@@ -18094,7 +19676,7 @@ function captureDrawingMapPin(latLng) {
 
   cancelDrawingMapPinCapture();
 
-  item.status = drawingControlPointStatusText(item.controlPoints.length);
+  item.status = drawingControlPointStatusTextForItem(item);
 
   renderDrawingQueue();
   renderDrawingControlMapOverlays(item);
@@ -18106,8 +19688,12 @@ function captureDrawingMapPin(latLng) {
   openDrawingPinModal(item.id);
 
   setAdminMessage(
-    item.controlPoints.length >= DRAWING_MIN_CONTROL_POINTS
-      ? "기준핀 " + item.controlPoints.length + "개가 저장되었습니다. 모든 기준핀을 사용해 최소오차 정합을 진행할 수 있습니다."
+    canPlaceDrawingOverlay(item)
+      ? (
+          isDrawingScaleLockActive(item)
+            ? "기준핀 " + item.controlPoints.length + "개가 저장되었습니다. 축척 잠금 기준으로 위치/회전 보정 배치를 진행할 수 있습니다."
+            : "기준핀 " + item.controlPoints.length + "개가 저장되었습니다. 모든 기준핀을 사용해 최소오차 정합을 진행할 수 있습니다."
+        )
       : "기준핀 " + item.controlPoints.length + "개가 저장되었습니다. " + (DRAWING_MIN_CONTROL_POINTS - item.controlPoints.length) + "개를 더 지정해 주세요."
   );
 
@@ -18120,7 +19706,9 @@ function updateDrawingPinInfo() {
 
   if (!item || !info) return;
 
-  info.textContent = drawingControlPointStatusText(item.controlPoints.length);
+  info.textContent = drawingControlPointStatusTextForItem(item);
+  updateDrawingScaleLockStatus(item);
+  renderDrawingReferenceRectList(item);
 }
 
 function removeLastDrawingControlPoint() {
@@ -18128,12 +19716,25 @@ function removeLastDrawingControlPoint() {
 
   if (!item || !item.controlPoints.length) return;
 
-  item.controlPoints.pop();
+  var lastManualIndex = -1;
 
-  item.status = drawingControlPointStatusText(item.controlPoints.length);
+  item.controlPoints.forEach(function(point, index) {
+    if (!point || point.sourceType !== "referenceRectangle") {
+      lastManualIndex = index;
+    }
+  });
+
+  if (lastManualIndex < 0) {
+    setAdminMessage("\uC218\uB3D9 \uAE30\uC900\uD540\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. \uAE30\uC900\uAC74\uBB3C\uC740 \uBAA9\uB85D\uC758 \uC0AD\uC81C \uBC84\uD2BC\uC73C\uB85C \uC81C\uAC70\uD558\uC138\uC694.");
+    return;
+  }
+
+  item.controlPoints.splice(lastManualIndex, 1);
+
+  item.status = drawingControlPointStatusTextForItem(item);
 
     if (drawingAlignedOverlayQueueId === item.id) {
-    if (item.controlPoints.length >= DRAWING_MIN_CONTROL_POINTS) {
+    if (canPlaceDrawingOverlay(item)) {
       updateDrawingAlignedOverlayTransform();
     }
   }
@@ -18150,6 +19751,7 @@ function resetDrawingControlPoints() {
   if (!item) return;
 
   item.controlPoints = [];
+  item.referenceRectangles = [];
   item.manualMapOffsetLat = 0;
   item.manualMapOffsetLng = 0;
   item.manualRotationDeg = 0;
@@ -18182,10 +19784,53 @@ function renderDrawingControlMapOverlays(item) {
 
   if (!map || !item || !Array.isArray(item.controlPoints)) return;
 
+  ensureDrawingReferenceRectangles(item).forEach(function(rectangle, index) {
+    var mapPolygon = drawingReferenceMapPolygon(rectangle);
+    var mapCenter = drawingReferencePolygonCenter(mapPolygon);
+
+    if (!mapPolygon.length || !mapCenter) return;
+
+    var path = mapPolygon.map(function(point) {
+      return new kakao.maps.LatLng(point.lat, point.lng);
+    });
+    var polygon = new kakao.maps.Polygon({
+      map: map,
+      path: path,
+      strokeWeight: 2,
+      strokeColor: "#2563eb",
+      strokeOpacity: 0.95,
+      strokeStyle: "solid",
+      fillColor: "#2563eb",
+      fillOpacity: 0.15,
+      zIndex: 3
+    });
+    var label = document.createElement("div");
+    label.className = "drawing-map-reference-rect-label";
+    label.textContent = drawingReferenceRectName(rectangle, index);
+    var labelOverlay = new kakao.maps.CustomOverlay({
+      map: map,
+      position: new kakao.maps.LatLng(
+        mapCenter.lat,
+        mapCenter.lng
+      ),
+      content: label,
+      xAnchor: 0,
+      yAnchor: 0,
+      zIndex: 4
+    });
+
+    drawingControlMapOverlays.push(polygon);
+    drawingControlMapOverlays.push(labelOverlay);
+  });
+
   item.controlPoints.forEach(function(point, index) {
     var pin = document.createElement("div");
     pin.className = "drawing-map-control-pin";
     pin.textContent = String(index + 1);
+
+    if (point.sourceType === "referenceRectangle") {
+      pin.style.background = "#2563eb";
+    }
 
     var overlay = new kakao.maps.CustomOverlay({
       map: map,
@@ -18310,7 +19955,302 @@ function calculateDrawingAlignmentErrors(
   };
 }
 
+function drawingMetersPerPdfPoint(scaleDenominator) {
+  return Number(scaleDenominator) * 0.0254 / 72;
+}
+
+function drawingOffsetLatLngByMeters(origin, eastMeters, northMeters) {
+  var lat = Number(origin && typeof origin.getLat === "function" ? origin.getLat() : origin.lat);
+  var lng = Number(origin && typeof origin.getLng === "function" ? origin.getLng() : origin.lng);
+  var metersPerDegreeLat = 111320;
+  var metersPerDegreeLng =
+    111320 * Math.cos(lat * Math.PI / 180);
+
+  if (!Number.isFinite(metersPerDegreeLng) || Math.abs(metersPerDegreeLng) < 1) {
+    metersPerDegreeLng = 111320;
+  }
+
+  return new kakao.maps.LatLng(
+    lat + (Number(northMeters || 0) / metersPerDegreeLat),
+    lng + (Number(eastMeters || 0) / metersPerDegreeLng)
+  );
+}
+
+function drawingMetersDeltaBetweenLatLng(origin, target) {
+  var originLat = Number(typeof origin.getLat === "function" ? origin.getLat() : origin.lat);
+  var originLng = Number(typeof origin.getLng === "function" ? origin.getLng() : origin.lng);
+  var targetLat = Number(typeof target.getLat === "function" ? target.getLat() : target.lat);
+  var targetLng = Number(typeof target.getLng === "function" ? target.getLng() : target.lng);
+  var averageLat = (originLat + targetLat) / 2;
+  var metersPerDegreeLat = 111320;
+  var metersPerDegreeLng =
+    111320 * Math.cos(averageLat * Math.PI / 180);
+
+  if (!Number.isFinite(metersPerDegreeLng) || Math.abs(metersPerDegreeLng) < 1) {
+    metersPerDegreeLng = 111320;
+  }
+
+  return {
+    east: (targetLng - originLng) * metersPerDegreeLng,
+    north: (targetLat - originLat) * metersPerDegreeLat
+  };
+}
+
+function drawingMetersDistanceBetweenLatLng(left, right) {
+  var delta = drawingMetersDeltaBetweenLatLng(left, right);
+  return Math.sqrt(delta.east * delta.east + delta.north * delta.north);
+}
+
+function calculateDrawingScaleLockRotation(controlPoints, metersPerImagePixel) {
+  if (!Array.isArray(controlPoints) || controlPoints.length < 2) {
+    return 0;
+  }
+
+  var basePoint = controlPoints[0];
+  var baseLatLng = new kakao.maps.LatLng(
+    Number(basePoint.lat),
+    Number(basePoint.lng)
+  );
+  var weightedSin = 0;
+  var weightedCos = 0;
+
+  controlPoints.slice(1).forEach(function(point) {
+    var sourceEast =
+      (Number(point.imageX) - Number(basePoint.imageX)) * metersPerImagePixel;
+    var sourceNorth =
+      -(Number(point.imageY) - Number(basePoint.imageY)) * metersPerImagePixel;
+    var sourceLength = Math.sqrt(sourceEast * sourceEast + sourceNorth * sourceNorth);
+
+    if (!Number.isFinite(sourceLength) || sourceLength < 0.01) return;
+
+    var targetDelta = drawingMetersDeltaBetweenLatLng(
+      baseLatLng,
+      new kakao.maps.LatLng(Number(point.lat), Number(point.lng))
+    );
+    var targetLength = Math.sqrt(
+      targetDelta.east * targetDelta.east +
+      targetDelta.north * targetDelta.north
+    );
+
+    if (!Number.isFinite(targetLength) || targetLength < 0.01) return;
+
+    var sourceAngle = Math.atan2(sourceNorth, sourceEast);
+    var targetAngle = Math.atan2(targetDelta.north, targetDelta.east);
+    var angleDelta = targetAngle - sourceAngle;
+    var weight = Math.min(sourceLength, targetLength);
+
+    weightedSin += Math.sin(angleDelta) * weight;
+    weightedCos += Math.cos(angleDelta) * weight;
+  });
+
+  if (Math.abs(weightedSin) < 0.000001 && Math.abs(weightedCos) < 0.000001) {
+    return 0;
+  }
+
+  return Math.atan2(weightedSin, weightedCos);
+}
+
+function calculateDrawingScaleLockPairErrors(controlPoints, metersPerImagePixel) {
+  var totalPercent = 0;
+  var maxPercent = 0;
+  var pairCount = 0;
+
+  for (var i = 0; i < controlPoints.length; i += 1) {
+    for (var j = i + 1; j < controlPoints.length; j += 1) {
+      var left = controlPoints[i];
+      var right = controlPoints[j];
+      var sourceDx = (Number(right.imageX) - Number(left.imageX)) * metersPerImagePixel;
+      var sourceDy = (Number(right.imageY) - Number(left.imageY)) * metersPerImagePixel;
+      var sourceDistance = Math.sqrt(sourceDx * sourceDx + sourceDy * sourceDy);
+
+      if (!Number.isFinite(sourceDistance) || sourceDistance < 0.01) continue;
+
+      var mapDistance = drawingMetersDistanceBetweenLatLng(
+        new kakao.maps.LatLng(Number(left.lat), Number(left.lng)),
+        new kakao.maps.LatLng(Number(right.lat), Number(right.lng))
+      );
+      var percent = Math.abs(mapDistance - sourceDistance) / sourceDistance * 100;
+
+      if (!Number.isFinite(percent)) continue;
+
+      totalPercent += percent;
+      maxPercent = Math.max(maxPercent, percent);
+      pairCount += 1;
+    }
+  }
+
+  return {
+    averageDistanceErrorPercent: pairCount ? totalPercent / pairCount : 0,
+    maxDistanceErrorPercent: maxPercent,
+    pairCount: pairCount
+  };
+}
+
+function calculateDrawingScaleLockedTransform(item) {
+  if (!map || !item || !Array.isArray(item.controlPoints)) {
+    return null;
+  }
+
+  var denominator = drawingScaleDenominatorValue(item);
+  var renderScale = drawingPdfRenderScaleValue(item);
+
+  if (!denominator || !renderScale || item.controlPoints.length < 1) {
+    return null;
+  }
+
+  var imageSize = getDrawingAlignedImageSize(item);
+  if (!imageSize || !item.cropRect) {
+    return null;
+  }
+
+  var controlPoints = item.controlPoints.slice();
+  var hasInvalidPoint = controlPoints.some(function(point) {
+    return (
+      !Number.isFinite(Number(point.imageX)) ||
+      !Number.isFinite(Number(point.imageY)) ||
+      !Number.isFinite(Number(point.lat)) ||
+      !Number.isFinite(Number(point.lng))
+    );
+  });
+
+  if (hasInvalidPoint) {
+    return null;
+  }
+
+  var projection = map.getProjection();
+  var anchorPosition = new kakao.maps.LatLng(
+    Number(controlPoints[0].lat),
+    Number(controlPoints[0].lng)
+  );
+  var anchorPixel = projection.containerPointFromCoords(anchorPosition);
+  var eastPixel = projection.containerPointFromCoords(
+    drawingOffsetLatLngByMeters(anchorPosition, 1, 0)
+  );
+  var northPixel = projection.containerPointFromCoords(
+    drawingOffsetLatLngByMeters(anchorPosition, 0, 1)
+  );
+
+  if (!anchorPixel || !eastPixel || !northPixel) {
+    return null;
+  }
+
+  var eastBasis = {
+    x: eastPixel.x - anchorPixel.x,
+    y: eastPixel.y - anchorPixel.y
+  };
+  var northBasis = {
+    x: northPixel.x - anchorPixel.x,
+    y: northPixel.y - anchorPixel.y
+  };
+  var metersPerImagePixel =
+    drawingMetersPerPdfPoint(denominator) / renderScale;
+  var rotationRad = calculateDrawingScaleLockRotation(
+    controlPoints,
+    metersPerImagePixel
+  );
+  var cosValue = Math.cos(rotationRad);
+  var sinValue = Math.sin(rotationRad);
+  var xEast = cosValue * metersPerImagePixel;
+  var xNorth = sinValue * metersPerImagePixel;
+  var yEast = sinValue * metersPerImagePixel;
+  var yNorth = -cosValue * metersPerImagePixel;
+  var a = xEast * eastBasis.x + xNorth * northBasis.x;
+  var b = xEast * eastBasis.y + xNorth * northBasis.y;
+  var c = yEast * eastBasis.x + yNorth * northBasis.x;
+  var d = yEast * eastBasis.y + yNorth * northBasis.y;
+  var totalE = 0;
+  var totalF = 0;
+  var targetPixels = [];
+
+  controlPoints.forEach(function(point) {
+    var pixel = projection.containerPointFromCoords(
+      new kakao.maps.LatLng(Number(point.lat), Number(point.lng))
+    );
+    var targetPixel = {
+      x: pixel.x - anchorPixel.x,
+      y: pixel.y - anchorPixel.y
+    };
+    var sourceX = Number(point.imageX);
+    var sourceY = Number(point.imageY);
+
+    targetPixels.push(targetPixel);
+    totalE += targetPixel.x - (a * sourceX + c * sourceY);
+    totalF += targetPixel.y - (b * sourceX + d * sourceY);
+  });
+
+  var e = totalE / controlPoints.length;
+  var f = totalF / controlPoints.length;
+  var pixelPerMeter = (
+    Math.sqrt(eastBasis.x * eastBasis.x + eastBasis.y * eastBasis.y) +
+    Math.sqrt(northBasis.x * northBasis.x + northBasis.y * northBasis.y)
+  ) / 2;
+  var totalErrorPixels = 0;
+  var totalErrorMeters = 0;
+  var maxErrorPixels = 0;
+  var maxErrorMeters = 0;
+  var perPointErrors = controlPoints.map(function(point, index) {
+    var sourceX = Number(point.imageX);
+    var sourceY = Number(point.imageY);
+    var predictedX = a * sourceX + c * sourceY + e;
+    var predictedY = b * sourceX + d * sourceY + f;
+    var targetPixel = targetPixels[index];
+    var errorPixels = Math.sqrt(
+      Math.pow(predictedX - targetPixel.x, 2) +
+      Math.pow(predictedY - targetPixel.y, 2)
+    );
+    var errorMeters = pixelPerMeter > 0 ? errorPixels / pixelPerMeter : 0;
+
+    totalErrorPixels += errorPixels;
+    totalErrorMeters += errorMeters;
+    maxErrorPixels = Math.max(maxErrorPixels, errorPixels);
+    maxErrorMeters = Math.max(maxErrorMeters, errorMeters);
+
+    return {
+      index: index,
+      errorPixels: errorPixels,
+      errorMeters: errorMeters
+    };
+  });
+  var pairErrors = calculateDrawingScaleLockPairErrors(
+    controlPoints,
+    metersPerImagePixel
+  );
+  var coefficients = {
+    a: a,
+    b: b,
+    c: c,
+    d: d,
+    e: e,
+    f: f
+  };
+
+  return {
+    position: anchorPosition,
+    anchorPixel: anchorPixel,
+    coefficients: coefficients,
+    cssMatrix: drawingCoefficientsToCssMatrix(coefficients),
+    usedPointCount: controlPoints.length,
+    averageErrorPixels: perPointErrors.length ? totalErrorPixels / perPointErrors.length : 0,
+    maxErrorPixels: maxErrorPixels,
+    averageErrorMeters: perPointErrors.length ? totalErrorMeters / perPointErrors.length : 0,
+    maxErrorMeters: maxErrorMeters,
+    perPointErrors: perPointErrors,
+    scaleLockEnabled: true,
+    scaleDenominator: denominator,
+    metersPerPdfPoint: drawingMetersPerPdfPoint(denominator),
+    metersPerImagePixel: metersPerImagePixel,
+    rotationDeg: rotationRad * 180 / Math.PI,
+    averageDistanceErrorPercent: pairErrors.averageDistanceErrorPercent,
+    maxDistanceErrorPercent: pairErrors.maxDistanceErrorPercent,
+    distancePairCount: pairErrors.pairCount
+  };
+}
+
 function calculateDrawingAffineTransform(item) {
+  if (item && item.scaleLockEnabled === true) {
+    return calculateDrawingScaleLockedTransform(item);
+  }
+
   if (
     !map ||
     !item ||
@@ -19204,10 +21144,12 @@ function placeDrawingOverlayOnMap(queueId) {
     !map ||
     !item ||
     !item.croppedImageUrl ||
-    item.controlPoints.length < DRAWING_MIN_CONTROL_POINTS
+    !canPlaceDrawingOverlay(item)
   ) {
     setAdminMessage(
-      item && item.controlPoints && item.controlPoints.length === 3
+      item && isDrawingScaleLockActive(item)
+        ? "축척 잠금 배치를 위해 PDF 도면 영역과 기준핀 1개 이상을 지정하세요."
+        : item && item.controlPoints && item.controlPoints.length === 3
         ? "기존 3점 정합 항목입니다. 더 안정적인 배치를 위해 기준핀 1개를 추가한 뒤 배치 갱신하세요."
         : "정합 기준점 4개 이상을 지정한 뒤 지도에 배치하세요."
     );
@@ -19218,7 +21160,9 @@ function placeDrawingOverlayOnMap(queueId) {
 
   if (!transform) {
     setAdminMessage(
-      "정합 기준점 배치가 불안정합니다. 서로 떨어진 위치의 핀을 다시 선택하세요."
+      item && item.scaleLockEnabled === true
+        ? "축척 잠금을 적용할 수 없습니다. 축척 입력, PDF 도면 여부, 도면 영역 선택을 확인하세요."
+        : "정합 기준점 배치가 불안정합니다. 서로 떨어진 위치의 핀을 다시 선택하세요."
     );
     return;
   }
@@ -19341,16 +21285,43 @@ function placeDrawingOverlayOnMap(queueId) {
   clearDrawingControlMapOverlays();
   renderDrawingQueue();
 
-  setAdminMessage(
-    item.title +
-    " 용적도를 " +
-    transform.usedPointCount +
-    "개 기준핀으로 배치했습니다. 평균 오차 " +
-    transform.averageErrorPixels.toFixed(1) +
-    "px / 최대 오차 " +
-    transform.maxErrorPixels.toFixed(1) +
-    "px 입니다. 어긋난 핀이 보이면 기준핀을 수정한 뒤 배치 갱신하세요."
-  );
+  if (transform.scaleLockEnabled === true) {
+    var warningText = "";
+    if (transform.maxDistanceErrorPercent >= 20) {
+      warningText = " 축척 기준 거리와 지도 기준 거리 차이가 매우 큽니다. 도면 영역, 축척 입력, 기준점을 확인하세요.";
+    } else if (transform.maxDistanceErrorPercent >= 10) {
+      warningText = " 축척 기준 거리와 지도 기준 거리 차이가 큽니다. 도면 크기는 축척 기준으로 유지됩니다.";
+    } else if (transform.maxDistanceErrorPercent >= 5) {
+      warningText = " 축척 기준 거리와 지도 기준 거리 차이가 있습니다.";
+    }
+
+    setAdminMessage(
+      item.title +
+      " 용적도를 축척 잠금 ON · S=1:" +
+      transform.scaleDenominator +
+      " 기준으로 배치했습니다. 기준점 " +
+      transform.usedPointCount +
+      "개 / 평균 오차 " +
+      Number(transform.averageErrorMeters || 0).toFixed(1) +
+      "m / 최대 오차 " +
+      Number(transform.maxErrorMeters || 0).toFixed(1) +
+      "m / 최대 거리오차 " +
+      Number(transform.maxDistanceErrorPercent || 0).toFixed(1) +
+      "%." +
+      warningText
+    );
+  } else {
+    setAdminMessage(
+      item.title +
+      " 용적도를 " +
+      transform.usedPointCount +
+      "개 기준핀으로 배치했습니다. 평균 오차 " +
+      transform.averageErrorPixels.toFixed(1) +
+      "px / 최대 오차 " +
+      transform.maxErrorPixels.toFixed(1) +
+      "px 입니다. 어긋난 핀이 보이면 기준핀을 수정한 뒤 배치 갱신하세요."
+    );
+  }
 }
 
 function closeAiImportModal() {
@@ -20752,6 +22723,10 @@ document.getElementById("drawingLibraryCancelQueueButton").addEventListener("cli
   cancelDrawingLibraryQueueSelection();
 });
 
+document.getElementById("drawingLibrarySelectAllDeleteButton").addEventListener("click", function() {
+  selectAllDrawingLibraryDeleteItems();
+});
+
 document.getElementById("drawingLibraryConfirmQueueButton").addEventListener("click", async function() {
   await confirmDrawingLibraryQueueSelection();
 });
@@ -20925,12 +22900,20 @@ document.getElementById("drawingSelectCancelButton").addEventListener("click", f
   closeDrawingSelectModal();
 });
 
+document.getElementById("drawingSelectAllButton").addEventListener("click", function() {
+  selectAllDrawingPdfSelectionPages();
+});
+
 document.getElementById("drawingAddQueueButton").addEventListener("click", async function() {
   await addSelectedPdfPagesToQueue();
 });
 
 document.getElementById("drawingSavePagesButton").addEventListener("click", async function() {
   await saveSelectedPdfPagesToLibrary();
+});
+
+document.getElementById("drawingCancelSaveButton").addEventListener("click", function() {
+  cancelDrawingHighQualityConversion();
 });
 
 document.getElementById("drawingSelectOverlay").addEventListener("click", function(event) {
@@ -20989,7 +22972,23 @@ document.getElementById("drawingCropOverlay").addEventListener("click", function
   }
 });
 
+document.getElementById("drawingReferenceRectButton").addEventListener("click", function() {
+  beginDrawingReferenceRectangleCapture();
+});
+
+document.getElementById("drawingScaleLockEnabled").addEventListener("change", function() {
+  readDrawingScaleLockUiIntoItem();
+});
+
+document.getElementById("drawingScaleDenominatorInput").addEventListener("input", function() {
+  readDrawingScaleLockUiIntoItem();
+});
+
 document.getElementById("drawingPinCanvas").addEventListener("click", function(event) {
+  if (handleDrawingReferencePdfPolygonClick(event)) {
+    return;
+  }
+
   beginDrawingPinPair(event);
 });
 
@@ -21034,6 +23033,11 @@ document.getElementById("drawingPinResetButton").addEventListener("click", funct
 });
 
 document.getElementById("drawingMapPinCancelButton").addEventListener("click", function() {
+  if (drawingReferenceRectState.active) {
+    cancelDrawingReferenceRectCapture(true);
+    return;
+  }
+
   cancelDrawingMapPinCapture();
 
   if (drawingPinState.queueId) {
