@@ -7161,7 +7161,7 @@ setMapStatus("Map connected");
 
     function markerImageTitle(marker) {
       var text = String(marker.title || marker.name || marker.markerId || marker.rawId || marker.id || "").trim();
-      return text.length > 8 ? text.slice(0, 8) : text;
+      return text;
     }
 
     function markerImageChecked(marker) {
@@ -7206,7 +7206,7 @@ setMapStatus("Map connected");
       var measureCtx = measureCanvas.getContext("2d");
       measureCtx.font = "700 " + labelFontSize + "px Arial, sans-serif";
       var measuredText = title ? Math.ceil(measureCtx.measureText(title).width) : 0;
-      var labelWidth = title ? Math.max(18, Math.min(70, measuredText + 10)) : 0;
+      var labelWidth = title ? Math.max(18, measuredText + 10) : 0;
       var width = Math.ceil(Math.max(30, labelWidth + 6, isChecked ? 34 : 30) + selectedPadding * 2);
       var height = Math.ceil(dotSize + (title ? labelHeight + 3 : 0) + 5 + selectedPadding * 2);
       var dotCx = width / 2;
@@ -11736,6 +11736,41 @@ setMapStatus("Map connected");
       return label;
     }
 
+    function isMarkerDialogSubmitKey(event) {
+      if (!event) return false;
+      if (event.isComposing || event.keyCode === 229) return false;
+      return event.key === "Enter" && !event.shiftKey;
+    }
+
+    function bindMarkerDialogOutsideClose(overlay, dialog, closeFn, canCloseFn) {
+      if (!overlay || !dialog || typeof closeFn !== "function") return;
+
+      var pointerStartedInside = false;
+      var pointerStartedOnOverlay = false;
+
+      overlay.addEventListener("pointerdown", function(event) {
+        pointerStartedInside = dialog.contains(event.target);
+        pointerStartedOnOverlay = event.target === overlay;
+      });
+
+      overlay.addEventListener("pointerup", function(event) {
+        var endedOnOverlay = event.target === overlay;
+        var allowed = typeof canCloseFn === "function" ? canCloseFn() !== false : true;
+
+        if (!pointerStartedInside && pointerStartedOnOverlay && endedOnOverlay && allowed) {
+          closeFn();
+        }
+
+        pointerStartedInside = false;
+        pointerStartedOnOverlay = false;
+      });
+
+      overlay.addEventListener("pointercancel", function() {
+        pointerStartedInside = false;
+        pointerStartedOnOverlay = false;
+      });
+    }
+
     function openMarkerEditModal(marker) {
       var editableMarker = findEditableOwnMarker(marker);
       if (!editableMarker) {
@@ -11762,9 +11797,6 @@ setMapStatus("Map connected");
       var overlay = document.createElement("div");
       overlay.id = "markerEditOverlay";
       overlay.className = "marker-edit-overlay";
-      overlay.addEventListener("click", function(event) {
-        if (event.target === overlay && !markerEditState.saving) closeMarkerEditModal();
-      });
 
       var dialog = document.createElement("div");
       dialog.className = "marker-edit-dialog";
@@ -11785,6 +11817,11 @@ setMapStatus("Map connected");
       var form = document.createElement("form");
       form.className = "marker-edit-form";
       form.addEventListener("submit", function(event) {
+        event.preventDefault();
+        submitMarkerEdit(editableMarker);
+      });
+      form.addEventListener("keydown", function(event) {
+        if (!isMarkerDialogSubmitKey(event)) return;
         event.preventDefault();
         submitMarkerEdit(editableMarker);
       });
@@ -11881,6 +11918,9 @@ setMapStatus("Map connected");
       actions.appendChild(submitButton);
       form.appendChild(actions);
 
+      bindMarkerDialogOutsideClose(overlay, dialog, closeMarkerEditModal, function() {
+        return !markerEditState.saving;
+      });
       document.body.appendChild(overlay);
       titleInput.focus();
 
@@ -13601,15 +13641,17 @@ groupSelect.addEventListener("change", function() {
     }
   });
 
+  dialog.addEventListener("keydown", function(event) {
+    if (!isMarkerDialogSubmitKey(event)) return;
+    event.preventDefault();
+    if (!saveButton.disabled) saveButton.click();
+  });
+
   actions.appendChild(saveButton);
   dialog.appendChild(actions);
   overlay.appendChild(dialog);
 
-  overlay.addEventListener("click", function(event) {
-    if (event.target === overlay) {
-      closeMarkerCreateModal();
-    }
-  });
+  bindMarkerDialogOutsideClose(overlay, dialog, closeMarkerCreateModal);
 
   document.body.appendChild(overlay);
   titleInput.focus();
