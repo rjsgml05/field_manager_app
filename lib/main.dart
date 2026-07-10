@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter_compass/flutter_compass.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -819,6 +820,7 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   Timer? _markerUpdateTimer;
   Timer? _mapInteractionSafetyTimer;
   StreamSubscription<Position>? _temporaryLocationSubscription;
+  StreamSubscription<CompassEvent>? _headingSubscription;
   Timer? _temporaryLocationTrackingTimer;
   Timer? _temporaryLocationCountdownTimer;
   bool _isMapInteracting = false;
@@ -828,6 +830,9 @@ class MapSampleState extends State<MapSample> with WidgetsBindingObserver {
   int _temporaryLocationTrackingRemainingSeconds = 0;
   DateTime? _lastLocationUpdatedAt;
   double? _lastLocationAccuracy;
+  Position? _lastTemporaryTrackingPosition;
+  DateTime? _lastTemporaryCameraMoveAt;
+  double? _currentHeadingDegrees;
   String? _lastSentMarkersHash;
   String? _lastSentLinesHash;
   String? _lastSentNativeLinesHash;
@@ -1210,15 +1215,32 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
     }
   }
 
-    Future<void> _showCurrentLocationOnMap(double lat, double lng) async {
+  Future<void> _showCurrentLocationOnMap(
+    double lat,
+    double lng, {
+    double? heading,
+    bool isTracking = false,
+    bool smooth = false,
+    bool updateHeadingOnly = false,
+  }) async {
     if (_shouldUseNativeKakaoMap) {
       try {
-        await _nativeKakaoMapCommands.invokeMethod('showCurrentLocation', {
+        final payload = <String, dynamic>{
           'lat': lat,
           'lng': lng,
           'title': '현재 위치',
           'moveCamera': false,
-        });
+          'isTracking': isTracking,
+          'smooth': smooth,
+          'updateHeadingOnly': updateHeadingOnly,
+        };
+        if (heading != null && heading.isFinite) {
+          payload['heading'] = heading;
+        }
+        await _nativeKakaoMapCommands.invokeMethod(
+          'showCurrentLocation',
+          payload,
+        );
       } catch (e) {
         debugPrint('native showCurrentLocation failed: $e');
       }
@@ -1233,6 +1255,10 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
       'lng': lng,
       'title': '현재 위치',
       'moveCamera': false,
+      'isTracking': isTracking,
+      'smooth': smooth,
+      'updateHeadingOnly': updateHeadingOnly,
+      if (heading != null && heading.isFinite) 'heading': heading,
     });
 
     try {
@@ -1327,15 +1353,105 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
 
   LocationSettings get _temporaryLocationSettings => const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 2,
+        distanceFilter: 1,
       );
+
+  double? _normalizeHeadingDegrees(double? value) {
+    if (value == null || !value.isFinite) return null;
+    if (value < 0) return null;
+    var normalized = value % 360;
+    if (normalized < 0) normalized += 360;
+    return normalized;
+  }
+
+  double? _headingForPosition(Position position) {
+    return _normalizeHeadingDegrees(
+      _currentHeadingDegrees ?? position.heading,
+    );
+  }
+
+  bool _hasMeaningfulHeadingChange(double? previous, double? next) {
+    if (next == null) return false;
+    if (previous == null) return true;
+    final diff = ((next - previous + 540) % 360) - 180;
+    return diff.abs() >= 2;
+  }
+
+  bool _shouldFollowTemporaryLocation(
+    Position position, {
+    required bool immediate,
+    double? movedMeters,
+  }) {
+    if (immediate) return true;
+
+    final distance = movedMeters ?? 0;
+    if (distance < 0.5) return false;
+    if (position.accuracy.isFinite && position.accuracy > 50 && distance > 30) {
+      return false;
+    }
+
+    final lastMoveAt = _lastTemporaryCameraMoveAt;
+    if (lastMoveAt == null) return true;
+
+    return DateTime.now().difference(lastMoveAt) >=
+        const Duration(milliseconds: 600);
+  }
+
+  Future<void> _startTemporaryHeadingTracking() async {
+    await _headingSubscription?.cancel();
+    _headingSubscription = null;
+
+    if (kIsWeb) return;
+
+    final events = FlutterCompass.events;
+    if (events == null) return;
+
+    _headingSubscription = events.listen(
+      (event) {
+        final heading = _normalizeHeadingDegrees(event.heading);
+        if (heading == null) return;
+
+        final previous = _currentHeadingDegrees;
+        if (!_hasMeaningfulHeadingChange(previous, heading)) return;
+
+        if (mounted) {
+          setState(() {
+            _currentHeadingDegrees = heading;
+          });
+        } else {
+          _currentHeadingDegrees = heading;
+        }
+
+        final lastPosition = _lastTemporaryTrackingPosition;
+        if (mounted &&
+            _isTemporaryLocationTracking &&
+            lastPosition != null) {
+          _showCurrentLocationOnMap(
+            lastPosition.latitude,
+            lastPosition.longitude,
+            heading: heading,
+            isTracking: true,
+            updateHeadingOnly: true,
+          );
+        }
+      },
+      onError: (error) {
+        debugPrint("방향 센서 스트림 에러: $error");
+      },
+      cancelOnError: false,
+    );
+  }
 
   String _buildLocationTrackingStatusText() {
     final seconds = _temporaryLocationTrackingRemainingSeconds;
     final accuracy = _lastLocationAccuracy;
 
     if (accuracy != null && accuracy.isFinite) {
-      return "내 위치 추적 중 ${seconds}초 · 정확도 ${accuracy.round()}m";
+      final heading = _currentHeadingDegrees;
+      final headingText = heading != null && heading.isFinite
+          ? " · 방향 ${heading.round()}°"
+          : "";
+      return "내 위치 추적 중 ${seconds}초 · 정확도 ${accuracy.round()}m$headingText";
     }
 
     return "내 위치 추적 중 ${seconds}초";
@@ -1356,6 +1472,7 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
       if (!ready || !mounted) return;
 
       await _temporaryLocationSubscription?.cancel();
+      await _headingSubscription?.cancel();
       _temporaryLocationTrackingTimer?.cancel();
       _temporaryLocationCountdownTimer?.cancel();
 
@@ -1365,13 +1482,18 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
             _temporaryLocationTrackingDurationSeconds;
         _lastLocationAccuracy = null;
         _lastLocationUpdatedAt = null;
+        _lastTemporaryTrackingPosition = null;
+        _lastTemporaryCameraMoveAt = null;
+        _currentHeadingDegrees = null;
       });
+
+      await _startTemporaryHeadingTracking();
 
       try {
         final position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
         );
-        await _handleTemporaryLocationUpdate(position);
+        await _handleTemporaryLocationUpdate(position, immediate: true);
       } catch (e) {
         debugPrint("임시 위치 추적 최초 위치 실패: $e");
       }
@@ -1418,7 +1540,10 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
     }
   }
 
-  Future<void> _handleTemporaryLocationUpdate(Position position) async {
+  Future<void> _handleTemporaryLocationUpdate(
+    Position position, {
+    bool immediate = false,
+  }) async {
     if (!mounted || !_isTemporaryLocationTracking) return;
 
     final lat = position.latitude;
@@ -1429,25 +1554,76 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
       return;
     }
 
+    final previousPosition = _lastTemporaryTrackingPosition;
+    final movedMeters = previousPosition == null
+        ? null
+        : Geolocator.distanceBetween(
+            previousPosition.latitude,
+            previousPosition.longitude,
+            lat,
+            lng,
+          );
+
+    if (!immediate &&
+        previousPosition != null &&
+        movedMeters != null &&
+        movedMeters > 80 &&
+        position.accuracy.isFinite &&
+        position.accuracy > 50) {
+      debugPrint(
+        "임시 위치 추적 급점프 무시: distance=${movedMeters.toStringAsFixed(1)}m accuracy=${position.accuracy.toStringAsFixed(1)}m",
+      );
+      setState(() {
+        _lastLocationAccuracy = position.accuracy;
+      });
+      return;
+    }
+
+    final heading = _headingForPosition(position);
+    final shouldFollow = _shouldFollowTemporaryLocation(
+      position,
+      immediate: immediate,
+      movedMeters: movedMeters,
+    );
+
     setState(() {
       _lastLocationUpdatedAt = DateTime.now();
       _lastLocationAccuracy = position.accuracy;
+      _lastTemporaryTrackingPosition = position;
+      if (heading != null) {
+        _currentHeadingDegrees = heading;
+      }
     });
 
-    await _showCurrentLocationOnMap(lat, lng);
+    await _showCurrentLocationOnMap(
+      lat,
+      lng,
+      heading: heading,
+      isTracking: true,
+      smooth: !immediate,
+    );
 
     if (!mounted || !_isTemporaryLocationTracking) return;
+
+    if (!shouldFollow) return;
 
     await _moveTo(
       lat,
       lng,
       _shouldUseNativeKakaoMap ? _nativeFocusedZoomLevel : 3,
     );
+
+    _lastTemporaryCameraMoveAt = DateTime.now();
   }
 
   Future<void> _stopTemporaryLocationTracking({String reason = 'unknown'}) async {
+    final lastPosition = _lastTemporaryTrackingPosition;
+
     await _temporaryLocationSubscription?.cancel();
     _temporaryLocationSubscription = null;
+
+    await _headingSubscription?.cancel();
+    _headingSubscription = null;
 
     _temporaryLocationTrackingTimer?.cancel();
     _temporaryLocationTrackingTimer = null;
@@ -1460,7 +1636,18 @@ Future<String?> _getKoreanAddressOrNull(double lat, double lng) async {
     setState(() {
       _isTemporaryLocationTracking = false;
       _temporaryLocationTrackingRemainingSeconds = 0;
+      _lastTemporaryTrackingPosition = null;
+      _lastTemporaryCameraMoveAt = null;
     });
+
+    if (lastPosition != null) {
+      await _showCurrentLocationOnMap(
+        lastPosition.latitude,
+        lastPosition.longitude,
+        isTracking: false,
+        updateHeadingOnly: true,
+      );
+    }
 
     debugPrint("임시 위치 추적 종료: $reason");
   }
@@ -4040,6 +4227,7 @@ void dispose() {
   _mapInteractionSafetyTimer?.cancel();
   _nativeLineRetryTimer?.cancel();
   _temporaryLocationSubscription?.cancel();
+  _headingSubscription?.cancel();
   _temporaryLocationTrackingTimer?.cancel();
   _temporaryLocationCountdownTimer?.cancel();
   WidgetsBinding.instance.removeObserver(this);
@@ -8467,6 +8655,18 @@ body: Stack(
                         size: 18,
                       ),
                       const SizedBox(width: 8),
+                      if (_currentHeadingDegrees != null)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: Transform.rotate(
+                            angle: (_currentHeadingDegrees! * math.pi) / 180,
+                            child: const Icon(
+                              Icons.navigation,
+                              color: Colors.lightBlueAccent,
+                              size: 18,
+                            ),
+                          ),
+                        ),
                       Expanded(
                         child: Text(
                           _buildLocationTrackingStatusText(),

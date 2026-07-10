@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -36,6 +37,7 @@ import com.kakao.vectormap.route.RouteLineStyle
 import io.flutter.plugin.platform.PlatformView
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 class NativeKakaoMapPlatformView(
@@ -74,8 +76,11 @@ class NativeKakaoMapPlatformView(
     private val markerStyleCache = mutableMapOf<String, LabelStyles>()
     private val routeStyleCache = mutableMapOf<Int, RouteLineStyle>()
     private val lineLabelStyleCache = mutableMapOf<String, LabelStyles>()
+    private val currentLocationTrackingStyleCache = mutableMapOf<Int, LabelStyles>()
     private val currentLocationStyle by lazy { createCurrentLocationStyle() }
     private var currentLocationLabel: Label? = null
+    private var currentLocationPosition: LatLng? = null
+    private var currentLocationStyleBucket: Int? = null
     private var lastMarkerTapAtMs = 0L
     private var markerMoveModeEnabled = false
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -232,13 +237,32 @@ class NativeKakaoMapPlatformView(
             )
         }
         val position = LatLng.from(location.lat, location.lng)
-        currentLocationLabel?.remove()
-        currentLocationLabel = layer.addLabel(
-            LabelOptions
-                .from("field_current_location", position)
-                .setStyles(currentLocationStyle)
-                .setClickable(false)
-        )
+        val styleBucket = currentLocationStyleBucketFor(location)
+        val style = styleForCurrentLocation(styleBucket)
+        val existingLabel = currentLocationLabel
+
+        if (existingLabel == null) {
+            currentLocationLabel = layer.addLabel(
+                LabelOptions
+                    .from("field_current_location", position)
+                    .setStyles(style)
+                    .setClickable(false)
+            )
+            currentLocationPosition = position
+            currentLocationStyleBucket = styleBucket
+        } else {
+            if (styleBucket != currentLocationStyleBucket) {
+                existingLabel.changeStyles(style)
+                currentLocationStyleBucket = styleBucket
+            }
+
+            if (!location.updateHeadingOnly) {
+                val durationMs = if (location.smooth) 500 else 0
+                existingLabel.moveTo(position, durationMs)
+                currentLocationPosition = position
+            }
+        }
+
         pendingGpsLocation = location
         if (location.moveCamera) {
             moveTo(location.lat, location.lng, location.level ?: 15)
@@ -248,6 +272,8 @@ class NativeKakaoMapPlatformView(
     fun clearCurrentLocation() {
         currentLocationLabel?.remove()
         currentLocationLabel = null
+        currentLocationPosition = null
+        currentLocationStyleBucket = null
         pendingGpsLocation = null
     }
 private fun scheduleMarkerLongPress() {
@@ -782,11 +808,51 @@ private fun handleMarkerDragTouch(event: MotionEvent): Boolean {
         }
     }
 
-    private fun createCurrentLocationStyle(): LabelStyles {
-        val size = 58
+    private fun currentLocationStyleBucketFor(location: NativeGpsLocation): Int? {
+        val heading = location.headingDegrees
+        if (!location.isTracking || heading == null) return null
+        val normalized = normalizeHeadingDegrees(heading) ?: return null
+        return (normalized / 5.0).roundToInt() * 5
+    }
+
+    private fun styleForCurrentLocation(bucket: Int?): LabelStyles {
+        if (bucket == null) return currentLocationStyle
+
+        return currentLocationTrackingStyleCache.getOrPut(bucket) {
+            createCurrentLocationStyle(bucket.toDouble(), showHeadingCone = true)
+        }
+    }
+
+    private fun createCurrentLocationStyle(
+        headingDegrees: Double? = null,
+        showHeadingCone: Boolean = false
+    ): LabelStyles {
+        val size = if (showHeadingCone) 104 else 58
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val center = size / 2f
+        if (showHeadingCone && headingDegrees != null) {
+            val coneFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.argb(92, 30, 125, 255)
+                style = Paint.Style.FILL
+            }
+            val coneStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.argb(145, 13, 71, 161)
+                style = Paint.Style.STROKE
+                strokeWidth = 2.5f
+            }
+            val cone = Path().apply {
+                moveTo(center, center - 4f)
+                lineTo(center - 20f, center - 45f)
+                quadTo(center, center - 55f, center + 20f, center - 45f)
+                close()
+            }
+            canvas.save()
+            canvas.rotate(headingDegrees.toFloat(), center, center)
+            canvas.drawPath(cone, coneFill)
+            canvas.drawPath(cone, coneStroke)
+            canvas.restore()
+        }
         val halo = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.argb(72, 30, 125, 255)
             style = Paint.Style.FILL
@@ -814,8 +880,13 @@ private fun handleMarkerDragTouch(event: MotionEvent): Boolean {
         canvas.drawCircle(center, center, 14f, whiteRing)
         canvas.drawCircle(center, center, 11f, core)
         canvas.drawCircle(center, center, 3.5f, centerDot)
+        val styleId = if (showHeadingCone && headingDegrees != null) {
+            "field_current_location_heading_${headingDegrees.roundToInt()}"
+        } else {
+            "field_current_location_v2"
+        }
         return LabelStyles.from(
-            "field_current_location_v2",
+            styleId,
             LabelStyle.from(bitmap).setAnchorPoint(0.5f, 0.5f)
         )
     }
@@ -1122,7 +1193,11 @@ data class NativeGpsLocation(
     val lng: Double,
     val title: String,
     val moveCamera: Boolean,
-    val level: Int?
+    val level: Int?,
+    val headingDegrees: Double?,
+    val isTracking: Boolean,
+    val smooth: Boolean,
+    val updateHeadingOnly: Boolean
 ) {
     companion object {
         fun fromFlutterMap(arguments: Any?, defaultMoveCamera: Boolean): NativeGpsLocation? {
@@ -1135,7 +1210,13 @@ data class NativeGpsLocation(
                 lng = lng,
                 title = map["title"]?.toString().orEmpty(),
                 moveCamera = (map["moveCamera"] as? Boolean) ?: defaultMoveCamera,
-                level = ((map["zoomLevel"] ?: map["level"]) as? Number)?.toInt()
+                level = ((map["zoomLevel"] ?: map["level"]) as? Number)?.toInt(),
+                headingDegrees = normalizeHeadingDegrees(
+                    (map["heading"] ?: map["headingDegrees"]) as? Number
+                ),
+                isTracking = (map["isTracking"] as? Boolean) == true,
+                smooth = (map["smooth"] as? Boolean) == true,
+                updateHeadingOnly = (map["updateHeadingOnly"] as? Boolean) == true
             )
         }
     }
@@ -1145,5 +1226,13 @@ private const val LINE_LABEL_STYLE_VERSION = 2
 
 private fun isValidCoordinate(lat: Double, lng: Double): Boolean {
     return lat.isFinite() && lng.isFinite() && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+}
+
+private fun normalizeHeadingDegrees(value: Number?): Double? {
+    val raw = value?.toDouble() ?: return null
+    if (!raw.isFinite() || raw < 0.0) return null
+    var normalized = raw % 360.0
+    if (normalized < 0.0) normalized += 360.0
+    return normalized
 }
 
